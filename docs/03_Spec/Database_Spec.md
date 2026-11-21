@@ -89,6 +89,7 @@ workspace > map > scope > node
 | `annotation` | `id` | `mapId`、`scopeId`、`annotationKind`（pen / text）、形状・色・太さ、`extra`、`rev` |
 | `relationTypeDef` | `name` | `label`、`description`、`reads`（`source-to-target` / `target-to-source`）、`rev` |
 | `prefix` | `prefix` | `uri`、`rev` |
+| `lock` | `target`（対象の rk） | `rev`。掛けている間だけ在る（3 節） |
 | `account` | `id` | `accountKind`（`ai-agent` / `human` / `system`）、`displayName`、`externalIds`、`roles`、`rev` |
 | `commit` | `seq` | `committedAt`、`issuer`（アカウントの ID）、`sessionId` |
 | `idMap` | `recordKind` ＋ `mapId` ＋ `oldId` | `newId` |
@@ -104,7 +105,17 @@ workspace > map > scope > node
 - 決まった欄（`nodeType`、`collapsed`）は、既定値（`text`、false）と同じなら保存しない。既定値は変えない。
 - `alias` は、参照先 `target`、表示名 `label`、`access`（read / write）、参照先のラベルの cache（`snapshotLabel`）、`broken` を持つ。
 - 【決定】（akaghef、2026-11-21）alias は子を持てる。alias は、参照先の実体が、ある面に現れる一回の出現である。alias の子は、その面での子であり、参照先の実体の子にはならない。同一性と、子の意味は 12.2。【実装済み】のものは、alias の子を拒否する。
-- 【決定】（同期の要件 R2.6）node と scope はロックを持つ。ロックが掛かっている間は、削除と移動の Command を確定しない。誤操作の防止のためで、権限の代わりではない。状態を持つ欄と、ロックが及ぶ範囲は未決（13 節）。
+- 【決定】（akaghef、2026-11-22。同期の要件 R2.6）node と scope はロックを持つ。誤操作の防止のためで、権限の代わりではない。
+  - ロックは対象だけに効き、子孫には継承しない。
+  - 止めるのは構造の変更だけである: 対象の削除、移動、parent edge の付け替え。対象を巻き込んで消す Command（祖先の部分木の削除、それを含む scope の dissolve など）も止める。内容の編集は止めない。
+  - 判定は確定する時点の状態で行う。Undo の Command も同じ判定を受ける。ロックを理由に確定しなかった Command は、理由がロックであることを示して返す。
+- 【仮決め】ロックの保存の形:
+  - 新しいレコードの種類 `lock` に持つ。key は対象の rk、欄は `target`、`rev`。掛けるとレコードを作り、外すとレコードを消す。node や scope の欄にしないのは、掛けるたびに対象の `rev` が進んで内容の CAS が衝突し、`touched` で内容の変更として数えられるのを避けるためである。
+  - 及ぶ範囲を表す欄は置かない。欄が無いことを「対象のみ」と読む。部分木へ広げるときは任意の欄を足す。追加なので format は上がらない。
+  - 判定は、確定のときに server が作る `touched` で行い、Command の種類では行わない。ロック中の対象が `m3e:delete` で現れるか、対象の parent edge が変わる確定を拒否する。どの Command（dissolve、join、一括の変更、取り込み、Undo）から来ても同じ規則で止まる。
+  - 【提案】event kind の `m3e:structure` を、`m3e:reparent`（parent edge・scope の付け替え）と `m3e:order`（`ord`）に分ける。兄弟順の変更を止めないためである。event kind は開いた集合なので、format は上がらない。
+  - 【提案】消す操作を出現・関係・実体に分けたとき（12.7）、ロックは出現（node のレコード）に付く。その出現を面から外す操作（OC1）と、その出現の parent edge を消す操作（OC2）は拒否する。実体を終える・取り消す操作（OC3、OC4）は、その実体の出現のどれかがロック中なら拒否する。
+  - 拒否の理由のコードとして `LOCKED` を足す。push の結果で commandId ごとに返す（6 節）。
 - 【決定】（akaghef、2026-11-22。同期の要件 R2.6）ロックを扱える主体:
   - 掛ける・外すのは、その scope を編集できる human である。外すときは確認を一回挟むだけで、承認は要らない。特定の人しか外せないロックは作らない。
   - AI agent は掛けられる。外せるのは、human が明示して任せたときだけである。
@@ -831,7 +842,7 @@ JA1 と JA2 の組み合わせが、操作の集まりになる。
 保存の形に入るもの:
 
 - scope の `retention.ms` の既定値（sync-principles の Rapid の目安は 30 日。archive の segment の 90 日とは別の値）
-- node と scope のロックの欄（同期の要件 R2.6）。ロックが部分木に及ぶか、編集も止めるか
+- ロックの保存の形の【仮決め】と【提案】（3 節）の承認。祖先を別の親へ移すことは、ロックでは止めない（巻き込んで消す操作ではない）と読んでいる
 - AI agent にロックを外すことを任せた記録の置き場所（同期の要件 R2.6）。scope の権限と同じ場所に持つのが候補
 - 名前付きの snapshot の持ち方、観測用のフィルタの面の保存、entity binding の表し方（12.6 の KB7〜KB9）
 
