@@ -90,6 +90,7 @@ workspace > map > scope > node
 | `relationTypeDef` | `name` | `label`、`description`、`reads`（`source-to-target` / `target-to-source`）、`rev` |
 | `prefix` | `prefix` | `uri`、`rev` |
 | `lock` | `target`（対象の rk） | `rev`。掛けている間だけ在る（3 節） |
+| `grant` | `id` | `scopeId`、`principal`、`capability`、`grantedBy`、`expiresAt`、`rev`（3 節） |
 | `account` | `id` | `accountKind`（`ai-agent` / `human` / `system`）、`displayName`、`externalIds`、`roles`、`rev` |
 | `commit` | `seq` | `committedAt`、`issuer`（アカウントの ID）、`sessionId` |
 | `idMap` | `recordKind` ＋ `mapId` ＋ `oldId` | `newId` |
@@ -106,22 +107,30 @@ workspace > map > scope > node
 - `alias` は、参照先 `target`、表示名 `label`、`access`（read / write）、参照先のラベルの cache（`snapshotLabel`）、`broken` を持つ。
 - 【決定】（akaghef、2026-11-21）alias は子を持てる。alias は、参照先の実体が、ある面に現れる一回の出現である。alias の子は、その面での子であり、参照先の実体の子にはならない。同一性と、子の意味は 12.2。【実装済み】のものは、alias の子を拒否する。
 - 【決定】（akaghef、2026-11-22。同期の要件 R2.6）node と scope はロックを持つ。誤操作の防止のためで、権限の代わりではない。
-  - ロックは対象だけに効き、子孫には継承しない。
-  - 止めるのは構造の変更だけである: 対象の削除、移動、parent edge の付け替え。対象を巻き込んで消す Command（祖先の部分木の削除、それを含む scope の dissolve など）も止める。内容の編集は止めない。
+  - ロックは掛けた node（出現）だけに効き、子孫には継承しない。alias では、出現ごとにロックが付く。
+  - 止めるのは構造の変更だけである: 対象の削除、移動、parent edge の付け替え。対象を巻き込んで消す Command（祖先の部分木の削除、それを含む scope の dissolve など）も止める。内容の編集は止めない。祖先を別の親へ移すことは止めない（対象の parent edge は変わらず、消えもしない）。
+  - 実体を終える・取り消す操作（12.7 の OC3、OC4）は、その実体の出現のどれかがロック中なら拒否する。
   - 判定は確定する時点の状態で行う。Undo の Command も同じ判定を受ける。ロックを理由に確定しなかった Command は、理由がロックであることを示して返す。
-- 【仮決め】ロックの保存の形:
+- ロックの保存の形（【決定】の判定は `touched` で行うこと。ほかは保存の形の側の判断）:
   - 新しいレコードの種類 `lock` に持つ。key は対象の rk、欄は `target`、`rev`。掛けるとレコードを作り、外すとレコードを消す。node や scope の欄にしないのは、掛けるたびに対象の `rev` が進んで内容の CAS が衝突し、`touched` で内容の変更として数えられるのを避けるためである。
   - 及ぶ範囲を表す欄は置かない。欄が無いことを「対象のみ」と読む。部分木へ広げるときは任意の欄を足す。追加なので format は上がらない。
-  - 判定は、確定のときに server が作る `touched` で行い、Command の種類では行わない。ロック中の対象が `m3e:delete` で現れるか、対象の parent edge が変わる確定を拒否する。どの Command（dissolve、join、一括の変更、取り込み、Undo）から来ても同じ規則で止まる。
-  - 【提案】event kind の `m3e:structure` を、`m3e:reparent`（parent edge・scope の付け替え）と `m3e:order`（`ord`）に分ける。兄弟順の変更を止めないためである。event kind は開いた集合なので、format は上がらない。
-  - 【提案】消す操作を出現・関係・実体に分けたとき（12.7）、ロックは出現（node のレコード）に付く。その出現を面から外す操作（OC1）と、その出現の parent edge を消す操作（OC2）は拒否する。実体を終える・取り消す操作（OC3、OC4）は、その実体の出現のどれかがロック中なら拒否する。
+  - 【決定】（akaghef、2026-11-22）判定は、確定のときに server が作る `touched` で行い、Command の種類では行わない。ロック中の対象が `m3e:delete` で現れるか、対象の parent edge が変わる確定を拒否する。どの Command（dissolve、join、一括の変更、取り込み、Undo）から来ても同じ規則で止まる。
+  - parent edge の付け替えと兄弟順の変更は、別の event kind（`m3e:reparent` と `m3e:order`、6 節）にする。兄弟順の変更を止めないためである。
+  - 12.7 の操作では、ロック中の出現を面から外す操作（OC1）と、その出現の parent edge を消す操作（OC2）を拒否する。実体の canonical な出現にロックを掛けることは、実体にロックを掛けることに当たる。
   - 拒否の理由のコードとして `LOCKED` を足す。push の結果で commandId ごとに返す（6 節）。
 - 【決定】（akaghef、2026-11-22。同期の要件 R2.6）ロックを扱える主体:
   - 掛ける・外すのは、その scope を編集できる human である。外すときは確認を一回挟むだけで、承認は要らない。特定の人しか外せないロックは作らない。
   - AI agent は掛けられる。外せるのは、human が明示して任せたときだけである。
   - 掛ける Command と外す Command は、どちらも journal に確定し、Undo できる。ロックは対象に付き、掛けた人が権限を失っても残る。
   - 効くかどうかは、remote が確定のときに判定する。
-  - 保存の形: 所有者の欄は置かない。誰が掛けたかは、掛けた Command の `issuer` と `actor` で分かる。AI agent に外すことを任せた記録をどこに持つかは未決（13 節）。
+  - 保存の形: 所有者の欄は置かない。誰が掛けたかは、掛けた Command の `issuer` と `actor` で分かる。
+- 【決定】（akaghef、2026-11-22。同期の要件 R2.7）AI agent にロックを外すことを任せる許可（grant）は、scope の権限と同じ場所に置く。
+  - principal はアカウントである。capability は接頭辞付きの名前の開いた集合で、ロックを外す許可は `m3e:unlock`。
+  - 許可は、その scope だけに効き、入れ子の scope へは継承しない。
+  - 許可の付与と取り消しは、どちらも Command である。取り消しは、レコードの削除で行う。
+  - 許可した human がその scope を編集できなくなったら、許可は効かない。確定のときに判定する。
+  - unlock の Command の `actor` が AI agent のとき、remote は、その scope の有効な許可を確かめる。`issuer` が `grantedBy` と一致することは求めない。
+- 保存の形: レコードの種類 `grant`。key は `id`、欄は `scopeId`、`principal`（`{account: accountRef}`。種類を足せる形）、`capability`（string）、`grantedBy`（accountRef）、`expiresAt?`（time。期限は確定の `committedAt` で判定する）、`rev`。scope の権限の仕組み（同期の要件 Q7）が決まったら、同じ種類のレコードに権限を足す。
 - `nodeType` の値【実装済み】は `text`、`alias`、`image` と、移行で運んだそれ以外の値である。種別の扱いは 10 節で改める（【決定】）。【仮決め】format 2 では `nodeType` を残し、描画器の選択子として使う。`extensions` との統合は、次の format の bump で行う。
 
 ### 3.3 attribute
@@ -297,7 +306,7 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - 確定のときに、サーバが `ops` と pre-image の diff から決定的に作る。client の申告は受けない。
   - 正規化した後の比較で、`rev` だけの差分は入れない。計算で求まる値（有効な極性など）だけが変わった子孫も入れない。
   - rk の文字列順に並べ、重複させない。
-  - event kind は接頭辞の付いた名前の開いた集合で、最初の値は `m3e:create`、`m3e:delete`、`m3e:content`（`text`・本文）、`m3e:attribute`、`m3e:structure`（parent edge・`ord`・scope の付け替え）、`m3e:extension`（拡張の付け外し）、`m3e:target`（目標の更新間隔の変更）。読み手は知らない kind を無視する。
+  - event kind は接頭辞の付いた名前の開いた集合で、最初の値は `m3e:create`、`m3e:delete`、`m3e:content`（`text`・本文）、`m3e:attribute`、`m3e:reparent`（parent edge・scope の付け替え）、`m3e:order`（`ord`）、`m3e:extension`（拡張の付け外し）、`m3e:target`（目標の更新間隔の変更）。読み手は知らない kind を無視する。
 - 【仮決め】`provenance.items` の要素は `{mode: "observed" | "declared", rk, rev}`。上限は 100 件で、超えたら `truncated: true` にする。長く残す来歴は record の側に持つ（下）。
 - 【実装済み】`provenance`（`beta/src/node/record_store/provenance.ts`、`beta/src/node/mcp_service.ts`）:
   - store は確定のときに形を検査する。形の合わない item は `INVALID_COMMAND` で断る。同じ rk は最初の 1 件を残す。100 件を超えた分は切り、`truncated: true` を付ける。これまでの値（`{contextId, tool}`、`{tabId}`）は `actor.id` と同じ情報なので、journal に残さない。
@@ -305,9 +314,10 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - 【仮決め】declared: copy の出所の subtree。出所を明示する引数はまだ無い。
   - 【仮決め】並び: declared が先、次に observed を新しく読んだ順。SQLite の上では `items` は空になる。
 - 【仮決め】`changes` と `ops` の二重持ちは、format 2 では解消しない。replay の決定性を確かめる試験ができてから扱う。
-- 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 2 点ある。
+- 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 3 点ある。
   - snapshot の `format` は、まだ 1 である。format 2 への bump は、ほかの format の変更と合わせて base snapshot で行う。
   - 位置の変更は、`touched` で `m3e:content` に数えている。
+  - parent edge の付け替えと兄弟順の変更を、まだ一つの `m3e:structure` として出している（`beta/src/node/record_store/journal_archive.ts`）。
 
 - 開くとき、末尾の書きかけの行は切り捨てる。途中の行が壊れていれば、開くのを止める。通し番号の飛びも止める。
 - 【決定】（akaghef、2026-11-19）log compaction は何も消さない。封じた journal の segment は archive へ移す。
@@ -847,8 +857,6 @@ JA1 と JA2 の組み合わせが、操作の集まりになる。
 保存の形に入るもの:
 
 - scope の `retention.ms` の既定値（sync-principles の Rapid の目安は 30 日。archive の segment の 90 日とは別の値）
-- ロックの保存の形の【仮決め】と【提案】（3 節）の承認。祖先を別の親へ移すことは、ロックでは止めない（巻き込んで消す操作ではない）と読んでいる
-- AI agent にロックを外すことを任せた記録の置き場所（同期の要件 R2.6）。scope の権限と同じ場所に持つのが候補
 - 名前付きの snapshot の持ち方、観測用のフィルタの面の保存、entity binding の表し方（12.6 の KB7〜KB9）
 
 - task の欄の正確な組と、担当の参照先
