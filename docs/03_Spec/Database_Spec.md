@@ -1,8 +1,8 @@
 # DB 仕様書
 
-最終更新: 2026-11-19（freeze v1: on-disk format 2）
+最終更新: 2026-11-21（帯域と alias の同一性を追加。on-disk format は freeze v1 の format 2）
 
-M3E の保存データ（DB）の仕様をまとめる。保存の形、識別、不変条件、書き込みと確定、journal と snapshot、Neo4j 上の持ち方、キャッシュ、拡張の仕組みを扱う。
+M3E の保存データ（DB）の仕様をまとめる。保存の形、識別、不変条件、書き込みと確定、journal と snapshot、Neo4j 上の持ち方、キャッシュ、拡張の仕組み、帯域（Rapid と Deep）を扱う。
 
 ## 0. この文書の位置付け
 
@@ -64,7 +64,7 @@ workspace > map > scope > node
 - local の commit は確定ではない。端末は、未確定の Command を outbox に積む。
 - 【実装済み】journal は workspace ごとに一つである。local outbox は無い。
 - node・edge・scope・Surface View の保存設定・注釈の ID は、map と workspace をまたいで一意である。
-- ID は作った後に変えない。消した ID は再利用しない。ただし Undo による復活の扱いは未決（12 節）。
+- ID は作った後に変えない。消した ID は再利用しない。ただし Undo による復活の扱いは未決（13 節）。
 - ID に意味を埋め込まない。種別の名前、本文、親の ID を含めない。
 - 保存エンジンが内部で振る ID（Neo4j の内部 ID など）は、外に出さない。
 - 【実装済み】移行で振り直す ID は、決定的に作る。形は「接頭辞 ＋ `sha256("<workspace>|<map>|<種別>|<種>")` の先頭 24 桁」。接頭辞は node が `n_`、edge が `c_`、scope が `s_`、Surface View が `v_`、注釈が `a_`。旧い ID との対応は `idMap` のレコードに残す（snapshot-format 3.1）。
@@ -103,7 +103,8 @@ workspace > map > scope > node
 - node は、親・子・作成時刻・更新時刻・作成者を持たない。親子関係は parent edge が持つ。時刻と発行者は、`rev` から確定の表（`commit`）を引く。
 - 決まった欄（`nodeType`、`collapsed`）は、既定値（`text`、false）と同じなら保存しない。既定値は変えない。
 - `alias` は、参照先 `target`、表示名 `label`、`access`（read / write）、参照先のラベルの cache（`snapshotLabel`）、`broken` を持つ。
-- 【決定】（同期の要件 R2.6）node と scope はロックを持つ。ロックが掛かっている間は、削除と移動の Command を確定しない。誤操作の防止のためで、権限の代わりではない。掛けた本人も外せる。状態を持つ欄と、ロックが及ぶ範囲は未決（12 節）。
+- 【決定】（akaghef、2026-11-21）alias は子を持てる。alias は、参照先の実体が、ある面に現れる一回の出現である。alias の子は、その面での子であり、参照先の実体の子にはならない。同一性と、子の意味は 12.2。【実装済み】のものは、alias の子を拒否する。
+- 【決定】（同期の要件 R2.6）node と scope はロックを持つ。ロックが掛かっている間は、削除と移動の Command を確定しない。誤操作の防止のためで、権限の代わりではない。掛けた本人も外せる。状態を持つ欄と、ロックが及ぶ範囲は未決（13 節）。
 - `nodeType` の値【実装済み】は `text`、`alias`、`image` と、移行で運んだそれ以外の値である。種別の扱いは 10 節で改める（【決定】）。【仮決め】format 2 では `nodeType` を残し、描画器の選択子として使う。`extensions` との統合は、次の format の bump で行う。
 
 ### 3.3 attribute
@@ -182,13 +183,13 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 - 移行で運んだ接頭辞の無い名前（attribute の key、relation edge の relationType の値）は、そのまま残す。新しく作ることだけを禁じる。整理は後で Command で行う。
 - 【実装済み】MCP では、接頭辞の無い relationType と、node にまだ無い接頭辞の無い attribute の key を拒否する。既にある key の更新と削除は受け付ける。viewer での入力には、まだ掛けていない。
 
-## 4. 不変条件【実装済み】（9・10 は【決定】）
+## 4. 不変条件【実装済み】（3 の後半・9・10 は【決定】）
 
 確定のときに検査する。一つでも破る書き込みは、全体を拒否する。
 
 1. root 以外の node は、入ってくる parent edge をちょうど 1 本持つ。map の root は持たない。
 2. parent edge は循環しない。
-3. alias は alias でない node を指す。alias は子を持たない。
+3. alias は alias でない node を指す。【決定】（akaghef、2026-11-21）alias は子を持てる（3.2、12.2）。【実装済み】の検査は、alias の子を拒否する。
 4. edge の端点は実在する。端点を消す書き込みは、その edge も同じ確定で消す。
 5. scope の root は実在する node である。alias は root になれない。
 6. parent edge は実在する scope の ID を持つ。parent edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る parent edge の scope が S である。これで、一つの scope に載る parent edge は、その root を頂点とする 1 本の木になる。
@@ -491,13 +492,127 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
 - 作成時刻・更新時刻・作成者
 - 既定値と同じ決まった欄、null の attribute、空の配置値
 
-## 12. 未決
+## 12. 帯域（Rapid と Deep）
+
+帯域の定義は [Axes.md](../01_Vision/Axes.md) と [Glossary](../00_Home/Glossary.md) にある。この節は、帯域を保存の形へどう落とすかを書く。
+
+### 12.1 読み【決定】（akaghef、2026-11-21）
+
+- 保存される帯域は Rapid と Deep である。Flash は取り込みの入口で、Flash のまま保存される段階は持たない。取り込んだものは Rapid になる。
+- Deep は体系である。体系は、複数の facet が重なった graph である。一つの facet は、ある関心の領域の taxonomy で、木として読める。全部を重ねたものは、そのままでは可視化も編集も難しい。
+- Rapid は、体系の一側面を一枚の面（scope）として切り出したものである。構造は木である。
+- Rapid と Deep は、別々のデータの写しではない。同じ実体に対する、一面と全体である。
+- 帯域は Flash、Rapid、Deep の順に並ぶ。Deep の向きへ進める操作が昇格である。
+- 作業の流れは次のとおりである。
+  1. 体系から、関心のある領域の taxonomy を面として切り出す（射影）。
+  2. その面の上で整理し、考察する（Rapid での作業）。
+  3. 結果を体系へ書き戻す（昇格。Git の commit に当たる）。
+- Rapid と Deep は構造が違う（木と graph）ので、適した処理方式も違う。保存エンジンの層で扱いを分ける（12.5）。
+
+### 12.2 同一性【決定】（akaghef、2026-11-21）
+
+面をまたいで「同じもの」をつなぐのは、実体の同一性である。ラベルが同じであることではない。
+
+- 実体は、一つの面に一つだけ置く。その面を、その実体の正本の面と呼ぶ。
+- 他の面にその実体を現すときは、alias を置く。alias は実体を複製しない。alias の `target` が、同一性の記録である。
+- alias は子を持てる（4 節の不変条件 3）。alias の子は、その alias が載る面での子である。参照先の実体が正本の面で持つ子とは、別の集まりである。
+- alias から alias への参照は、引き続き禁止する。alias の `target` は、必ず alias でない node である。
+- 一つの実体を指す alias は、いくつあってもよい。面ごとに一つとは限らない。
+
+例: 組織図の面に、人の node「A さん」を正本として置く。タスクの割り当ての面には、「A さん」の alias を置き、その子に A さんのタスクを並べる。
+
+```
+組織図の面（正本）            タスクの割り当ての面
+  開発部                        リリース 2.0
+   └ A さん  ◀── target ──────   └ A さん（alias）
+                                      ├ 設計レビュー
+                                      └ 移行の試験
+```
+
+- 「A さんに関わるもの」は、実体「A さん」と、それを指すすべての alias、およびそれぞれの子をたどって得る。この問い合わせは面をまたぐので、体系（Deep）の側の問い合わせである。
+- 参照先を消したとき、alias は `broken` になる。alias の子は消さない。
+- alias を消すときの子の扱いは、alias でない node を消すときと同じである。
+- alias は scope の root になれない（不変条件 5）。この制約は変えていない。
+
+【提案】alias の子に関して、次を定める。
+
+- parent edge の循環の検査（不変条件 2）は、alias を別の node として数える。実体の子孫の下に、その実体の alias を置くことは禁止しない。面を描くときに alias の参照先の子を展開しないので、描画は循環しない。
+- alias の `access` が read のとき、止めるのは参照先の実体の内容の編集である。alias の下に子を足すことは止めない。
+
+### 12.3 射影【提案】
+
+射影は、体系から一つの側面を選び、新しい面として切り出す操作である。
+
+- 入力は、切り出す範囲（起点の実体と、たどる深さ、または実体の集まり）と、木として読む関係の指定である。関係の指定は、次のどちらかである。
+  - ある面（正本の面）の parent edge。
+  - ある `relationType` の relation edge。向きは、relationType の定義の `reads` に従う。
+- 出力は、新しい scope である。範囲に入った実体ごとに alias を 1 つ作り、指定した関係に沿って、alias の間に parent edge を張る。兄弟の順は、元が parent edge なら元の `ord` の順、relation edge なら実体の ID の順とする。
+- 関係が木にならない実体（指定した関係で親を 2 つ以上持つ実体）は、親ごとに alias を作る。同じ実体を指す alias が、面の中に複数できる。
+- scope は、射影の元を持つ。
+
+| 欄 | 型 | 意味 |
+|---|---|---|
+| `projection.from` | `{scopeId}` または `{relationType}` | 木として読んだ関係 |
+| `projection.baseSeq` | int | 射影した時点の通し番号 |
+
+- 射影は一つの Command で確定する。面の作成、alias の作成、parent edge の作成を含む。
+- 射影で作った面に、alias でない node を足してよい。その node は、その面を正本の面とする実体である。
+
+### 12.4 書き戻し【提案】
+
+書き戻しは、切り出した面で行った整理を、体系の側の関係に反映する操作である。Rapid から Deep への昇格に当たる。
+
+- 対象は、`projection` を持つ scope である。
+- 書き戻すのは、alias の間の parent edge の差分だけである。差分は、`projection.baseSeq` の時点の面と、現在の面を比べて求める。
+
+| 面での変更 | 体系の側で行う変更 |
+|---|---|
+| alias X′ を alias Y′ の下へ付け替えた | 元が面の parent edge なら、実体 X を実体 Y の下へ move する。元が relation edge なら、古い親との relation edge を消し、Y との relation edge を作る |
+| alias の間に parent edge を足した（新しく alias を置いた） | 対応する実体の間に、同じ関係を作る |
+| alias を面から消した | 何もしない。面から外しただけで、関係の削除とはみなさない。関係を消すには、明示の操作を使う |
+| 兄弟の並べ替え | 元が面の parent edge のときだけ、`ord` を書き戻す。relation edge は順序を持たないので、書き戻さない |
+| alias でない node を足した、編集した | 何もしない。その node は、すでに体系の一部である |
+| alias の下に、alias でない子を足した | 何もしない。その子は、この面での子である |
+
+- 書き戻しは一つの Command で確定する。理由（なぜこの整理にしたか）を Command に持たせる。
+- 競合は、5.2 の規則で判定する。`projection.baseSeq` より後に、体系の側の同じ関係が変わっていたら、その項目を `CONFLICT` で拒否する。位置の変更は LWW ではなく CAS で扱う。書き戻しは、古い基準に基づく変更だからである。
+- 書き戻しが確定したら、`projection.baseSeq` を、その確定の通し番号に進める。
+- 面と実体の対応は alias の `target` だけで決まるので、書き戻しのために新しい ID や、別の対応表は要らない。
+
+### 12.5 エンジンの分担【提案】
+
+Rapid と Deep は workload が違う。
+
+| | Rapid（一枚の面） | Deep（体系の全体） |
+|---|---|---|
+| 構造 | 木。parent edge と `ord` | graph。すべての面の parent edge、relation edge、alias の `target` |
+| 主な読み出し | 面を丸ごと読む（通常 10 node、最大約 1,100）。兄弟を `ord` の順に並べる | 型付きの関係を何段もたどる。alias をたどって、同じ実体の出現を集める。経路と到達可能性を調べる |
+| 主な書き込み | 小さな編集を高い頻度で行う。応答の速さを優先する | 書き戻しと射影。まとまった変更を低い頻度で行う |
+| 不変条件 | 親が一つ、`ord` が一意、循環しない。祖先の列をたどれば検査できる | relationType の制約、関係の重複、依存の循環。graph を見る必要がある |
+| 適したデータ構造 | (scope, 親, `ord`) の順序付き index と、子から親への参照 | property graph（index-free adjacency、label と relationType の index） |
+
+- durability authority は、帯域で分けない。journal と snapshot は workspace に一本で、通し番号の全順序も共通である（1 節、2 節）。
+- 分けるのは semantic authority（不変条件の検査と問い合わせ）である。
+  - 面の中の検査と読み書きは、確定する側のサーバが持つ、木に特化したエンジンが担う。
+  - 面をまたぐ検査と問い合わせは、Neo4j が担う。
+- 二つのエンジンは、同じ journal を順に適用する state machine である。両方に関わる Command（射影、書き戻し）も、journal の上では一つの確定なので、エンジンの間の two-phase commit は要らない。食い違ったら、replay で直す。
+- この案を採ると、1 節と 8 節、ADR 014 の「Neo4j は各端末の正本エンジン」を、「面の中は木のエンジン、面をまたぐものは Neo4j」に改めることになる。採るまでは、1 節と 8 節が有効である。
+
+### 12.6 この節の未決
+
+- scope ごとに Rapid か Deep かを決める、という決定（[sync-principles](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md)「領域」）を、12.1 の読みの上でどう読むか。候補は「正本の面が Deep、射影で切り出した作業の面が Rapid」である。保持の方針（Rapid は保持期間、Deep は全版）は、この区分に従う。
+- Deep の全版保持（同期の要件 R8.5）を、どのレコードで持つか。archive の journal は 90 日で消える（6 節）ので、journal には頼れない。
+- 書き戻しで「alias を面から消した」を関係の削除とみなさない、という規則でよいか。
+- 射影した面を、書き戻した後も残すか。Axes.md は、射影した出力を使い捨てとしている。
+- facet（Glossary の定義では、PJ 直下の第一階層の scope）と、12.1 の「一つの側面」を、同じ語で呼んでよいか。
+
+## 13. 未決
 
 保存の形に入るもの:
 
 - scope の `retention.ms` の既定値（sync-principles の Rapid の目安は 30 日。archive の segment の 90 日とは別の値）
 - node と scope のロックの欄（同期の要件 R2.6）。ロックが部分木に及ぶか、編集も止めるか
-- scope の Rapid と Deep の区分（同期の要件 R8.6）。欄を置くかは、違いと昇格の意味が決まってから
+- scope の Rapid と Deep の区分（同期の要件 R8.6）。読みは 12.1 で決まった。欄を置くかは、12.6 の一つ目が決まってから
 
 - task の欄の正確な組と、担当の参照先
 - 計算で求まる値の定義の名前の分類

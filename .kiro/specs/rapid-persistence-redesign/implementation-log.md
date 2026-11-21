@@ -49,6 +49,24 @@
 
 ## 記録
 
+### 2026-11-21 alias は子を持てる、と決まった。実装と、いくつかの文書は「持てない」のままである
+
+- 種類: 仕様と実装のずれ
+- 書いた agent: 物理量と拡張の土台の session（DB 仕様書の書き手）
+- 対象: DB 仕様書 3.2 節、4 節の不変条件 3、12.2 節。`beta/src/shared/record_model/invariants.ts:108-111`、`beta/src/node/rapid_mvp.ts:425`、`beta/src/node/mcp_service.ts:434`・`524`、`beta/src/node/flash_jobs.ts:121`
+- 中身: akaghef が 2026-11-21 に「alias は子を持たない」を廃止した。面をまたいで同じ実体をつなぐために、正本の面に実体を置き、他の面には alias を置いて、その下に子を並べる（例: 組織図の人を正本にし、タスクの割り当ての面に alias を置く）。DB 仕様書、record-schema、post-migration-spec、Glossary は改めた。実装は、上の 4 か所で alias の子を拒否している。次の文書は、今の実装の説明か、他の session の文書なので、まだ「持てない」と書いている: `docs/03_Spec/Data_Model.md` 87 行目、`docs/protocols/map-write-protocol.md` 27 行目、`operation-algebra-requirements.md` 96 行目（alias が子を持てないことを前提に、子孫の共有を論じている）、`draft-record-model.md` 172 行目。
+- 根拠: `git grep` で「子を持たない」「cannot own children」を探して読んだ。
+- 扱い: 仕様へ反映（DB 仕様書 3.2・4・12.2 節）。実装は未対応。viewer が alias の子をどう描くか、alias を畳んだときの表示、MCP の応答の形は決まっていない
+
+### 2026-11-21 射影・書き戻し・エンジンの分担を、DB 仕様書 12 節に【提案】として書いた
+
+- 種類: 気づき
+- 書いた agent: 物理量と拡張の土台の session（DB 仕様書の書き手）
+- 対象: DB 仕様書 12.3〜12.6 節、1 節、8 節、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)
+- 中身: akaghef の読み（体系から一側面を面として切り出し、整理して書き戻す。Rapid は木、Deep は graph で、保存エンジンの層で扱いを分けたい）を受けて、射影の入力と出力、scope の `projection` 欄、書き戻しの対応表、エンジンの分担を案として書いた。エンジンの分担を採ると、「Neo4j は各端末の正本エンジン」（ADR 014、DB 仕様書 1・8 節）を「面の中は木のエンジン、面をまたぐものは Neo4j」に改めることになる。
+- 根拠: 2026-11-21 の akaghef との対話。workload の表の数値（面は通常 10 node、最大約 1,100）は、同期の要件 R10.1 の値である。処理の速さは測っていない。
+- 扱い: akaghef の判断待ち（12.3〜12.5 の採否と、12.6 の五点）
+
 ### 2026-11-19 journal の畳み込みを、archive への移動と 90 日後の検証つき削除として実装した。仮決めが 5 件ある
 
 - 種類: 気づき

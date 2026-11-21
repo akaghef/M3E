@@ -211,7 +211,7 @@ edge  kind `edge`（parent edge）   親 root → 子 b   兄弟順キー "a1"
 
 - root 以外の node は、入ってくる parent edge をちょうど 1 本持つ。root は持たない。parent edge は循環しない。
 - 同じ親の下で（兄弟順キー, `connectionId`）が全順序になる。
-- alias は実体の node だけを指す。alias は子を持たない。alias から alias は不可。
+- alias は実体の node だけを指す。alias は子を持てる（子は、その alias が載る面での子。DB 仕様書 12.2）。alias から alias は不可。
 - edge の端点は実在する。端点を消したら、その edge も同じ確定で消す。
 - scope の root は実在する node。alias は scope の root になれない。一つの node が複数の scope の root になってよい（DA60）。
 - parent edge の scope は実在する。parent edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る parent edge の scope が S である。これで、一つの scope に載る parent edge は、その root を頂点とする 1 本の木になる。検査は parent edge ごとに局所で済む。

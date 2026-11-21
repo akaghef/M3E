@@ -63,7 +63,7 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **spine** | 分散した node / alias / link 群を、人間が木または DAG として読めるようにする主骨格 | node, parent edge, scope, syntax tree, semantic graph | Rapid では主にparent edge の列として保存される。個々の node が参照関係や relation edge を持っていても、説明順序・階層・責任分解の本質を捕まえる背骨を spine と呼ぶ。Scatter などの自由配置でも、spine が決まれば木/DAG へ戻せる。表示上の線や補助関係とは混同しない |
 | **folder** | 一般向け説明で scope を直感的に伝えるために使う語。実装上は nodeType の一種でもある | scope | UI/導入説明で使ってよいが、**仕様・実装の正規語は `scope`** |
 | **scope** | map の対象を一枚の面で切り出したもの。見える範囲・編集範囲を制御する基本単位。parent edge はどれか一つの scope に載り、node は自分につながる parent edge が載る scope に現れる | folder, scopen, root scope, facet | M3E 固有の中核概念。一つの node は複数の scope に現れ、複数の scope の root にもなれる（同じ node の子を、scope ごとに別に持てる）。root の子が全部その scope に載る場合には部分木を囲う面になる。保存の形は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) の「scope は面」に従う。（別表記・併用可）folder world |
-| **alias** | 他ノードを参照する窓。実体を複製しない | node, scope | 実装語は alias。（仕様語）reference。**alias→alias は禁止** |
+| **alias** | 他ノードを参照する窓。実体を複製しない。実体が、正本の面とは別の面に現れる一回の出現であり、`target` が同一性を表す | node, scope, facet | 実装語は alias。（仕様語）reference。**alias→alias は禁止**。alias は子を持てる。子は、その alias が載る面での子で、参照先の実体の子ではない（[Database_Spec](../03_Spec/Database_Spec.md) 12.2） |
 | **root scope** | map の最上位 scope | scope, map | |
 | **scopen** | 既存 node を root とする scope を新しく作り、その node の子（と、同じ scope に載るその下）を新しい scope に載せる操作 | scope, unscopen | 動詞。（別表記）scope 化 |
 | **unscopen** | scope の区切りを解除する操作 | scope, scopen | 動詞。scope だけを消し、その scope に載っていた parent edge は root の node が属する scope に載せ替える。node は残す。（別表記）非 scope 化 |

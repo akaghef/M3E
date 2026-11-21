@@ -65,7 +65,7 @@ key: `nodeId`
 | 型 | 拘束 | details |
 |---|---|---|
 | `text` | 無し | Markdown の本文 |
-| `alias` | 子を持てない。参照先が必須 | 無し。参照先、`aliasLabel`、`access` を持つ |
+| `alias` | 子を持てる（その面での子）。参照先が必須 | 無し。参照先、`aliasLabel`、`access` を持つ |
 | `agent` | 無し | agent の種類、icon、model、役割、指すアカウント |
 | `image` | 無し | 画像への参照（形は実装時に決める） |
 
@@ -287,7 +287,7 @@ agent の node:
 
 1. root 以外の node は、入ってくる parent edge をちょうど 1 本持つ。map の root は持たない。
 2. parent edge は循環しない。
-3. alias は alias でない node を指す。alias は子を持たない。
+3. alias は alias でない node を指す。alias は子を持てる（DB 仕様書 12.2）。
 4. edge の端点は実在する。端点を消す書き込みは、その edge も同じ確定で消す。
 5. scope の root は実在する node である。alias は root になれない。一つの node が複数の scope の root になってよい。
 5a. parent edge は実在する scope の ID を持つ。parent edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る parent edge の scope が S である（record-schema DA59）。
