@@ -6,15 +6,6 @@
 
 ## 使い方
 
-### 2026-11-22 確定のたびに、射影と拒否の判定が map 全体を歩く
-
-- 種類: 問題
-- 書いた agent: format 2 の統合を受け入れる session
-- 対象: `beta/src/node/record_store/store.ts` の `commitChanges`、`beta/src/shared/record_model/steady.ts` の `MapProjector.project`、`beta/src/node/record_store/operations.ts` の `commitTimeRefusal`、`beta/tests/unit/record_store_perf.test.ts`
-- 中身: 20,000 node の map で 1 つの node の text を変える確定は、手元で中央値 20〜27 ms、CI の runner では 68〜104 ms で、試験の上限 100 ms を越える回がある。確定の時間の約 6 割は、map の state 全体から record を作り直す射影である。約 1.5 割は、拒否の判定が確定前の record 全体を走査して、lock・grant・node・edge・scope の表を作る分である。node の内容（text・details・note・collapsed・link）だけを変える Command では、画面用モデルの検証を省き、前の確定の結果を使う。射影を Command の触れた record だけに絞ることと、拒否の判定を種類ごとの索引から引くことはしていない。
-- 根拠: 単一の text 編集 20 回の CPU profile。`commitChanges` の中で `MapProjector.project` が 59.5%、`applyChangesReduced` が 20.1%、`commitTimeRefusal` が 15.0%。CI の Build & Test は fe6e0d6 で 100.5 ms、fd3e2da で 100.1 ms と 104.5 ms、fd7e700 で 72.4 ms。
-- 扱い: 未対応
-
 ### いつ書くか
 
 作業の中で、指示の外にあることに気づいたら書く。例を挙げる。
@@ -58,6 +49,15 @@
 
 ## 記録
 
+### 2026-11-22 確定のたびに、射影と拒否の判定が map 全体を歩く
+
+- 種類: 問題
+- 書いた agent: format 2 の統合を受け入れる session
+- 対象: `beta/src/node/record_store/store.ts` の `commitChanges`、`beta/src/shared/record_model/steady.ts` の `MapProjector.project`、`beta/src/node/record_store/operations.ts` の `commitTimeRefusal`、`beta/tests/unit/record_store_perf.test.ts`
+- 中身: 20,000 node の map で 1 つの node の text を変える確定は、手元で中央値 20〜27 ms、CI の runner では 68〜104 ms で、試験の上限 100 ms を越える回がある。確定の時間の約 6 割は、map の state 全体から record を作り直す射影である。約 1.5 割は、拒否の判定が確定前の record 全体を走査して、lock・grant・node・edge・scope の表を作る分である。node の内容（text・details・note・collapsed・link）だけを変える Command では、画面用モデルの検証を省き、前の確定の結果を使う。射影を Command の触れた record だけに絞ることと、拒否の判定を種類ごとの索引から引くことはしていない。
+- 根拠: 単一の text 編集 20 回の CPU profile。`commitChanges` の中で `MapProjector.project` が 59.5%、`applyChangesReduced` が 20.1%、`commitTimeRefusal` が 15.0%。CI の Build & Test は fe6e0d6 で 100.5 ms、fd3e2da で 100.1 ms と 104.5 ms、fd7e700 で 72.4 ms。
+- 扱い: 未対応
+
 ### 2026-11-22 減衰する累積の record の kind 名は、仕様が名付けていない
 
 - 種類: 問題
@@ -83,6 +83,8 @@
 - 対象: DB 仕様書 10.2、`beta/src/shared/record_model/extensions.ts`（`extensionValueErrors`）
 - 中身: 10.2 は、ref の指す node が存在するとき、その node が同じ extension を持つことを確定時に検査する、と書く。ref の文字列が `name@version` なのか `prefix:class:name` なのかは書いていない。実装は、`name@version` ならその版だけを、`prefix:class:name` ならどの版でも、extensions に含まれるかを見る。どちらでもない文字列（既存の `ref: "node"` を含む）は保存し、照合しない。参照先の node が無いときは broken として保存を許す。
 - 根拠: DB 仕様書 10.2 を読んだ。`record_store_decay.test.ts` が、存在するが extension を持たない node の拒否と、無い node の保存を見ている。
+- 扱い: 未対応
+
 ### 2026-11-22 account record を Command で作れない
 
 - 種類: 問題
