@@ -16,7 +16,7 @@
 | Git-backed code / design / semantic source | Git repository | search index、Neo4j materialization | repository の revision と review を維持 |
 | external provider native state | provider | M3E reference / materialization | M3E 固有 assertion は M3E 側で所有 |
 | source-owned cross-source graph record | 各 canonical source | Neo4j 等の再構築可能な materialization | owner source から再構築 |
-| M3E-owned accepted Deep graph | M3E Semantic Source | Gate 後は Neo4j canonical runtime | backup / journal / portable snapshot を別 failure domain に維持 |
+| M3E-owned accepted Deep graph | M3E Semantic Source | Gate 後は Neo4j canonical runtime | backup / journal / snapshot を別 failure domain に維持 |
 | proposal / pending transfer | proposal / transfer journal | Neo4j status materialization | accepted graph と混同しない |
 
 同じ entity、assertion、durable concern の canonical owner は一つにする。物理的複製は許すが、copy を両方 write 可能にしない。

@@ -256,7 +256,7 @@ agent へ渡す graph context は透過的な永続 cache にしない。Directo
 ## 15. Requirements
 
 - RQ1: durable concern ごとに canonical owner が一意でなければならない。
-- RQ2: source-materialized record を削除しても canonical source から再構築でき、M3E-owned accepted record は **portable snapshot + journal replay のみ**で復旧できなければならない。backup / restore は補助経路として検証してよいが、Recovery Gate の通過根拠にしない。
+- RQ2: source-materialized record を削除しても canonical source から再構築でき、M3E-owned accepted record は **snapshot + journal replay のみ**で復旧できなければならない。backup / restore は補助経路として検証してよいが、Recovery Gate の通過根拠にしない。
 - RQ3: UI、human、AI、bot、CI は同じ authority resolution を利用しなければならない。
 - RQ4: Rapid occurrence と Deep entity は別 identity として表現でき、many-to-many entity binding を許さなければならない。
 - RQ5: cross-authority reparent は通常 move として確定してはならない。

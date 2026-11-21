@@ -18,8 +18,8 @@ All scripts are under `scripts/pilot/` and emit one JSON object per run.
 | `scripts/pilot/orchestration-seed` | S16 系実案件の `M3E-owned accepted` Goal / Task / Agent / Gate / status と Proposal pattern を投入 |
 | `scripts/pilot/lint` | unique / 必須 property / record role 混同 / isolated Proposal / relation 必須 property を検査 |
 | `scripts/pilot/dump` | pilot subgraph の logical dump summary を JSON 出力 |
-| `scripts/pilot/logical-export` | pilot subgraph の portable snapshot JSON を出力 |
-| `scripts/pilot/restore-drill` | portable snapshot から pilot subgraph を削除・復元し lint を再実行 |
+| `scripts/pilot/logical-export` | pilot subgraph の snapshot JSON を出力 |
+| `scripts/pilot/restore-drill` | snapshot から pilot subgraph を削除・復元し lint を再実行 |
 | `scripts/pilot/query` | Demand Gate query `Q1`〜`Q3` を実行 |
 
 ## Dry-Run Evidence
@@ -100,7 +100,7 @@ Expected gates:
 ## Residual Risk
 
 - `neo4j-driver` was added to `beta/package.json`, but this sandbox could not refresh `beta/package-lock.json` because registry access failed with `ENOTFOUND registry.npmjs.org`. Director must run `npm install` in `beta/` before live execution.
-- `dump` is a logical pilot-subgraph dump, not a physical Neo4j engine dump. Recovery Gate evidence is based on `logical-export` plus `restore-drill`, matching ADR_008's portable snapshot requirement.
+- `dump` is a logical pilot-subgraph dump, not a physical Neo4j engine dump. Recovery Gate evidence is based on `logical-export` plus `restore-drill`, matching ADR_008's snapshot requirement.
 
 ---
 

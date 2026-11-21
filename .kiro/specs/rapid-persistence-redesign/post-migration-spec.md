@@ -114,7 +114,7 @@ key: `connectionId`
 - 値は、文字列・数値・真偽・配列・入れ子のいずれかである。
 - 独立した `rev` を持たない。持ち主の `rev` に従う。
 - 値が null の attribute は存在しない。空文字は値である。
-- portable snapshot と Command では、attribute を 1 件ずつ扱う。
+- snapshot と Command では、attribute を 1 件ずつ扱う。
 
 ### 3.6 scope
 
@@ -350,9 +350,9 @@ Undo は、逆向きの Command を出すことで行う。
 
 ## 12. 正本と保存エンジン
 
-- 正本は、journal（Command の追記専用の列）と portable snapshot（レコードを 1 行ずつ並べた、エンジンに依らない直列化）である。
+- 正本は、journal（Command の追記専用の列）と snapshot（レコードを 1 行ずつ並べた、エンジンに依らない直列化）である。
 - 保存エンジン（Neo4j）は、journal から作り直せる導出物である。
-- 空のエンジンへ、portable snapshot と journal だけから復元できる。
+- 空のエンジンへ、snapshot と journal だけから復元できる。
 - SQLite は、書き出しの形式として残る。
 
 ## 13. 保存しないもの

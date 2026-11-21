@@ -39,7 +39,7 @@ mac mini serverの追加により、少なくとも通常運転では常駐machi
 - 切断端末のevent catch-upと競合検出
 - background agentやscheduled workの常駐実行
 
-ただし、常駐hostの存在は「そのmachineの物理DBだけを唯一の復旧根拠にする」ことを意味しない。M3Eのoffline-first、portable snapshot、journal、recoveryの要件は残る。**常駐性は運転上の中心を与えるが、復旧不能な単一障害点を正当化しない。**
+ただし、常駐hostの存在は「そのmachineの物理DBだけを唯一の復旧根拠にする」ことを意味しない。M3Eのoffline-first、snapshot、journal、recoveryの要件は残る。**常駐性は運転上の中心を与えるが、復旧不能な単一障害点を正当化しない。**
 
 ### VA3. 一枚絵にはAgentだけでなくResourceも載る
 

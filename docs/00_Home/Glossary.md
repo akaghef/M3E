@@ -128,11 +128,11 @@ M3E の正規語を維持し、property graph 語彙は対応先として扱う�
 | **Deep entity** | 文書横断の stable identity と typed semantics を持つ entity | Deep, Rapid occurrence, entity binding | 本文を Rapid occurrence と二重所有しない |
 | **entity binding** | Rapid occurrence と Deep entity の同一性または対応を結ぶ assertion | Rapid occurrence, Deep entity, scope bind | many-to-many を許す。`scope bind` は表示面間の同期契約であり別概念 |
 | **referential state** | materialized record の参照解決状態 | materialization, canonical source | `resolved / indexed-only / inaccessible / stale / missing / tombstoned / unresolved`。参照不能を deletion と同一視しない |
-| **journal** | Command / operation の因果と履歴をreplay可能に保存する論理記録 | portable snapshot, Recovery Gate, proposal journal | 操作の歴史。物理DB複製であるbackupと区別する。Rapid の保存では、確定した変更を確定順に追記するだけの記録（書き換え・削除をしない）で、1 件は Command に通し番号、record ごとの基準 revision、record 単位の変更前後の値を加えたもの。単位は workspace × 書き手端末。journal への追記を確定の境界とする。Undo・復旧・同期・materialization の入力になる。詳細は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) |
-| **backup** | database engine等の物理状態を複製し、同系統のrestoreに使うartifact | journal, portable snapshot, Recovery Gate | engine依存の補助復旧経路。単独ではRecovery Gateの根拠にしない |
-| **portable snapshot** | engineに依存しない論理直列化からsemantic stateをrebuildする復旧artifact | journal, backup, Recovery Gate | M3E-owned accepted graphはportable snapshot + journal replayのみでの復旧実証を要求する |
+| **journal** | Command / operation の因果と履歴をreplay可能に保存する論理記録 | snapshot, Recovery Gate, proposal journal | 操作の歴史。物理DB複製であるbackupと区別する。Rapid の保存では、確定した変更を確定順に追記するだけの記録（書き換え・削除をしない）で、1 件は Command に通し番号、record ごとの基準 revision、record 単位の変更前後の値を加えたもの。単位は workspace × 書き手端末。journal への追記を確定の境界とする。Undo・復旧・同期・materialization の入力になる。詳細は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) |
+| **backup** | database engine等の物理状態を複製し、同系統のrestoreに使うartifact | journal, snapshot, Recovery Gate | engine依存の補助復旧経路。単独ではRecovery Gateの根拠にしない |
+| **snapshot** | engineに依存しない論理直列化からsemantic stateをrebuildする復旧artifact。journal の replay の起点にもなる（Raft の snapshot に当たる） | journal, backup, Recovery Gate | M3E-owned accepted graphはsnapshot + journal replayのみでの復旧実証を要求する |
 | **Rebuild Gate** | source-materialized recordをcanonical owner source群から再構築できることを確認するgate | canonical source, materialization, Recovery Gate | 他者が所有する正本からderived read modelを再生成するgate |
-| **Recovery Gate** | M3E-owned accepted recordを自己のportable snapshot + journal replayだけで復旧できることを確認するgate | portable snapshot, journal, Rebuild Gate | backup / restoreは補助検証してよいがgate根拠にしない |
+| **Recovery Gate** | M3E-owned accepted recordを自己のsnapshot + journal replayだけで復旧できることを確認するgate | snapshot, journal, Rebuild Gate | backup / restoreは補助検証してよいがgate根拠にしない |
 
 ## 1.6 RAG評価軸とconsumption mode
 

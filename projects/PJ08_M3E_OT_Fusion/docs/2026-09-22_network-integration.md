@@ -5,7 +5,7 @@
 `codex/pj08-network-integration` は、通常 Viewer の NETWORK ボタンまたは `?network=1` から観測カードを同じ canvas / camera に表示する。保存正本の `map.state`、undo、通常レイアウトを runtime 更新に渡さない。観測用の表示状態だけを `projectOrreryMap` で作る。
 
 - source / host / external ID で identity を決め、表示名から統合しない。
-- バージョン付き portable snapshot と Codex App の既存 sanitized snapshot を読む。session 原本や Mail database を再収集しない。
+- バージョン付き snapshot と Codex App の既存 sanitized snapshot を読む。session 原本や Mail database を再収集しない。
 - API / Server-Sent Events は読み取り専用。更新失敗時は最後の正常値を保持し、観測不能と明示する。消失を完了へ変換しない。
 - Agent Card / force は既存 Lab の seam を再利用し、force の NOTICE を保持する。
 - runtime の座標だけを force が更新する。authoring 座標は固定。drag の pin はページ session 内の状態。

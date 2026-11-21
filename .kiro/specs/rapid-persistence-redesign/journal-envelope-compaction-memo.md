@@ -8,7 +8,7 @@
 
 ### 1.1 on-disk layout
 
-- store directory に `snapshot.jsonl`（portable snapshot、1 行目が `{kind:"snapshot", format:1, workspaceId, seq}`）、`journal.jsonl`（WAL。redo-only、1 行 1 commit）、`commit-index.json`（`compact()` が書く。map ごとの最後の commit と、dedupe 用の commandId 直近 100,000 件）。
+- store directory に `snapshot.jsonl`（1 行目が `{kind:"snapshot", format:1, workspaceId, seq}`）、`journal.jsonl`（WAL。redo-only、1 行 1 commit）、`commit-index.json`（`compact()` が書く。map ごとの最後の commit と、dedupe 用の commandId 直近 100,000 件）。
 - journal は workspace ごとに 1 本、writer は 1 process。segment も header も無い。行ごとの format version も無い。
 - commit point は journal 行の `write` + `fsync`（`append()`、store.ts:1171）。書きかけの末尾行は open 時に truncate（torn write の後始末）。
 

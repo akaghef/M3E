@@ -186,13 +186,13 @@
 
 ### R5.5　復旧対象となる管理状態
 
-**要件：** WHEN portable snapshot と journal から復旧するとき、THE remote SHALL 内容に加えて、権限、未解決 conflict、必要な Command 結果、epoch・履歴 ID、端末失効、消去状態を回復する。  
+**要件：** WHEN snapshot と journal から復旧するとき、THE remote SHALL 内容に加えて、権限、未解決 conflict、必要な Command 結果、epoch・履歴 ID、端末失効、消去状態を回復する。  
 **受入条件：** 権限失効、conflict 登録、Command 確定、端末失効を順に行った後、engine の保存内容を失わせて復旧する。各状態と依存の停止が再現され、旧権限や失効端末が復活しない。  
 **根拠：決定**。
 
-### R5.6　portable snapshot の自己完結性と到達地点
+### R5.6　snapshot の自己完結性と到達地点
 
-**要件：** WHEN portable snapshot を復旧用として公開するとき、THE remote SHALL 対象範囲・履歴 ID・epoch・到達地点・検証情報・必要な構成要素を特定可能にし、未完成の snapshot を有効な復旧基点として公開しない。  
+**要件：** WHEN snapshot を復旧用として公開するとき、THE remote SHALL 対象範囲・履歴 ID・epoch・到達地点・検証情報・必要な構成要素を特定可能にし、未完成の snapshot を有効な復旧基点として公開しない。  
 **受入条件：** snapshot の生成途中で停止するか、構成要素の一つを除去する。復旧時に不完全性が検出され、その snapshot を基点とした復旧完了にはならない。完全な snapshot と後続 journal では、対応する状態を再構成できる。  
 **根拠：推論**。
 
@@ -200,7 +200,7 @@
 
 **要件：** WHEN 各端末の engine を再構築するとき、THE local SHALL 確定状態を保持する scope ごとの snapshot と確定記録から再構成し、未確定の意図は outbox に基づいて区別して復元する。  
 **受入条件：** local の engine データだけを削除し、snapshot・journal・outbox を残して再起動する。確定状態と pending の区別が復元され、pending が確定済みとして再登録されない。  
-**根拠：決定**。journal と portable snapshot が durability authority（system of record）、各端末の Neo4j が semantic authority であり、Neo4j は replay で再構築する。特定の DB 製品・native dump 形式には依存しない。
+**根拠：決定**。journal と snapshot が durability authority（system of record）、各端末の Neo4j が semantic authority であり、Neo4j は replay で再構築する。特定の DB 製品・native dump 形式には依存しない。
 
 ## 6. push・pull・部分複製
 
@@ -344,7 +344,7 @@
 
 **要件：** WHEN journal を snapshot に畳み込み旧記録を破棄するとき、THE remote SHALL 復旧・同期・有効な再送窓・保証中の履歴利用に必要な情報が残ることを検証してから破棄する。  
 **受入条件：** snapshot 作成途中に停止しても、従来の復旧経路は失われない。compaction 後に、確定状態の復旧、再送窓内の重複排除、保持対象の過去版取得を検証できる。最新状態だけを再生できても、必要な過去版が失われれば不合格とする。  
-**根拠：推論**。開始契機は未決。archive に移した journal は、その範囲を覆う portable snapshot の検証が通っていれば 90 日で削除する（決定）。
+**根拠：推論**。開始契機は未決。archive に移した journal は、その範囲を覆う snapshot の検証が通っていれば 90 日で削除する（決定）。
 
 ### R8.8　消去と旧 snapshot からの復旧
 
@@ -438,7 +438,7 @@
 | **K8** | **完全な復旧を認定する情報** | 全 scope の inventory、最後の確定地点を確認する根拠、必要コピーの所在、消去例外を含めた被覆判定を定める。local から集めた最大番号だけでは完全性を証明できない。通常の remote 移動で履歴 ID を維持する条件もここで決める。 | R5.5–R5.6、R9.1–R9.3 |
 | **K9** | **容量の計測範囲と受付制限** | workspace 使用量に engine、snapshot、共有履歴、二媒体の複製、local outbox をどの単位で含めるかを定める。到達不能端末の使用量を含む集計は、計測時点・不明部分を表示する。容量不足時の受付停止は、保持義務を破る削除と区別する。 | R4.1、R8.1–R8.3、R10.4 |
 | **K10** | **単一 Command・push の受付上限** | 最大 byte 数、変更対象数、依存数などを定める。不可分な巨大 Command を無制限に受け入れると、対話優先でも長い待ちを避けられない。push 全体の事前検証に必要な資源上限も関係する。 | R4.3、R6.2、R10.2 |
-| **K11** | **互換性の範囲** | engine の位置づけは決定（journal と portable snapshot が durability authority、Neo4j が semantic authority）。残るのは、保持済みデータの復旧互換性と、client の書込互換性の範囲。journal に無いドメイン状態を Neo4j にだけ置くことは認めない。 | R4.7、R5.5–R5.7、R9.5–R9.6 |
+| **K11** | **互換性の範囲** | engine の位置づけは決定（journal と snapshot が durability authority、Neo4j が semantic authority）。残るのは、保持済みデータの復旧互換性と、client の書込互換性の範囲。journal に無いドメイン状態を Neo4j にだけ置くことは認めない。 | R4.7、R5.5–R5.7、R9.5–R9.6 |
 | **K12** | **保持期間・容量の既定値** | 各領域の設定値、設定しない場合の意味、Undo・由来・重複排除に必要な保持との関係を決める。Rapid の 30 日は候補であり、現時点の規定値にはしない。 | R4.5、R8.1–R8.5 |
 | **K13** | **snapshot・compaction の契機** | 件数・大きさ・時刻・起動時のどれを使うか、または組み合わせるかを決める。R8.7 の安全条件を先に固定できれば、契機は後から変更しやすい。 | R5.6、R8.7 |
 | **K14** | **性能の数値目標** | R10.1 の条件で測定後、対話表示、local 永続化、remote 確定、取り込み、clone・復旧の目標値を決める。現段階では数値 SLO は未決であり、合格済みとは判定しない。 | R10.1–R10.2 |
@@ -462,7 +462,7 @@
 | Q9 | 競合の判定 | 通常の代入は今の値が変更前と一致すれば通す（ABA を許す）。Undo は「その Command が作った値が残っている」証拠を要求する | R7.1, R7.2, R7.3 |
 | Q10 | branch | 持たない | R1.4 |
 
-Neo4j の位置づけは、journal と portable snapshot を durability authority（system of record）、各端末の Neo4j を semantic authority とすることに決まった（同日）。journal は workspace に一本、未確定の Command は端末ごとの outbox。archive に移した journal は、覆う portable snapshot の検証を条件に 90 日で削除する。
+Neo4j の位置づけは、journal と snapshot を durability authority（system of record）、各端末の Neo4j を semantic authority とすることに決まった（同日）。journal は workspace に一本、未確定の Command は端末ごとの outbox。archive に移した journal は、覆う snapshot の検証を条件に 90 日で削除する。
 
 ## 12. 1 往復目で分かった、決定どうしの緊張
 

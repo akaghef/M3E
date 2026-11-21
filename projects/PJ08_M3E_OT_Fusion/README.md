@@ -26,7 +26,7 @@ akaghef が UI の最終チェックを並行して進め、Codex はデータ�
 - [通常 Beta への統合記録](docs/2026-10-03_beta-integration.md)
 - [PR #104](https://github.com/akaghef/M3E/pull/104): 通常 Viewer に読み取り専用の NETWORK 観測を接続。最新のマージ状態は PR、実機反映の証拠は統合記録を参照する。
 - 通常の編集・保存・undo の正本と runtime の表示状態を分離する。
-- Codex 主環境の AgentStack 修復・OT 更新は A-sys が担当し、M3E は portable snapshot を消費する。
+- Codex 主環境の AgentStack 修復・OT 更新は A-sys が担当し、M3E は snapshot を消費する。
 
 OT（[`gyroid-eth/orrery-telemetry`](https://github.com/gyroid-eth/orrery-telemetry)）を M3E の
 一枚絵へ合併吸収する PJ。散在していた6本の worktree・停止した spec・未マージの Strategy を

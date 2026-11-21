@@ -23,7 +23,7 @@ Accepted（2026-11-19 改訂: freeze v1）
 
 ### 1. authority を二つに分ける
 
-- durability authority（replication・backup・recovery の単位）は、journal と portable snapshot である。journal は確定した Command の列を記録する redo log で、workspace に一本である。復旧は、engine 非依存の base snapshot と、それより後の journal（log suffix）の replay で行う（ADR 008 Recovery Gate と同一基準）。
+- durability authority（replication・backup・recovery の単位）は、journal と snapshot である。journal は確定した Command の列を記録する redo log で、workspace に一本である。復旧は、engine 非依存の base snapshot と、それより後の journal（log suffix）の replay で行う（ADR 008 Recovery Gate と同一基準）。
 - semantic authority（invariant の検査と query）は、各端末の Neo4j である。Neo4j は端末 local に置き、同期せず、backup の対象にしない。壊れたら、base snapshot と log suffix の replay で再構築する。
 - archive へ移した journal の segment は、90 日後に削除する。削除は、その範囲を覆う snapshot の検証で gate する。
 
@@ -47,7 +47,7 @@ Accepted（2026-11-19 改訂: freeze v1）
 - server・engine・viewer は同じ端末に同居させ、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
 - 常時稼働の端末（Mac mini など）は remote の置き場所の候補である。
 - server を立てられない端末（iPad など）は mini の server に接続する閲覧専用 client とする。
-- stream の輸送は、remote の server への HTTP の push / pull の一本で行う（[sync-principles](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md)「remote と local」）。push は outbox の Command を送り、`commandId` ごとの結果（確定・no-op・拒否・競合）を受け取る。pull は指定した `seq` より後の journal（log suffix）を受け取る。保持期間より遅れた端末は portable snapshot から clone し直す。
+- stream の輸送は、remote の server への HTTP の push / pull の一本で行う（[sync-principles](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md)「remote と local」）。push は outbox の Command を送り、`commandId` ごとの結果（確定・no-op・拒否・競合）を受け取る。pull は指定した `seq` より後の journal（log suffix）を受け取る。保持期間より遅れた端末は snapshot から clone し直す。
 - Syncthing と `data.sqlite` 丸ごとの同期は廃止する。Syncthing は ack も拒否も返さず、ファイルを丸ごと渡すので、確定の応答、Decision 6 の提供側での ACL、remote を作り直したときの世代の fencing のどれも成り立たない。
 - remote には、編集する各端末から LAN か VPN で届く必要がある。届く経路と認証の方式は、remote を置くときに決める。
 

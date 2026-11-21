@@ -2,15 +2,15 @@
 
 最終更新: 2026-11-19（freeze v1: on-disk format 2）
 
-M3E の保存データ（DB）の仕様をまとめる。保存の形、識別、不変条件、書き込みと確定、journal と portable snapshot、Neo4j 上の持ち方、キャッシュ、拡張の仕組みを扱う。
+M3E の保存データ（DB）の仕様をまとめる。保存の形、識別、不変条件、書き込みと確定、journal と snapshot、Neo4j 上の持ち方、キャッシュ、拡張の仕組みを扱う。
 
 ## 0. この文書の位置付け
 
 - 用語は [Glossary](../00_Home/Glossary.md) に従う。線は、総称を edge、親から子への線を parent edge、木の外の関係線を relation edge と呼ぶ。
 - 決定の経緯と実測値は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) にある。本書はその決定を、現在形の仕様としてまとめたものである。
-- 基盤の決定は [ADR 014](../09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)。Neo4j は各端末の正本エンジン（semantic authority: invariant の検査と query）。durability authority（replication・backup・recovery の単位）は journal と portable snapshot。書き込みは Command だけ。
+- 基盤の決定は [ADR 014](../09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)。Neo4j は各端末の正本エンジン（semantic authority: invariant の検査と query）。durability authority（replication・backup・recovery の単位）は journal と snapshot。書き込みは Command だけ。
 - 関連する文書
-  - portable snapshot の行の形と、現行データからの変換規則: [snapshot-format.md](../../.kiro/specs/rapid-persistence-redesign/snapshot-format.md)
+  - snapshot の行の形と、現行データからの変換規則: [snapshot-format.md](../../.kiro/specs/rapid-persistence-redesign/snapshot-format.md)
   - 移行後の規則の案: [post-migration-spec.md](../../.kiro/specs/rapid-persistence-redesign/post-migration-spec.md)
 - 各節の状態を次の印で示す。
 
@@ -43,14 +43,14 @@ M3E の保存データ（DB）の仕様をまとめる。保存の形、識別�
 
 | 層 | 置き場 | 役割 | 状態 |
 |---|---|---|---|
-| portable snapshot | workspace のディレクトリの `snapshot.jsonl` | durability authority | 【実装済み】 |
+| snapshot | workspace のディレクトリの `snapshot.jsonl` | durability authority | 【実装済み】 |
 | journal | 同じディレクトリの `journal.jsonl` | durability authority（redo log） | 【実装済み】 |
 | 確定の索引 | 同じディレクトリの `commit-index.json` | 索引。圧縮のときに書き、journal と snapshot から作り直せる | 【実装済み】 |
 | 実行時のレコード | 確定する側のサーバのメモリ | 実行時の状態。replay で作り直せる | 【実装済み】 |
 | Neo4j | 端末ごとの Neo4j | 正本エンジン（semantic authority: invariant の検査と query）。同期しない。backup の対象にしない。base snapshot と log suffix の replay で再構築する | 【決定】。【実装済み】のものは確定後に反映する mirror で、invariant の検査はサーバのメモリで行っている |
 | SQLite | 書き出しの形式 | 正本ではない | 【決定】 |
 
-- Neo4j・索引・実行時のレコードが journal と portable snapshot と食い違ったら、replay で作り直す。journal と snapshot の側を直さない。
+- Neo4j・索引・実行時のレコードが journal と snapshot と食い違ったら、replay で作り直す。journal と snapshot の側を直さない。
 - 空のエンジンへ、最新の base snapshot と、それより後の journal（log suffix）の replay だけで復元できる（6 節）。
 
 ## 2. 階層と識別
@@ -71,7 +71,7 @@ workspace > map > scope > node
 
 ## 3. レコード
 
-保存の単位はレコードである。各レコードは種別と key で一意に決まる。portable snapshot では 1 レコードが 1 行になる。
+保存の単位はレコードである。各レコードは種別と key で一意に決まる。snapshot では 1 レコードが 1 行になる。
 
 ### 3.1 一覧【実装済み】
 
@@ -111,7 +111,7 @@ workspace > map > scope > node
 - 持ち主（node または edge）のレコードの一部であり、独立した `rev` を持たない。
 - key は文字列で、接頭辞の付いた形を使う（例: `m3e:style`、`misc:mood`。規則は 3.8）。移行で運んだ接頭辞の無い key も、そのまま残す。
 - 値は、文字列・数値・真偽・配列・入れ子のいずれかである。null は保存しない。空文字・false・0 は値として残す。
-- portable snapshot と Command では、attribute を 1 件ずつ扱う。
+- snapshot と Command では、attribute を 1 件ずつ扱う。
 - 欄が無いことは、未設定・未観測を表す。値の 0 と区別する。
 - 【決定】（freeze v1、akaghef、2026-11-19）拡張の欄（10.3）だけは、確定のときに定義の型で検査する（schema-on-write）。それ以外の attribute は型を問わない（schema-on-read）。型の語彙は 10.7。
 
@@ -295,22 +295,22 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - `commit-index.json` に、map ごとの最後の確定、確定済みの Command の ID（直近 100,000 件）、新しい snapshot の `{seq, sha256}`（`snapshot` の欄）を書く。
   - 圧縮した後、Neo4j の追いつきと、確定済みの Command の行の読み出し（`committedCommand`）は archive を読む。再送の判定は、archive ではなく `commit-index.json` の Command の ID と hash（直近 100,000 件）で行う。
 - 【実装済み】契機: snapshot より後の journal が 50,000 行に達したとき（環境変数 `M3E_COMPACT_AFTER_LINES`、0 で止める）。確定の直後と、開いたときに判定する。圧縮と retention の失敗は確定を失敗にしない。
-- 【決定】（freeze v1、akaghef、2026-11-19）schemaVersion を上げるたびに、移行した直後の portable snapshot を base snapshot として書く。replay を保証するのは、最新の base snapshot から後だけである。それより前の journal を新しい format へ書き換える upcasting はしない。compaction の契機は replay の長さで決める（値は未決、12 節）。
+- 【決定】（freeze v1、akaghef、2026-11-19）schemaVersion を上げるたびに、移行した直後の snapshot を base snapshot として書く。replay を保証するのは、最新の base snapshot から後だけである。それより前の journal を新しい format へ書き換える upcasting はしない。compaction の契機は replay の長さで決める（値は未決、12 節）。
 - 【決定】（akaghef、2026-11-19）【実装済み】archive の segment は、archive へ移してから 90 日で削除する（retention の操作。圧縮のあとと、開いたときに走る）。削除できるのは、次の二つを満たす segment だけである。
-  - その範囲を覆う base snapshot か portable snapshot が fsync 済みで、checksum を検証済みである。
+  - その範囲を覆う base snapshot か snapshot が fsync 済みで、checksum を検証済みである。
   - archive へ移してから 90 日を過ぎている。
   - 検証に失敗したら、消さずに止める。
 - PITR の窓は、最新の snapshot と 90 日分の archive である。
-- 書かれる頻度は、journal から作り直せない。そのため、減衰する量の累積は portable snapshot に状態として持つ（9 節）。envelope-stable な欄（`seq`・`committedAt`・`issuer`・確定ごとに触れたレコードと event kind）は、90 日の窓の中での集計に使う。
+- 書かれる頻度は、journal から作り直せない。そのため、減衰する量の累積は snapshot に状態として持つ（9 節）。envelope-stable な欄（`seq`・`committedAt`・`issuer`・確定ごとに触れたレコードと event kind）は、90 日の窓の中での集計に使う。
 - copy の来歴と provenance は、journal ではなく record の側（attribute か専用の欄）に持つ。compaction と削除で失われないようにするためである。
 - 複製は、三つのファイルを一度に写す。確定と圧縮は同期処理なので、複製の途中に確定が入らない。
 
-## 7. portable snapshot【実装済み】
+## 7. snapshot【実装済み】
 
 - workspace 一つにつき一つの、UTF-8 の JSON Lines。1 行が 1 レコード。
 - 1 行目は `{"kind":"snapshot","format":1,"workspaceId":"…","seq":…}`。
 - 【決定】（freeze v1、akaghef、2026-11-19）freeze v1 の形は `format: 2` である。`format` を上げた直後の snapshot が base snapshot で、header の `{format, seq}` が版の切り替え点の記録になる。
-- 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}` は、portable snapshot に状態として持つ（9 節）。
+- 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}` は、snapshot に状態として持つ（9 節）。
 - 値の無い欄と null は書かない。
 - 並びは `kind`、次に key の文字列順。行の順序に意味は無いが、差分を安定させるために揃える。
 - 現行データからの変換規則と、逆変換で許す差は snapshot-format 3〜4 節に従う。
@@ -368,7 +368,7 @@ relationship は property から作る索引で、読み戻しには使わない
 - 正本から計算で求まる値は、正本に入れない。
 - 確定のときに計算し、サーバの手元にキャッシュする。agent は読むだけで、計算を待つ必要も、計算方法を知る必要もない。Neo4j にも置く。
 - 時間で減る値（活動など）は、最後に確定したときの値と時刻だけを持ち、読むときに掛け算 1 回で今の値を出す。
-- 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}`（尺度 k ごとの累積と最終時刻）は、計算で求まる値ではなく、portable snapshot に持つ状態である。journal は 90 日で削除するので、作り直せないからである（6 節）。
+- 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}`（尺度 k ごとの累積と最終時刻）は、計算で求まる値ではなく、snapshot に持つ状態である。journal は 90 日で削除するので、作り直せないからである（6 節）。
 - 計算し直すきっかけ（親の変更、edge の変更、部分木の移動など）は、値の定義に書く。
 
 候補:

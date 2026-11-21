@@ -32,7 +32,7 @@ Neo4jを大域semantic graphの優先adapterとする。Git、Obsidian、provide
 
 proposal、pending assertion、pending transferはjournalをcanonical sourceとする。database内でowner source、record role、owner revision、provenanceを区別し、Neo4jを全contentの一律canonical storeにしない。
 
-M3E-owned accepted record の Recovery Gate は、engine 非依存の portable snapshot と操作履歴である journal の replay だけによる復旧実証を要求する。engine 依存の backup / restore は補助経路として検証してよいが、Gate 通過根拠にはしない。
+M3E-owned accepted record の Recovery Gate は、engine 非依存の snapshot と操作履歴である journal の replay だけによる復旧実証を要求する。engine 依存の backup / restore は補助経路として検証してよいが、Gate 通過根拠にはしない。
 
 ### 4. Neo4j導入はDemand Gateを通す
 
@@ -110,7 +110,7 @@ source-materialized read adapterとしては継続比較する。M3Eのcontract�
 - repository本文が正本なら、repository-local semantic sourceへ本文を複製しない。
 - proposalとpending assertionをNeo4jだけに保存しない。
 - M3E-owned accepted recordはvalidated Commandだけで更新し、portable recovery evidenceを別failure domainに持つ。
-- M3E-owned accepted recordの意味的復旧根拠はportable snapshot + journal replayとし、backupをRecovery Gate根拠として数えない。
+- M3E-owned accepted recordの意味的復旧根拠はsnapshot + journal replayとし、backupをRecovery Gate根拠として数えない。
 - Scopeをstorage / Authority boundaryと同一化しない。
 - migration中も同じconcernのwrite authorityは一箇所にする。
 - graph materializationはsource classificationを通過したrecordだけにする。
@@ -123,7 +123,7 @@ source-materialized read adapterとしては継続比較する。M3Eのcontract�
 4. Exposure Gate:非許可情報がqueryへ出ない
 5. Demand Gate:実需queryが3件以上
 6. Fidelity Gate:旧系とCommand結果・invariantが同値
-7. Recovery Gate: M3E-owned accepted recordをportable snapshot + journal replayのみで復旧可能（backup / restoreは補助検証）
+7. Recovery Gate: M3E-owned accepted recordをsnapshot + journal replayのみで復旧可能（backup / restoreは補助検証）
 
 ## Review triggers
 

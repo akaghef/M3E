@@ -1,6 +1,6 @@
 # 草案: Rapid の論理レコードモデル
 
-> 2026-11-16: 本書の形のうち、線のレコード（edge）、時刻、既定値、scope、node の種別と details は [record-schema.md](./record-schema.md) が上書きする。実測値と、移行の可逆性の検証（8.1 節）、revision・journal・portable snapshot の節は引き続き参照する。
+> 2026-11-16: 本書の形のうち、線のレコード（edge）、時刻、既定値、scope、node の種別と details は [record-schema.md](./record-schema.md) が上書きする。実測値と、移行の可逆性の検証（8.1 節）、revision・journal・snapshot の節は引き続き参照する。
 
 2026-10-25。brief の PR14 に当たる草案。Director の委任を受けた調査エージェントが起草した。**未承認**。DC39（移行先）と DC40（出し方）は未決のままとし、この草案は OP43・OP44 のどちらでも成り立つように書く。両者で形が変わる箇所は 10 節にまとめる。
 
@@ -15,7 +15,7 @@
 
 ## 0. 要約
 
-1. data migration の対象は「論理レコード」と、その portable snapshot の形式である。保存エンジン（SQLite / Neo4j）には依存させない。
+1. data migration の対象は「論理レコード」と、その snapshot の形式である。保存エンジン（SQLite / Neo4j）には依存させない。
 2. レコード種別は 10 種。map・node・parent edge（親と兄弟順）・attribute・relation edge・scope の付随設定・linear-text・Surface View の保存設定・Surface View ごとの node 配置値・注釈（annotation）。alias は node の一種として扱い、scope の範囲は folder node から導出する。
 3. 兄弟順は fractional index のキーで表す（`fractional-indexing` を使う）。順序は `(親, キー, 子の nodeId)` で一意に決まる。キーを割り当てるのは確定を行う側で、journal には割り当てた結果のキーを記録する。
 4. revision は record ごとに持ち、値は「その record を最後に変更した map の確定の通し番号」とする。client は通し番号の位置を基準として保持し、取りこぼした分は journal から取り寄せる。
@@ -223,7 +223,7 @@
   1. 適用済みの最後の通し番号
   2. 確定前の Command（commandId 付き）。端末側に永続化する（IndexedDB の `idb` または Dexie。brief Constraints）
   - 再開時は、まず「その番号より後の journal」を取得する。
-  - 保持期間を過ぎていれば、portable snapshot（または必要な scope 分のレコード）とその通し番号以降の journal を取得する。
+  - 保持期間を過ぎていれば、snapshot（または必要な scope 分のレコード）とその通し番号以降の journal を取得する。
   - その後、確定前の Command を同じ commandId で再送する。重複したものは元の結果を返す（RQ23）。
 - 置き換えるもの:
   - MCP の `expected_revision`（保存状態全体の SHA-256、rapid_mvp.ts:1536）
@@ -277,9 +277,9 @@
 - Flash の重複防止キー（`m3e:flashImportKey`、673 件）は、node の attribute を全件走査して照合している（mcp_service.ts:410）。
   - commandId による重複排除に置き換えられるが、attribute は data なので残す。
 
-## 6. portable snapshot
+## 6. snapshot
 
-**提案**（Glossary の portable snapshot、ADR 008 の Recovery Gate）:
+**提案**（Glossary の snapshot、ADR 008 の Recovery Gate）:
 
 - **単位と形式**: map ごとに 1 つの JSON Lines ファイル。
   - 1 行目は header。形式の版、`mapId`、source の識別、通し番号、作成時刻、種別ごとの件数を持つ。
@@ -390,7 +390,7 @@
   3. 読み手での同値性。次の 2 つで、旧と `L(M(旧))` の結果が同じになる。
      - viewer の `ensureDocShape`（関数をそのまま呼ぶ）
      - server の `RapidMvpModel.fromJSON(...).toJSON()`
-  4. `M(旧)` から作った portable snapshot で再構築し、もう一度作った snapshot とバイト単位で一致する（6 節）。
+  4. `M(旧)` から作った snapshot で再構築し、もう一度作った snapshot とバイト単位で一致する（6 節）。
   5. 2.2 節の不変条件の違反数が、移行の前後で同じ（実データでは 0）。
 - 試験は workspace の一時的な複製で行う。個人の workspace には書かない。
 - 実際の移行は「問題の件数が 0 のときだけ切り替え、旧 DB は消さずに archive する」（CLAUDE.md の破壊的操作の規則）。

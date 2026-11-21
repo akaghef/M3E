@@ -40,13 +40,13 @@
 ## Desired Outcome（要件候補。未承認）
 
 - RQ19: data migration は workspace ごとに一度だけ行う（akaghef、2026-10-24）。
-- RQ20: 1 回の編集の通信量・保存量・競合検査の量は、変更の大きさと検証に要る範囲に比例し、map の総 node 数には比例しない。export・portable snapshot の生成・初回読込みは map 全体が対象でよい。
+- RQ20: 1 回の編集の通信量・保存量・競合検査の量は、変更の大きさと検証に要る範囲に比例し、map の総 node 数には比例しない。export・snapshot の生成・初回読込みは map 全体が対象でよい。
 - RQ21: 確定しなかった書込みを成功と表示しない。拒否と失敗は利用者に見える。
 - RQ22: 確定前の編集は、再読み込み・通信失敗・プロセス再起動のどれでも失われない。
 - RQ23: 同じ commandId を再送しても二重に適用しない。
 - RQ24: 確定状態と revision は常に対で進む。通知を受けただけで基準を進めない。
 - RQ25: 上記の全書き手が同じ確定経路を通る。移行後に map 全体を書き換える経路を残さない。
-- RQ26: portable snapshot と journal の replay だけで復旧できる（[ADR 008](../../../docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md) の Recovery Gate と同じ基準）。
+- RQ26: snapshot と journal の replay だけで復旧できる（[ADR 008](../../../docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md) の Recovery Gate と同じ基準）。
 - RQ27: 各 PC で offline でも編集できる。
 - RQ28: relation edge は生成時から安定した ID を持つ。Rapid occurrence と Deep entity を結ぶ entity binding を後から足しても、二度目の data migration が要らない。
 
@@ -67,16 +67,16 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 |---|---|---|
 | 書込み経路 | Command（intent・対象・対象の base revision・commandId・provenance）→ 検証 → 1 transaction で確定 → 確定した変更と revision を返す。端末は確定前の Command を保持し、保存応答・通知・再読み込みを同じ取り込み処理に通す | 不要 |
 | 論理レコードモデル | node、parent edge（親と兄弟順）、relation edge、scope ごとの linear-text、属性。レコードごとの revision と、entity binding の置き場所を持つ | **この 1 回** |
-| 物理エンジン | 論理レコードモデルの保存先 | portable snapshot と journal があれば、切替は replay で済む |
+| 物理エンジン | 論理レコードモデルの保存先 | snapshot と journal があれば、切替は replay で済む |
 
 ### DC39 移行先の候補
 
-- **OP43**：journal と portable snapshot を正本の形式にする。読み書きの本体は SQLite の正規化テーブル。Neo4j は journal から作る materialization とし、いつでも追加でき、migration は要らない。ADR 008 はすでに Rapid が所有するレコードの materialization を認めているので、ADR 008 の変更は要らない。
+- **OP43**：journal と snapshot を正本の形式にする。読み書きの本体は SQLite の正規化テーブル。Neo4j は journal から作る materialization とし、いつでも追加でき、migration は要らない。ADR 008 はすでに Rapid が所有するレコードの materialization を認めているので、ADR 008 の変更は要らない。
   - 計測では、20,150 行で 1 行の reparent が 0.02 ms、ファイルは 1.6 MB。部分木の読取りは部分木の大きさに比例する。
 - **OP44**：Rapid の正本も Neo4j に置く。
   - Node.js から使える組込みモードがないので、PC ごとに JVM サービスを常駐させるか、8/24 案のホスト交代方式（host lease）が要る。
   - Community には online backup がなく、macOS / Windows 11 は開発用途のみの対応。
-  - Recovery Gate のため、journal と portable snapshot はどのみち必要になる。
+  - Recovery Gate のため、journal と snapshot はどのみち必要になる。
   - ADR 008 の改訂が要る。
 - **OP45**：SQLite の正規化テーブルだけを正本にし、journal は持たない。いちばん小さく済むが、Neo4j を正本にするなら二度目の migration が要る。RQ26 の根拠もない。
 - 参考：組込みの Cypher エンジン（Kùzu の fork である LadybugDB）を正本にする案は、保存層がまだ安定していないため、一度きりの移行先としては危うい（[research-engines.md](./research-engines.md)）。
@@ -88,7 +88,7 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 
 ### 決定済み
 
-- DC39（2026-11-16、akaghef）：正本エンジンは Neo4j とし、全面の書き換えを到達形とする。SQLite は正本の並走先ではなく、export format の一つになる。復旧の正本は engine 非依存の portable snapshot と journal の replay のまま変えない（RQ26）。この範囲は OP44 を超える（Rapid に限らない到達形になる）ため、ADR 008 の Decision 3（Neo4j の role を owner concern で分ける）と Decision 6（SQLite 判断の局所化）の改訂が要る。Final を製品として配布する場合に Neo4j をどう同梱するか（JVM 同梱、組込み系への切替、export された SQLite を読む閲覧専用 mode）は製品化時の決定として保留する。
+- DC39（2026-11-16、akaghef）：正本エンジンは Neo4j とし、全面の書き換えを到達形とする。SQLite は正本の並走先ではなく、export format の一つになる。復旧の正本は engine 非依存の snapshot と journal の replay のまま変えない（RQ26）。この範囲は OP44 を超える（Rapid に限らない到達形になる）ため、ADR 008 の Decision 3（Neo4j の role を owner concern で分ける）と Decision 6（SQLite 判断の局所化）の改訂が要る。Final を製品として配布する場合に Neo4j をどう同梱するか（JVM 同梱、組込み系への切替、export された SQLite を読む閲覧専用 mode）は製品化時の決定として保留する。
 - DC40 = OP46（2026-11-16、akaghef）：書込み経路（Command 化）を先に、現在の保存形式のまま出す。その後、data migration を workspace ごとに本番 1 回だけ行う（RQ19）。リハーサルは回数無制限で、旧 SQLite は read-only で保持する。
 - IS138（2026-11-16、akaghef）：ID は全体一意とする（map と workspace をまたいでも一意）。移行時に重複 ID（node 1,148 件ほか）を一括で振り直す。
 - IS142 の一部（2026-11-16、akaghef）：journal は workspace × 書き手端末の append-only stream とし、端末ごとに採番する。Syncthing による `data.sqlite` 全体の同期はやめる。stream の輸送は Syncthing で行う（append-only file の mirror は構造上競合しない。agent 間 messaging の経路の統一とは別の関心として扱う）。
@@ -129,12 +129,12 @@ dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 
 
 複数端末の同期については、2026-11-18 の [同期の思想](./sync-principles.md) がこの節を更新する（確定者を remote に、複製の単位を scope に改めた）。
 
-- engine store（SQLite file、Neo4j store）は端末 local に置き、同期しない。journal から再生できる使い捨ての導出物として扱う。backup の対象は journal と portable snapshot で、engine store は守らない。
+- engine store（SQLite file、Neo4j store）は端末 local に置き、同期しない。journal から再生できる使い捨ての導出物として扱う。backup の対象は journal と snapshot で、engine store は守らない。
 - 複数 PC の一貫性は、workspace ごとに確定者（writer）を一つに固定して得る。個人 workspace の確定者は Mac、team workspace の確定者は Beta の server process。
 - 他の PC は Command を確定者へ送り、local には楽観適用して即描画する。offline の間は確定前の Command を local に保持し（RQ22）、再接続時に確定者へ流す。長期の単独作業は writer の役割を明示操作で移譲する。自動 failover は作らない。
-- Mac mini は常時稼働の集約点とする。全 stream の mirror、portable snapshot の置き場、store-and-forward、workspace 横断の materialization を担う。
+- Mac mini は常時稼働の集約点とする。全 stream の mirror、snapshot の置き場、store-and-forward、workspace 横断の materialization を担う。
 - server・engine・viewer は同じ端末に同居させ、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
-- iPad など server を立てられない端末は、mini の server に接続する閲覧専用の client とする。編集は当面させない。portable snapshot を読み込む offline 閲覧 mode は将来の拡張とする。
+- iPad など server を立てられない端末は、mini の server に接続する閲覧専用の client とする。編集は当面させない。snapshot を読み込む offline 閲覧 mode は将来の拡張とする。
 - access control の判定単位は scope、複製の単位は workspace とする。stream は workspace 粒度で運び、提供側の server が読み出し時に scope の ACL を適用する。ADR 008 の Constraints「Scope を storage / Authority boundary と同一化しない」はこの決定と衝突するので、ADR 008 の改訂で扱う。
 - 前提条件：Mac と Windows の workspace data は同期停止により分岐している（Windows 固有の map が約 13 件）。一度きりの migration の前に、Windows 固有分を Mac 系列へ統合する。統合は別作業として行う。
 
@@ -220,13 +220,13 @@ PR18：保存形式を変えずに、移行より先に直せる不具合。ど�
 
 ## Scope
 
-- **In**：Rapid の保存、全書き手の確定経路、論理レコードモデル、journal、portable snapshot、一度きりの data migration（Final channel、cloud 上の複製、Vault との対応を含む）、確定した変更の差分適用。
+- **In**：Rapid の保存、全書き手の確定経路、論理レコードモデル、journal、snapshot、一度きりの data migration（Final channel、cloud 上の複製、Vault との対応を含む）、確定した変更の差分適用。
 - **Out**：多人数の Team Collaboration の一般解、CRDT、Deep の semantic graph 機能そのもの、描画の性能（外部更新の差分適用を除く）、viewer.ts の構造整理（source-restructure の範囲）。
 
 ## Boundary Candidates
 
 - 書込み経路：Command の共通形式、サーバーでの確定、冪等な再送、端末の確定前 Command の保持、一本化した取り込み処理
-- レコードの保存：スキーマ、journal、portable snapshot、移行、Fidelity Gate と Recovery Gate の検証
+- レコードの保存：スキーマ、journal、snapshot、移行、Fidelity Gate と Recovery Gate の検証
 - 確定した変更を viewer に差分で適用する処理
 - 所有者ごとの adapter（Vault、cloud sync）
 - Undo（逆向きの Command、または変更前の値の保持）
@@ -254,7 +254,7 @@ PR18：保存形式を変えずに、移行より先に直せる不具合。ど�
 - IS128：Final channel、cloud 上の複製、Vault を、一度きりの移行にどう含めるか
 - IS129：書き手を 1 プロセスに限る方法（別の server や CLI は DB を直接開けてしまう）
 - IS130：Command intent と Glossary の対応。node move（reparent / reorder）、rename、delete、paste（新しい ID で複製）、scopen / unscopen は定義済み。親の挿入、親の除去、分割、統合には定義語がない
-- IS131：journal の圧縮と、portable snapshot を作る頻度
+- IS131：journal の圧縮と、snapshot を作る頻度
 - IS132：サーバーは起動のたびに、開発 map と研究 map を内容を変えないまま全置換し、`saved_at` だけを進める（2026-10-23 02:33 と 2026-10-24 21:25 の起動で確認。内容の差はない）。その結果、起動前から開いているタブの基準時刻がずれ、次の保存は競合マージに入る。そこでは nodes 以外の変更が落ちる（IS117）。原因は、起動時に既存の map にも `renameMap` を呼んでいたこと。研究 map の ID は固定値として埋め込まれている。PR18 で直した（`4861dac`）。Final の実装（final/src）には同じ処理が残っていて、Channel_Release_Policy に従った Final の更新で直る。
 
 ## Constraints

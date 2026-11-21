@@ -226,7 +226,7 @@
 - 種類: 問題
 - 書いた agent: 同期の思想と要件の session
 - 対象: DB 仕様書 6 節・8.3 節、`beta/src/node/neo4j_store/apply.ts:192`（`appliedSeq` の書き込み）
-- 中身: 復旧の正本が portable snapshot と journal なら、グラフの中身だけでなく、権限、未解決の conflict、Command の結果（重複排除の記録）、世代、端末の失効も、そこから戻せなければならない。Neo4j にだけ置いた状態は、指定された復旧の経路で失われる。また、journal に fsync した後、Neo4j に適用する前に止まった確定は、適用の失敗を理由に未確定へ戻せない。その確定を適用し終えるまで（`appliedSeq` が journal の末尾に追いつくまで）、古い Neo4j の状態で次の Command を検査してはいけない。どちらも今の DB 仕様書には書かれていない。
+- 中身: 復旧の正本が snapshot と journal なら、グラフの中身だけでなく、権限、未解決の conflict、Command の結果（重複排除の記録）、世代、端末の失効も、そこから戻せなければならない。Neo4j にだけ置いた状態は、指定された復旧の経路で失われる。また、journal に fsync した後、Neo4j に適用する前に止まった確定は、適用の失敗を理由に未確定へ戻せない。その確定を適用し終えるまで（`appliedSeq` が journal の末尾に追いつくまで）、古い Neo4j の状態で次の Command を検査してはいけない。どちらも今の DB 仕様書には書かれていない。
 - 根拠: GPT-6 Pro の回答（第 1 往復）の指摘を、DB 仕様書 8.3 節の「反映した位置は `appliedSeq` に持つ」と照らした。確定の処理が、検査の前に `appliedSeq` の遅れを解消しているかどうかは確かめていない（未確認）。
 - 扱い: 未対応
 
@@ -235,7 +235,7 @@
 - 種類: 問題
 - 書いた agent: Neo4j 化の本線の session
 - 対象: DB 仕様書 6 節、`beta/src/node/record_store/store.ts:752`（`compact()`）
-- 中身: 正本は「ある時点の portable snapshot と、それより後の journal」で、journal は定期的に portable snapshot へ畳み込む前提である。畳み込みの処理 `compact()` は実装されているが、試験の外からは呼ばれていない。今のままでは journal が増え続け、起動時の再生も長くなる。いつ畳むか（件数、大きさ、時刻、起動時）が仕様で決まっていない。
+- 中身: 正本は「ある時点の snapshot と、それより後の journal」で、journal は定期的に snapshot へ畳み込む前提である。畳み込みの処理 `compact()` は実装されているが、試験の外からは呼ばれていない。今のままでは journal が増え続け、起動時の再生も長くなる。いつ畳むか（件数、大きさ、時刻、起動時）が仕様で決まっていない。
 - 根拠: `git grep` で `compact()` の呼び出しを探し、`beta/src` の試験以外に無いことを確かめた。
 - 扱い: 仕様へ反映（freeze v1。契機は replay の長さ。DB 仕様書 6 節）。実装で解消（journal の行数を契機に畳み込み、journal は archive へ移す。上の「journal の畳み込みを、archive への移動と 90 日後の検証つき削除として実装した」）
 
@@ -244,9 +244,9 @@
 - 種類: 問題
 - 書いた agent: Neo4j 化の本線の session
 - 対象: DB 仕様書 1 節、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)、[sync-principles](sync-principles.md)（dev-beta に統合済み。2026-11-19 に同期の思想の session が確かめた）
-- 中身: DB 仕様書と ADR 014 は「正本は journal と portable snapshot、Neo4j は端末ごとの導出物で、同期も backup もしない」とする。今の実装もこの形である。一方 `sync-principles.md` は「Neo4j は正本エンジンで、他の何かの写しではない」とする。どちらも 2026-11-16 の akaghef の決定（brief の「正本エンジンは Neo4j」）を根拠にしており、「正本エンジン」の読み方が分かれている。このままでは同期・復旧・backup の設計が二通りになる。
+- 中身: DB 仕様書と ADR 014 は「正本は journal と snapshot、Neo4j は端末ごとの導出物で、同期も backup もしない」とする。今の実装もこの形である。一方 `sync-principles.md` は「Neo4j は正本エンジンで、他の何かの写しではない」とする。どちらも 2026-11-16 の akaghef の決定（brief の「正本エンジンは Neo4j」）を根拠にしており、「正本エンジン」の読み方が分かれている。このままでは同期・復旧・backup の設計が二通りになる。
 - 根拠: 両方の文書の該当行を読んで比べた。
-- 扱い: 仕様へ反映（freeze v1。Neo4j は各端末の正本エンジンで semantic authority、journal と portable snapshot は durability authority。DB 仕様書 0・1 節と ADR 014 を改めた）
+- 扱い: 仕様へ反映（freeze v1。Neo4j は各端末の正本エンジンで semantic authority、journal と snapshot は durability authority。DB 仕様書 0・1 節と ADR 014 を改めた）
 
 ### 2026-11-18 一部の attribute だけを読んだ状態からの保存は、読んでいない attribute を消さない。ただし 2 つの操作が衝突として拒否される
 

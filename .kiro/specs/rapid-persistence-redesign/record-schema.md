@@ -140,11 +140,11 @@ scope は、複雑な対象を一枚の面で切り出したものと読む。�
 
 on-disk format に効くものを確定し、format 2 とした。仕様の本文は [DB 仕様書](../../../docs/03_Spec/Database_Spec.md)、根拠の原稿は物理量と拡張の土台の session の freeze v1 原稿である。
 
-- authority を二つに分ける。Neo4j は各端末の正本エンジン（semantic authority: invariant の検査と query）。durability authority（replication・backup・recovery の単位）は journal と portable snapshot。Neo4j は base snapshot と log suffix の replay で再構築する。[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md) もこれに合わせて改めた。
+- authority を二つに分ける。Neo4j は各端末の正本エンジン（semantic authority: invariant の検査と query）。durability authority（replication・backup・recovery の単位）は journal と snapshot。Neo4j は base snapshot と log suffix の replay で再構築する。[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md) もこれに合わせて改めた。
 - journal は workspace に一本で、remote の sequencer が `seq` を振る。未確定の Command は端末ごとの outbox に積む。
 - journal の envelope に `touched`（実差分の出たレコードと event kind）と `provenance` を足す。HLC と base revision は持たない。`seq`・`committedAt`・`issuer`・`touched` は、どの format でも意味を変えない。
 - schemaVersion は snapshot の header の `format` で、journal の行には持たない。format を上げるたびに base snapshot を書き、replay はそこから後だけを保証する。upcasting はしない。
-- archive の segment は 90 日で削除する。削除は、covering snapshot の fsync と checksum の検証で gate する。減衰する量の累積 `{v[k], t}` は portable snapshot に持つ。来歴は record の側に持つ。
+- archive の segment は 90 日で削除する。削除は、covering snapshot の fsync と checksum の検証で gate する。減衰する量の累積 `{v[k], t}` は snapshot に持つ。来歴は record の側に持つ。
 - 兄弟順は fractional indexing で、同じ親の下で `ord` は一意。同時の move は `seq` の順の LWW、cycle を作る move は拒否、interleaving を防ぐ。
 - 拡張: `extensionDef` のレコード（`name` と `version` が key）、node と edge の `extensions`（`name@version` の集合）、重ねられる、外しても値を残す、agent も定義できる、意味上の分類も拡張にする。parent edge に `relationType`・`attributes`・`extensions` の欄を足す。描画の宣言を定義に持たせる。
 - 拡張の欄の型の語彙は `string`・`int`・`float`・`bool`・`enum`・`time`・`timeExp`・`nodeRef`・`accountRef`・`list<T>`。canonical な時刻は ISO 8601 の UTC 文字列（ミリ秒、末尾 `Z`）で、cache と Neo4j は epoch ミリ秒の整数も持つ。
@@ -163,7 +163,7 @@ akaghef の個別の承認はまだ受けていない。
 
 ## 4. レコードの種別
 
-エンジンに依らない論理の形。portable snapshot はこの単位で 1 行になる。
+エンジンに依らない論理の形。snapshot はこの単位で 1 行になる。
 
 | 種別 | key | field | 現行での置き場 |
 |---|---|---|---|
@@ -181,9 +181,9 @@ akaghef の個別の承認はまだ受けていない。
 | アカウント | アカウントの ID | 外部の ID、表示名ほか（IB44） | 無し（新設） |
 | 確定の表 | 通し番号 | 確定時刻、発行者（アカウント）、session の ID（任意） | 第 1 段の `command_log` の一部 |
 
-- attribute は、持ち主（node または edge）のレコードの一部で、独立した `rev` を持たない（DA29）。portable snapshot と Command では 1 件ずつ扱う。
+- attribute は、持ち主（node または edge）のレコードの一部で、独立した `rev` を持たない（DA29）。snapshot と Command では 1 件ずつ扱う。
 - relationType の定義に「読む向き」が要る理由: parent edge は親から子へ向くが、`rdfs:subClassOf` は子から親へ読み、`consist-of` は親から子へ読む。この欄が無いと、RDF へ書き出すときに主語と目的語が逆になる。
-- 接頭辞の対応があれば、portable snapshot を Turtle として書き出せる。
+- 接頭辞の対応があれば、snapshot を Turtle として書き出せる。
 
 ### 親子の表し方
 
@@ -267,7 +267,7 @@ edge  kind `edge`（parent edge）   親 root → 子 b   兄弟順キー "a1"
 - DA21 のために edge を node として持つ必要があるか（relationship は他の線の端点になれない）。全部を node にするか、端点にされたものだけにするか。
 - 100 万 node の取り込みの所要時間と、`EDGE` だけをたどる読み込みの速度。
 - 索引に載せる値の長さの上限（レビューの記述では範囲索引が約 8 KB、文字列索引が約 32 KB）。
-- scope に属する node の集合を引く問い合わせの速度。遅ければ、所属を導出値として node に持たせる（portable snapshot には入れない）。
+- scope に属する node の集合を引く問い合わせの速度。遅ければ、所属を導出値として node に持たせる（snapshot には入れない）。
 
 ## 7. 現行からの移し方
 
@@ -296,7 +296,7 @@ edge  kind `edge`（parent edge）   親 root → 子 b   兄弟順キー "a1"
 
 - 旧い形 → 新しい形 → 旧い形への書き戻しが、上の表の「保存しない」「導出」「捨てる」を差し引いて元と一致する。
 - 往復とは独立に、元データを別の方法で走査して対応を確かめる。往路と復路が同じ誤解をしていると、往復は一致してしまう（レビュー）。
-- 空のエンジンへ、portable snapshot と journal だけから復元する試験を通す。
+- 空のエンジンへ、snapshot と journal だけから復元する試験を通す。
 - 切替の時点で旧い側の書き込みを止める手順を定める。
 - 問題が 0 件のときだけ切り替え、旧い DB は消さずに保管する。
 

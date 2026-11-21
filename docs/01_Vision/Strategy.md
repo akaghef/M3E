@@ -511,7 +511,7 @@ owner source ──→ indexer ──→ Neo4j
 
 - `M3E-owned accepted` と `source-materialized` の record role を混同しない schema / query contract を固定する。
 - graph operation を Command へ正規化し、M3E-owned accepted graph の owner adapter だけが Neo4j canonical record を更新する。
-- canonical subgraph の backup、audit、portable snapshot からの recoveryを維持する。
+- canonical subgraph の backup、audit、snapshot からの recoveryを維持する。
 - SQLite の削除条件と rollback 経路を先に定義する。
 
 #### S16.13 移行中の単一 write authority
@@ -573,10 +573,10 @@ Neo4j 導入を段階的に進めるため、次を gate とする。
 | Scope Gate | scope が storage / authority と暗黙に同一化されていない |
 | Relation Gate | parent edge / relation edge / alias / external link の区別を保持 |
 | Write Gate | 同じ concern の write authority が一箇所 |
-| Rebuild Gate | derived record は owner source 群から再構築でき、M3E-owned canonical record は独立 backup / journal / portable snapshot から復旧可能 |
+| Rebuild Gate | derived record は owner source 群から再構築でき、M3E-owned canonical record は独立 backup / journal / snapshot から復旧可能 |
 | Fidelity Gate | Command result と invariant が旧系と同値 |
 | Failure Gate | stale・missing・inaccessible・部分失敗を識別可能 |
-| Recovery Gate | backup、journal、portable snapshot から復旧可能 |
+| Recovery Gate | backup、journal、snapshot から復旧可能 |
 | Exposure Gate | source classification と閲覧権限を保った情報だけが materialize され、権限外 query が拒否される |
 | Demand Gate | Neo4j を必要とする実需 query が 3 件以上あり、SQLite / file index だけでは不足する理由を説明可能 |
 | Strategic Gate | storage対応より semantic layer 開発へ集中できる |

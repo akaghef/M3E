@@ -31,7 +31,7 @@ last-write-winsを既定にしない。`base / current / proposed`のthree-way�
 ## Recovery
 
 - source-owned record: canonical sourceからRebuild Gateを通す。
-- M3E-owned accepted record: portable snapshot + journal replayでRecovery Gateを通す。
+- M3E-owned accepted record: snapshot + journal replayでRecovery Gateを通す。
 - Memoforest Time Machineはsource-side local recoveryであり、M3E Recovery Gateの代替ではない。
 - deleteは即時物理伝播ではなくtombstoneと保留期間を検討する。
 

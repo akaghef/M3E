@@ -10,7 +10,7 @@ Status: idea / 未採択・未実装
 
 M3E の高頻度な編集差分を常時サーバーへ集約すると、通信・保存・運用コストが増え、局所正本の設計とも衝突しやすい。一方、端末消失や peer 不在に備えるには、端末外の復旧経路が必要である。
 
-そこで、高頻度な差分は端末間で P2P 同期し、更新頻度の低い `portable snapshot` と復旧用 `journal` を Cloudflare に置く。Cloudflare は canonical owner ではなく、配布・発見・復旧のための複製面として扱う。
+そこで、高頻度な差分は端末間で P2P 同期し、更新頻度の低い `snapshot` と復旧用 `journal` を Cloudflare に置く。Cloudflare は canonical owner ではなく、配布・発見・復旧のための複製面として扱う。
 
 ## Core Idea
 
@@ -21,7 +21,7 @@ flowchart LR
     C["端末 C<br/>replica / journal"]
     W["Cloudflare Workers<br/>認証・peer discovery・manifest API"]
     D["Cloudflare D1<br/>revision・hash・owner・lease"]
-    R["Cloudflare R2<br/>portable snapshot・journal segment・添付"]
+    R["Cloudflare R2<br/>snapshot・journal segment・添付"]
 
     A <-->|"P2P operation sync"| B
     A <-->|"P2P operation sync"| C
@@ -45,7 +45,7 @@ flowchart LR
 | 高頻度な未確定 operation | 各端末の journal | P2P で交換する |
 | peer discovery・認証 | Workers | state 本体を所有しない |
 | revision・hash・owner・lease | D1 | 小さい同期 metadata のみ |
-| `portable snapshot` | R2 | canonical state から生成した復旧 artifact |
+| `snapshot` | R2 | canonical state から生成した復旧 artifact |
 | journal segment | 局所保存＋必要範囲を R2 | snapshot 以降を replay 可能にする |
 | Neo4j・検索 index・表示 cache | materialization | canonical source から再生成可能にする |
 
@@ -57,7 +57,7 @@ flowchart LR
 2. オンライン peer がある場合、未反映 operation を直接交換する。
 3. 受信側は owner routing、base revision、tree invariant、alias invariant を検証してから適用する。
 4. 競合は既存 Cloud Sync 方針に従い、非競合部分だけを自動統合する。
-5. 一定条件で canonical owner が deterministic な `portable snapshot` を生成する。
+5. 一定条件で canonical owner が deterministic な `snapshot` を生成する。
 6. snapshot、対応 journal range、content hash を R2 へ置き、小さい manifest だけを更新する。
 7. peer 不在、新規端末、または局所状態破損時は、R2 の snapshot と journal replay で復旧する。
 
@@ -113,7 +113,7 @@ R2 object を先に immutable upload し、hash 検証後に manifest を compar
 
 ### 全端末を失う
 
-R2 の `portable snapshot` と journal segment だけで M3E-owned state を復元できることを `Recovery Gate` とする。単一 SQLite backup の restore 成功だけでは合格としない。
+R2 の `snapshot` と journal segment だけで M3E-owned state を復元できることを `Recovery Gate` とする。単一 SQLite backup の restore 成功だけでは合格としない。
 
 ### 悪意ある peer が operation を送る
 
@@ -152,7 +152,7 @@ peer identity、workspace membership、signature、base revision、Command valid
 
 ### Recovery Gate
 
-- 空の環境へ portable snapshot と journal segment だけを投入する
+- 空の環境へ snapshot と journal segment だけを投入する
 - workspace、map、scope、node、alias、順序、revision、provenance を再構築する
 - 復元後の deterministic state hash が canonical state と一致する
 - source-owned materialization は canonical source から別途 rebuild できる

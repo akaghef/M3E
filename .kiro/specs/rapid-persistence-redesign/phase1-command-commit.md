@@ -2,7 +2,7 @@
 
 2026-11-16。brief の決定「書込み経路の Command 化を先に、現在の保存形式のまま出す」の最初の出荷単位。状態: 設計。受入基準は本書の「受入」で固定し、実装者は変更しない。
 
-用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。Command、journal、portable snapshot、canonical owner、map、scope、node、parent edge、relation edge、linear-text、Surface View は定義済みの語。レコード種別は [draft-record-model.md](./draft-record-model.md) 2 節の表に従う。
+用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。Command、journal、snapshot、canonical owner、map、scope、node、parent edge、relation edge、linear-text、Surface View は定義済みの語。レコード種別は [draft-record-model.md](./draft-record-model.md) 2 節の表に従う。
 
 ## 目的
 

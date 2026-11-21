@@ -13,7 +13,7 @@ status: idea / requirement harvest（S2 Team Collaboration と S16 Neo4j runtime
 
 ## 結論
 
-**Cloudflare 非 host・PC host 移動型の store-and-forward 構成を採用候補とする。** Cloudflare は M3E application や Neo4j graph runtime を実行せず、accepted journal、portable snapshot、asset、manifestを耐久保存し、host lease / epoch / fencing の最小限の調停だけを担う。
+**Cloudflare 非 host・PC host 移動型の store-and-forward 構成を採用候補とする。** Cloudflare は M3E application や Neo4j graph runtime を実行せず、accepted journal、snapshot、asset、manifestを耐久保存し、host lease / epoch / fencing の最小限の調停だけを担う。
 
 各 online PC はローカル Neo4j materializationを持てるが、Neo4j の物理 store は同期しない。online中は有効なleaseを持つ一台だけがactive hostとなり、Commandの順序付け・authority / baseRevision検証・Neo4j transactionを担う。host交代はcanonical ownershipの移動ではなく、temporary execution / write authorityの移動である。
 
@@ -38,7 +38,7 @@ accepted writeはCloudflareへdurable appendされた後だけ`committed`とす�
 
 - Browser、AI、botはactive hostへSemantic Commandを送り、Neo4jへraw writeしない。
 - active hostは`commandId`、membership、owner、baseRevision、epochを検証する。
-- 各PCのNeo4jはportable snapshot + journalから再構築できるmaterializationである。
+- 各PCのNeo4jはsnapshot + journalから再構築できるmaterializationである。
 - Cloudflare上のaccepted journalが共有履歴canonであり、Cloudflare自体がsemantic ownerなのではない。
 - event stream / direct P2Pは高速な通知・配送路として追加できるが、正本やcorrectnessを依存させない。
 
@@ -270,7 +270,7 @@ ownerなし、片端だけ、別workspace endpointという中間状態をcommit
 - 参照中relation edgeを即hard deleteせず、tombstoneへ遷移させる。
 - occurrenceはbroken referenceとしてlast-known label / endpointを保持できる。
 - recoveryで同じstable IDが戻った場合、broken occurrenceを再解決できる。
-- M3E-owned accepted relation edgeはportable snapshot + journal replayで復旧できる。
+- M3E-owned accepted relation edgeはsnapshot + journal replayで復旧できる。
 - Neo4j backup / cluster replicaだけを意味的復旧根拠にしない。
 
 ## Write-ahead journal candidate
@@ -385,7 +385,7 @@ registerDevice / revokeDevice
 - Semantic Command、idempotency、aggregate revision
 - accepted journal write-through
 - lease / epoch / fencing
-- portable snapshot + deterministic state hash + replay
+- snapshot + deterministic state hash + replay
 - tentative / committed UI
 - ProjectRef / ProjectBinding / DeviceMount
 - Supabase snapshotからCloudflare manifestへの移行とrollback期
@@ -419,7 +419,7 @@ lease timeout → 新hostがlast durable cursorからhydrate
 
 ### Normal
 
-- `N=0 → 1`でportable snapshot + journalをreplayし、同じstate hashのlocal Neo4j materializationを作る。
+- `N=0 → 1`でsnapshot + journalをreplayし、同じstate hashのlocal Neo4j materializationを作る。
 - `N>1`でも有効なlease / epochを持つhostは一台だけである。
 - 3台のPCから同じworkspaceを開き、別relation edge / occurrenceを同時更新して両方残る。
 - 同じrelation edgeの同一revisionへ競合writeし、一方をsilent overwriteせず409相当 + conflict evidenceを返す。
@@ -449,7 +449,7 @@ lease timeout → 新hostがlast durable cursorからhydrate
 - journal pending後、Neo4j commit前に停止しても安全にretryする。
 - endpoint削除とrelation edge変更が競合したとき、dangling endpointをcommitしない。
 - delete対update、relation edge重複生成、失効deviceからの再送をconflict / rejectへ送る。
-- Neo4j全削除後、source-materialized recordを再構築し、M3E-owned accepted relation edgeをportable snapshot + journal replayから復旧する。
+- Neo4j全削除後、source-materialized recordを再構築し、M3E-owned accepted relation edgeをsnapshot + journal replayから復旧する。
 - 切断PCの古いCommandを再接続時に無条件適用しない。
 - ProjectBindingのfingerprintが違うlocal directoryへ自動接続しない。
 - classification不明recordを別team actorへ露出しない。

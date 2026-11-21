@@ -125,16 +125,16 @@
 | 29 | Vault への書出し | `export` | — | — | — | export のみ残す |
 | 30 | Blueprint から map を生成 | 定義語なし（map の作成と一括追加。既存 map なら全体の置換） | map の全記録 | map id が未使用（既存なら未決） | なし | Command へ変換（新しい map の作成と `assert` の列） |
 | 31 | 空の map を作る | 定義語なし（map 行の作成） | map 行、root node | map id が未使用 | なし（要る） | Command へ変換 |
-| 32 | map の複製 | 定義語なし（map の複製） | 新しい map の全記録 | 複製元の revision | なし | Command へ変換（portable snapshot の取込みとして） |
+| 32 | map の複製 | 定義語なし（map の複製） | 新しい map の全記録 | 複製元の revision | なし | Command へ変換（snapshot の取込みとして） |
 | 33 | map の表示名（root の text）の変更 | `rename` | root node | root の revision | 同じ値なら冪等 | Command へ変換 |
 | 34 | archive とその解除 | 定義語なし（map 行の属性の変更） | map 行の列 | なし | 冪等 | 未決（map 行の更新として残すか Command にするか） |
 | 35 | tags | 定義語なし（同上） | 同上 | 同上 | 冪等 | 未決（同上） |
 | 36 | pin | 定義語なし（同上） | 同上 | 同上 | 冪等 | 未決（同上） |
 | 37 | Vault を canonical source として宣言・解除 | 定義語なし（canonical owner の設定） | map 行の `source`、Vault adapter の登録 | なし | 冪等 | owner adapter へ（owner routing の設定として） |
-| 38 | file から新しい map を作る | 定義語なし（map の作成と取込み） | 新しい map の全記録 | map id が未使用 | なし | Command へ変換（portable snapshot の取込みとして） |
+| 38 | file から新しい map を作る | 定義語なし（map の作成と取込み） | 新しい map の全記録 | map id が未使用 | なし | Command へ変換（snapshot の取込みとして） |
 | 39 | Vault から新しい map を作る（別実装） | 定義語なし（同上） | 同上 | 同上 | なし | 他経路へ統合（層 A 25 の adapter） |
 | 40 | map の削除 | 定義語なし（map の削除） | map 行（journal に削除を記録） | map の revision | 冪等 | Command へ変換 |
-| 41 | backup の全状態に戻す | 定義語なし（map 全体の復元） | map の全記録 | なし | なし | 削除（portable snapshot と journal の replay による復旧へ、RQ26） |
+| 41 | backup の全状態に戻す | 定義語なし（map 全体の復元） | map の全記録 | なし | なし | 削除（snapshot と journal の replay による復旧へ、RQ26） |
 | 42 | cloud の複製を取り込む | なし（取り込み） | — | cloud 側の revision | なし | owner adapter へ |
 | 43 | cloud へ複製を送る | `export` | cloud 上の全状態 | cloud 側の revision | なし | owner adapter へ（確定済みの journal を送る） |
 | 44 | 定期的に cloud へ送る | `export` | 同上 | なし（常に null） | なし | owner adapter へ（または削除） |
@@ -150,7 +150,7 @@
 | 54 | V4 の demo | 複数（層 A 1・3・16・25・29） | — | — | — | 削除か Command 前提で作り直す |
 | 55 | VM での競合試験 | 定義語なし（map 全体の置換） | — | — | — | 削除か Command 前提で作り直す |
 | 56 | workspace の初期化 | なし（seed の複製） | DB 全体 | DB がない | — | 他経路へ統合（seed を新しい形式で配る、IS128） |
-| 57 | snapshot の取得 | `export` | — | — | — | export のみ残す（portable snapshot の生成に寄せる） |
+| 57 | snapshot の取得 | `export` | — | — | — | export のみ残す（snapshot の生成に寄せる） |
 | 58 | Final の保存 | 層 A 1〜5 と同じ | — | — | — | 他経路へ統合（Beta から再 promote。旧 Final に新形式の workspace を書かせない担保が要る） |
 | 59 | Final の個別経路 | Beta の対応行と同じ | — | — | — | 他経路へ統合（同上） |
 | 60 | Final の起動時の書換え | なし | — | — | — | 削除 |
@@ -447,7 +447,7 @@ data のある 3 つの workspace の全 map を `mode=ro` で照会した。中
 7. 冪等キー: Flash の import key は node の attributes に保存されている。journal に commandId を置いた後も node 側に残すか。MCP で応答を失った後の再送に、前の書込みが確定したかを返す仕組みをどこに置くか。
 8. 削除と同時編集の規則: 削除する部分木の中で別の書き手が編集や追加をしていた場合、削除を拒否するか、削除を優先するか。
 9. 削除のとき、linear-text・注釈・位置の記録・broken alias の text の書換えを同じ transaction に含めるか。実データには、対象の scope がない linear-text が 63 件、存在しない node の位置を持つ surface が 19 個ある。migration ではこれらを落とすか残すか。
-10. 実データにある AppState の型にない key（state に 6 種類、node に 5 種類）を、migration でどう扱うか。置き場を作るか、portable snapshot にだけ残すか、落とすか。
+10. 実データにある AppState の型にない key（state に 6 種類、node に 5 種類）を、migration でどう扱うか。置き場を作るか、snapshot にだけ残すか、落とすか。
 11. map の複製と file からの取込みは、同じ node ID を別の map に持ち込む（複製は state_json の丸ごとのコピー）。entity binding を後から足すことを考えると、node ID は map の中で一意であればよいか、workspace の中で一意にするか。
 12. 起動時の `ensureMap` のうち、初回の作成以外（root の text の上書き、研究 map をすべての workspace に作ること、旧 id の行の削除）を削除してよいか。すでに Final 用と team 用の workspace に作られた 研究・開発 の map をどう扱うか。
 13. Concreteness Axis の level ≠ 0 での編集（level ごとの親・順・境界・collapse を attributes に書く）を、level つきの node move・scopen・collapse の Command にするか、attributes の書込みのままにするか。

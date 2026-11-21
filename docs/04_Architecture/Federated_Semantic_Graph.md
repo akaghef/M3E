@@ -338,7 +338,7 @@ Phase 4で M3E-owned accepted graph の Neo4j canonical runtime をactivateす�
 
 ### Recovery tests
 
-- Neo4j directory全削除後、source-materialized recordをowner sourceからrebuildし、M3E-owned accepted recordをportable snapshot + journal replayだけでrecoverする。
+- Neo4j directory全削除後、source-materialized recordをowner sourceからrebuildし、M3E-owned accepted recordをsnapshot + journal replayだけでrecoverする。
 - engine依存backup / restoreも補助経路として検証するが、Recovery Gateの通過根拠には含めない。
 - materialization失敗後のretryでowner commitが二重化しない。
 - proposal journalからpending queueを復元する。

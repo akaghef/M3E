@@ -31,7 +31,7 @@
 - F: Cypher 25 は ISO GQL に部分準拠（未実装の必須機能あり）。<https://neo4j.com/docs/cypher-manual/current/appendix/gql-conformance/>
 - I: PC ごとに JVM サービス（起動・停止、heap と page cache の調整、port）を管理する必要がある。起動時間は未計測。
 - I: M3E が Neo4j のバイナリを同梱配布すると GPLv3 の義務がかかる。Apache-2.0 の driver で Bolt 通信するだけなら、その義務は生じない。
-- I: Community では online backup がないため、snapshot は「停止 → dump → 再起動」か、アプリ側の export になる。エンジン非依存の portable snapshot と journal があれば、この制約に依存しない。
+- I: Community では online backup がないため、snapshot は「停止 → dump → 再起動」か、アプリ側の export になる。エンジン非依存の snapshot と journal があれば、この制約に依存しない。
 
 ## 3. Node.js に組み込めるグラフエンジン
 
