@@ -2,7 +2,7 @@
 
 M3E の製品 Model を書き換える操作を、operation molecule（操作の分子）と operation atom（操作の原子）で厳密に定義するための要件。目的は、node のまわりに蓄積した文脈（Deep KB）を copy・移動・Undo・同期しても、何が起きるかが一意に決まることである。
 
-- 状態: 草稿。【決定】は akaghef の決定、【仮決め】は推奨で仮に置いたもの（akaghef の確認待ち）、【提案】は未決。
+- 状態: 【決定】は akaghef の決定、【保留】は決めたうえで実装しないもの。
 - 関連: [DB 仕様書](../../../docs/03_Spec/Database_Spec.md)（不変条件・確定規則・再送・journal）、[record-schema](record-schema.md)、[draft-record-model](draft-record-model.md)、[draft-write-path-commands](draft-write-path-commands.md)、[実装ログ](implementation-log.md)。
 - 兄弟順キーの保存形式（on-disk format）は DB 仕様書に書く。この文書は操作の意味論だけを持つ。
 
@@ -55,7 +55,7 @@ M3E の製品 Model を書き換える操作を、operation molecule（操作の
 
 【決定】兄弟順は ID ではなく相対値（番号）で持つ。順序の決着（tie-break）に ID を使わない。同時の挿入・移動は拒否せず、柔軟に合流させる。
 
-【決定】次の三点も推奨どおりに決めた。
+【決定】
 
 1. **同じ node の同時移動**: 一つの node は一か所にしか置けないので、両方の依頼を処理したうえで、seq の順で後に確定した有効な依頼の位置を採る（LWW）。offline から遅れて届いた移動も反映する。cycle を作る move など最終不変条件に反するものは reject する。
 2. **確定側による位置値の解決**: 確定側が、新規・移動対象自身の位置値だけを解決し直す（Figma 型の fractional indexing）。非対象の兄弟の再採番と、ID による tie-break は禁止する。
@@ -91,8 +91,8 @@ M3E の製品 Model を書き換える操作を、operation molecule（操作の
 3. scopen / unscopen は主選択の 1 node だけを対象にする。複数の対象を列挙した依頼は拒否する。【決定】
 4. scopen は、選んだ直接の枝の閉包を新しい scope に移す。任意の部分集合は指定できない。
 5. unscopen は対象の scope を scopeId で指定し、戻し先を明示する。
-6. 【仮決め】unscopen で、処分の方針が決まっていない所有データ（linear-text・注釈・既定でない Surface View の設定）があれば拒否する。明示した移管・削除だけを同じ Command に含める。同じ root の別の scope へ自動で合流させない。
-7. 【仮決め】scope の移動だけでは relationType を変えず、推論もしない。
+6. 【決定】unscopen で、処分の方針が決まっていない所有データ（linear-text・注釈・既定でない Surface View の設定）があれば拒否する。明示した移管・削除だけを同じ Command に含める。同じ root の別の scope へ自動で合流させない。
+7. 【決定】scope の移動だけでは relationType を変えず、推論もしない。
 8. 同じ実体を二つの方向に置くときは alias を使う。alias は子を持てるが、その子はその alias が載る面での子であり、参照先の実体が正本の面で持つ子とは別の集まりである（[DB 仕様書](../../../docs/03_Spec/Database_Spec.md) 4 節不変条件 3・12.2 節の【決定】）。したがって、alias は子孫を共有して両方向に展開する仕組みではない。
 9. 受入要件: scopen / unscopen の結果は viewer の有無に依存しない。
 
@@ -105,7 +105,7 @@ M3E の製品 Model を書き換える操作を、operation molecule（操作の
 ## 11. copy
 
 - 【合意済みの枠組み】hard copy は新しい実体（新しい ID）、alias は copy ではなく参照（ポインタ）である。部分木 copy と scope copy の保持義務は [MCP の操作規約](../../../docs/protocols/mcp-map-operations.md)の決定に従う。
-- 【仮決め】copy の種類:
+- 【決定】copy の種類:
 
 | 種類 | 範囲 | relation edge | alias | scope | attribute・collapsed | 来歴 |
 |---|---|---|---|---|---|---|
@@ -116,15 +116,15 @@ M3E の製品 Model を書き換える操作を、operation molecule（操作の
 
 1. 選択の和集合に一つの ID 対応を使う。選んだ根をまたぐ内部参照は一度だけ remap する。
 2. 宣言された参照だけを remap する。
-3. 【仮決め】deep copy の外側を指す参照は共有する。よって独立性が保証されるのは複製した実体と構造だけで、「copy 後は何を編集しても元に影響しない」ではない。
-4. 【仮決め】copy の来歴は Deep KB の来歴として、journal を圧縮しても失わない形で残す。
-5. 既存の [Multi_Select.md](../../../docs/03_Spec/Multi_Select.md) の貼り付け規則（alias・link のメタデータと collapsed を落とす）はこの節と食い違っている。この節の確定時に直す。
+3. 【決定】deep copy の外側を指す参照は共有する。よって独立性が保証されるのは複製した実体と構造だけで、「copy 後は何を編集しても元に影響しない」ではない。
+4. 【決定】copy の来歴は Deep KB の来歴として、journal を圧縮しても失わない形で残す。
+5. 既存の [Multi_Select.md](../../../docs/03_Spec/Multi_Select.md) の貼り付け規則（alias・link のメタデータと collapsed を落とす）はこの節と食い違っている。この節に合わせて直す（未対応）。
 
 ## 12. dissolve と join で失われる内容
 
 骨格: 保持・移送・削除・拒否を値と参照ごとに定め、決めていないものを暗黙に捨てない。
 
-【仮決め】既定の動作:
+【決定】既定の動作:
 
 | 例 | Before → 操作 | 既定 |
 |---|---|---|
