@@ -267,8 +267,10 @@ describe("journal envelope: touched", () => {
       (nodes.f1.children as string[]).push("n1");
     });
     const lines = journalLines(path.join(dir, JOURNAL_FILE));
-    expect(lines[0].touched).toEqual([{ rk: "node|leaf", ev: ["m3e:content"] }]);
-    expect(lines[1].touched).toEqual([{ rk: "node|inner", ev: ["m3e:attribute"] }]);
+    const contentTouched = (lines[0].touched as Array<{ rk: string; ev: string[] }>).filter((entry) => !entry.rk.startsWith("decay|"));
+    const attributeTouched = (lines[1].touched as Array<{ rk: string; ev: string[] }>).filter((entry) => !entry.rk.startsWith("decay|"));
+    expect(contentTouched).toEqual([{ rk: "node|leaf", ev: ["m3e:content"] }]);
+    expect(attributeTouched).toEqual([{ rk: "node|inner", ev: ["m3e:attribute"] }]);
     const created = lines[2].touched as Array<{ rk: string; ev: string[] }>;
     expect(created.map((entry) => entry.rk)).toEqual([...created.map((entry) => entry.rk)].sort());
     expect(created.find((entry) => entry.rk === "node|n1")).toEqual({ rk: "node|n1", ev: ["m3e:create"] });

@@ -49,6 +49,33 @@
 
 ## 記録
 
+### 2026-11-22 減衰する累積の record の kind 名は、仕様が名付けていない
+
+- 種類: 問題
+- 書いた agent: format 2 の decay と局所検査の session
+- 対象: DB 仕様書 9 節、format2-requirements.md の R4.22・R11.2・R11.4、`beta/src/shared/record_model/types.ts`（`DecayRecord`）、`beta/src/shared/record_model/decay.ts`
+- 中身: 仕様は累積を `{v[k], t}` として portable snapshot の状態に持つ、と書く。record の kind 名は無い。実装は kind `decay` を使う。key は対象の rk で、`node|id` または `scope|id` である。rk は `decay|` にその対象を続けたものになる。確定が触れた node と、その node が載る scope を、確定ごとに 1 回ずつ進める。読むときは scale ごとに 1 回掛けるだけで、1 は足さない。`m3e:derived:` の計算値は保存しない。
+- 根拠: DB 仕様書 9 節と format2-requirements.md を読んだ。どちらも kind 名を書いていない。`record_store_decay.test.ts` が、決めた式と snapshot の再生、圧縮、Neo4j の往復を見ている。
+- 扱い: 未対応
+
+### 2026-11-22 減衰の scale の列は、仕様に無い
+
+- 種類: 問題
+- 書いた agent: format 2 の decay と局所検査の session
+- 対象: DB 仕様書 9 節、quantities-requirements.md、`beta/src/shared/record_model/decay.ts` の `DECAY_SCALES`
+- 中身: 仕様は scale `k` ごとに `v_k(now) = v_k(t) * 2^(-(now-t)/2^k 秒) + 1` と書く。`k` の一覧は無い。実装は `k = 6, 10, 16, 20, 24` の 5 つを、この順で `v` に並べる。時刻は確定の `committedAt` である。
+- 根拠: DB 仕様書 9 節と quantities-requirements.md を読んだ。scale の列はどちらにも無い。
+- 扱い: 未対応
+
+### 2026-11-22 extensionDef の ref の形は、仕様が二通りに読める
+
+- 種類: 問題
+- 書いた agent: format 2 の decay と局所検査の session
+- 対象: DB 仕様書 10.2、`beta/src/shared/record_model/extensions.ts`（`extensionValueErrors`）
+- 中身: 10.2 は、ref の指す node が存在するとき、その node が同じ extension を持つことを確定時に検査する、と書く。ref の文字列が `name@version` なのか `prefix:class:name` なのかは書いていない。実装は、`name@version` ならその版だけを、`prefix:class:name` ならどの版でも、extensions に含まれるかを見る。どちらでもない文字列（既存の `ref: "node"` を含む）は保存し、照合しない。参照先の node が無いときは broken として保存を許す。
+- 根拠: DB 仕様書 10.2 を読んだ。`record_store_decay.test.ts` が、存在するが extension を持たない node の拒否と、無い node の保存を見ている。
+- 扱い: 未対応
+
 ### 2026-11-22 scope ごとの履歴は、共有の journal を切らない
 
 - 種類: 問題
@@ -245,7 +272,7 @@
 - 対象: DB 仕様書 10.2 と 10.7、`beta/src/shared/record_model/types.ts`（`ExtensionField`）、`beta/src/shared/record_model/extensions.ts`（`extensionValueErrors`、`extensionDefShapeError`）
 - 中身: extensionDef の `fields` は `default` と `ref` を保存する。10.7 は型の検査だけを書いており、`default` をいつ埋めるか、`ref` を何と照合するかを書いていない。実装はどちらも保存するだけで、埋めず、検査しない。required の欄が attribute に無い付与は、`default` があっても拒否する。
 - 根拠: `extensionValueErrors` は required の欠落を、attribute にその key があるかどうかだけで見る。`default` は読まない。`extensionDefShapeError` は `ref` の形を検査しない。
-- 扱い: 仕様へ反映（DB 仕様書 10.2。default は付ける Command の中で server が埋める。ref は参照先の extensions を照合し、参照先が無ければ broken で保存を許す）。実装は未対応
+- 扱い: 仕様へ反映（DB 仕様書 10.2。default は付ける Command の中で server が埋める。ref は参照先の extensions を照合し、参照先が無ければ broken で保存を許す）。実装で解消（この commit。付ける Command の中で required の default を埋め、ref は参照先の node が存在するときだけ extensions を照合する）。ref の文字列の形は未決で、別項
 
 ### 2026-11-22 journal の provenance を決めた形にし、observed を MCP の読み取り集合から作った。6 件の選択は akaghef が決めた
 
@@ -397,7 +424,7 @@
 - 対象: DB 仕様書 4 節、`beta/src/node/record_store/store.ts:1114`
 - 中身: 仕様は「検査は触った周辺だけで行い、map 全体は走査しない」とする。実装は確定のたびに、その map の全レコードで不変条件を検査している。今の規模（最大の map で約 2 万 node）では動くが、費用が map の大きさに比例するので、100 万 node の map では確定が遅くなる。
 - 根拠: 確定の処理が `checkInvariants` に map の全レコードを渡している箇所を読んだ。時間は測っていない（未確認）。
-- 扱い: 仕様へ反映（DB 仕様書 4 節に、実装との差を書いた）。実装は未対応
+- 扱い: 仕様へ反映（DB 仕様書 4 節に、実装との差を書いた）。実装で解消（この commit。確定は触った record とその近傍だけを検査する。map 全体の検査は `checkInvariants` として残し、試験と `record_store_cli --verify` が使う）。40,201 node の map で、構造を変える確定は 175.7 ms、近傍の検査は 0.5 ms、全体の検査は 111.5 ms。確定の時間には、射影と検証が map 全体を歩く分が残る
 
 ### 2026-11-19 parent edge のレコードに、relationType と attribute の欄が無い
 
@@ -433,7 +460,7 @@
 - 対象: DB 仕様書 6 節、`beta/src/node/record_store/store.ts:121`（`JournalLine`）、`store.ts:752`（`compact()`）
 - 中身: 圧縮は journal を空にし、`commit-index.json` には map ごとの最後の確定と、確定済みの Command の ID（直近 100,000 件）だけを残す。確定ごとに差分が出たレコードの一覧は残らないので、圧縮より前の書かれる頻度（DB 仕様書 9 節の提案）は作り直せない。記録を始める前の確定は、後から分類できない。akaghef は 2026-11-19 に次の方向を示した。保存期限と復元期限を分ける。journal も出来事の記録も消さず、古い journal は保管へ移す。再生を保証するのは、最後のスキーマ変更の直後に書く snapshot から後だけにする。版は journal の各行に持たせず、切り替えの時点だけを記録する（snapshot の頭の `format` と `seq` で足りる）。出来事の記録は、通し番号・時刻・触れたレコードの ID・出来事の種類だけの、スキーマに依らない形にし、再生できない区間でも数えられるようにする。
 - 根拠: DB 仕様書 6 節の圧縮の記述と、`JournalLine` と `SnapshotHeader`（`beta/src/shared/record_model/types.ts:10`）の型を読んだ。
-- 扱い: 仕様へ反映（freeze v1。DB 仕様書 6 節の envelope の `touched`、archive の 90 日での削除、9 節の減衰する量の累積を snapshot に持つこと）。実装は未対応
+- 扱い: 仕様へ反映（freeze v1。DB 仕様書 6 節の envelope の `touched`、archive の 90 日での削除、9 節の減衰する量の累積を snapshot に持つこと）。累積は実装で解消（この commit。kind `decay` の record を snapshot に持つ。kind 名と scale の列は未決で、別項）。`touched` と 90 日の削除は、この項の時点で既に入っている
 
 ### 2026-11-19 名前の接頭辞の規則は MCP でしか検査しておらず、アプリの中から接頭辞の無い名前が書かれている
 

@@ -1128,7 +1128,8 @@ function sameStrings(left: unknown, right: readonly string[]): boolean {
 export function isProjectedRecord(record: SnapshotRecord, mapId: string): boolean {
   if (record.kind === "extensionDef") return true;
   if (record.kind === "map") return record.id === mapId;
-  if (record.kind === "idMap" || record.kind === "snapshot") return false;
+  // Decay is activity state, not a projection of the map. It lives beside the map records.
+  if (record.kind === "idMap" || record.kind === "snapshot" || record.kind === "decay") return false;
   return (record as { mapId?: unknown }).mapId === mapId;
 }
 

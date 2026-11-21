@@ -373,9 +373,12 @@ describe("record store: journal, reopen, compaction", () => {
     expect(lines.map((line) => line.seq)).toEqual([1, 2, 3, 4]);
     expect(lines[1]).toMatchObject({ issuer: ISSUER, mapId: "map_a", intent: "test" });
     expect(Object.keys(lines[1])).toEqual(expect.arrayContaining(["seq", "commandId", "issuer", "committedAt", "mapId", "intent", "changes", "ops"]));
-    expect(lines[1].ops.map((op: { op: string; rk: string }) => `${op.op} ${op.rk}`).sort()).toEqual(
+    const opNames = lines[1].ops.map((op: { op: string; rk: string }) => `${op.op} ${op.rk}`);
+    expect(opNames.filter((name: string) => !name.includes(" decay|")).sort()).toEqual(
       ["put details|n1", "put node|n1", expect.stringMatching(/^put connection\|c_/)].sort(),
     );
+    expect(opNames).toContain("put decay|node|n1");
+    expect(opNames.some((name: string) => name.startsWith("put decay|scope|"))).toBe(true);
     await store.close();
 
     const again = openStore(dir);

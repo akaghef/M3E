@@ -212,8 +212,9 @@ export function checkInvariants(records: SnapshotRecord[]): InvariantProblem[] {
   for (const record of records) {
     if (record.kind === "extensionDef") defs.set(recordKeyString(record), record);
   }
+  const nodeOf = (id: string): NodeRecord | undefined => nodes.get(id);
   const checkCarrier = (record: SnapshotRecord, carrier: ExtensionTarget, extensions: unknown, attributes: JsonObject | undefined): void => {
-    for (const problem of extensionValueErrors(extensions, attributes, carrier, defs)) add(10, record, problem.message);
+    for (const problem of extensionValueErrors(extensions, attributes, carrier, defs, nodeOf)) add(10, record, problem.message);
   };
   for (const node of nodes.values()) checkCarrier(node, "node", node.extensions, node.attributes);
   for (const connection of connections.values()) {

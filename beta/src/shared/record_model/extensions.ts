@@ -1,8 +1,9 @@
 // Format 2 extensions: name shape, the canonical `extensions` list, extensionDef shape,
 // and the schema-on-write checks of Database_Spec.md 10.2-10.4 and 10.7.
 //
-// `fields[].default` and `fields[].ref` are stored and are not applied or checked.
-// 10.7 does not say what either one does at commit time.
+// `fields[].default` is filled when a Command attaches the extension (10.2).
+// `fields[].ref` is checked for nodeRef values. A ref that is not an extension name is stored
+// and not checked: the spec does not say what a ref such as "node" means.
 
 import { compareStrings, type ExtensionDefRecord, type ExtensionField, type ExtensionTarget, type JsonValue } from "./types";
 
@@ -149,6 +150,71 @@ export interface ExtensionViolation {
   message: string;
 }
 
+/** A node, as far as a `ref` check needs to see it. Absent means the node is missing. */
+export interface ExtensionNode {
+  extensions?: readonly string[] | undefined;
+}
+
+function containsNull(value: unknown): boolean {
+  if (value === null) return true;
+  if (Array.isArray(value)) return value.some((item) => containsNull(item));
+  if (typeof value === "object" && value !== null) return Object.values(value).some((item) => containsNull(item));
+  return false;
+}
+
+function extensionNames(list: unknown): Set<string> {
+  const names = new Set<string>();
+  if (!Array.isArray(list)) return names;
+  for (const entry of list) if (typeof entry === "string") names.add(entry);
+  return names;
+}
+
+/**
+ * Attributes to store when `afterExtensions` newly attaches an extension whose required
+ * field is missing and whose `default` is a snapshot value. Returns undefined when nothing
+ * is filled. Does not overwrite a present value. Null defaults are skipped.
+ */
+export function fillRequiredDefaults(
+  beforeExtensions: unknown,
+  afterExtensions: unknown,
+  attributes: { [key: string]: JsonValue } | undefined,
+  defs: ReadonlyMap<string, ExtensionDefRecord>,
+): { [key: string]: JsonValue } | undefined {
+  if (!Array.isArray(afterExtensions)) return undefined;
+  const before = extensionNames(beforeExtensions);
+  let filled: { [key: string]: JsonValue } | undefined;
+  for (const entry of afterExtensions) {
+    if (typeof entry !== "string" || before.has(entry)) continue;
+    const parsed = parseExtensionRef(entry);
+    const def = defs.get(entry);
+    if (!parsed || def === undefined) continue;
+    for (const field of def.fields) {
+      if (field.required !== true) continue;
+      if (field.default === undefined || field.default === null || containsNull(field.default)) continue;
+      const key = `${parsed.name}/${field.name}`;
+      const present = (filled ?? attributes) !== undefined && Object.prototype.hasOwnProperty.call(filled ?? attributes, key);
+      const current = (filled ?? attributes)?.[key];
+      if (present && current !== undefined) continue;
+      filled ??= { ...(attributes ?? {}) };
+      filled[key] = JSON.parse(JSON.stringify(field.default)) as JsonValue;
+    }
+  }
+  return filled;
+}
+
+/** True when `extensions` carries `ref` (`name@version` exact, or `prefix:class:name` at any version). */
+function carriesExtension(extensions: readonly string[] | undefined, ref: string): boolean {
+  if (!extensions) return false;
+  const versioned = parseExtensionRef(ref);
+  if (versioned) return extensions.includes(ref);
+  if (!EXTENSION_NAME.test(ref)) return true; // not a shape the spec defines; the caller skips it
+  return extensions.some((entry) => entry === ref || entry.startsWith(`${ref}@`));
+}
+
+function refIsCheckable(ref: string): boolean {
+  return parseExtensionRef(ref) !== undefined || EXTENSION_NAME.test(ref);
+}
+
 /**
  * Rule 10 for one record. `defs` is keyed by `name@version`. An extension whose definition
  * is absent is kept and not checked. A present field is the attribute `<name>/<field>`.
@@ -158,6 +224,7 @@ export function extensionValueErrors(
   attributes: { [key: string]: JsonValue } | undefined,
   carrier: ExtensionTarget,
   defs: ReadonlyMap<string, ExtensionDefRecord>,
+  nodes?: (id: string) => ExtensionNode | undefined,
 ): ExtensionViolation[] {
   const listError = extensionsListError(extensions);
   if (listError !== undefined) return [{ message: listError }];
@@ -180,7 +247,21 @@ export function extensionValueErrors(
         continue;
       }
       const error = valueError(field.type, attributes![key], field);
-      if (error !== undefined) problems.push({ message: `extension ${entry} field ${field.name} ${error}` });
+      if (error !== undefined) {
+        problems.push({ message: `extension ${entry} field ${field.name} ${error}` });
+        continue;
+      }
+      if (nodes && field.ref !== undefined && refIsCheckable(field.ref) && (field.type === "nodeRef" || field.type === "list<nodeRef>")) {
+        const ids = field.type === "nodeRef" ? [attributes![key] as string] : (attributes![key] as string[]);
+        for (const id of ids) {
+          if (typeof id !== "string") continue;
+          const node = nodes(id);
+          if (node === undefined) continue;
+          if (!carriesExtension(node.extensions, field.ref)) {
+            problems.push({ message: `extension ${entry} field ${field.name} references node ${id} which lacks extension ${field.ref}.` });
+          }
+        }
+      }
     }
   }
   return problems;

@@ -231,10 +231,16 @@ export interface ExtensionField {
   name: string;
   type: string;
   required?: boolean;
-  /** Stored. Not applied and not checked (10.7 does not say how). */
+  /**
+   * Filled into a required field when a Command attaches this extension and the field is absent.
+   * Null is not a value the snapshot can store, so a null default is not filled.
+   */
   default?: JsonValue;
   values?: string[];
-  /** Stored. Not checked (10.7 does not say how). */
+  /**
+   * Extension the referenced node must carry (`name@version`, or `prefix:class:name` for any version).
+   * A missing node is broken and is allowed. A ref that is neither shape is stored and not checked.
+   */
   ref?: string;
 }
 
@@ -341,6 +347,20 @@ export interface NamedSnapshotRecord {
   rev: number;
 }
 
+/**
+ * Activity accumulator of one node or one scope. Key is `target` (an rk, `node|id` or `scope|id`).
+ * `v[i]` belongs to scale `DECAY_SCALES[i]`. `t` is the canonical time of the last increment.
+ * The spec names no record kind; the store uses `decay`.
+ */
+export interface DecayRecord {
+  kind: "decay";
+  target: string;
+  mapId: string;
+  v: number[];
+  t: string;
+  rev: number;
+}
+
 export type SnapshotRecord =
   | SnapshotHeader
   | MapRecord
@@ -360,7 +380,8 @@ export type SnapshotRecord =
   | IdMapRecord
   | LockRecord
   | GrantRecord
-  | NamedSnapshotRecord;
+  | NamedSnapshotRecord
+  | DecayRecord;
 
 export type RecordKind = SnapshotRecord["kind"];
 
@@ -430,5 +451,7 @@ export function recordKeyParts(record: SnapshotRecord): string[] {
       return [record.id];
     case "namedSnapshot":
       return [record.id];
+    case "decay":
+      return [record.target];
   }
 }

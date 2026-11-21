@@ -302,9 +302,16 @@ describe("format 2 invariants at commit", () => {
     expect(storedDef).toMatchObject({ ...taskDef(), rev: defined.seq });
     expect(stateOf(store, "map_b").extensionDefs).toEqual([storedDef]);
 
-    refused(attempt(store, (state) => {
+    const filled = commit(store, (state) => {
       nodesOf(state).leaf.extensions = [TASK];
-    }), "INVALID_STATE", /rule 10:.*missing required field status/);
+    });
+    const filledLeaf = store.records().find((record) => record.kind === "node" && record.id === "leaf");
+    expect(filledLeaf).toMatchObject({
+      extensions: [TASK],
+      attributes: { "m3e:nodeType:task/status": "open" },
+      rev: filled.seq,
+    });
+    expect(nodesOf(stateOf(store)).leaf.attributes).toMatchObject({ "m3e:nodeType:task/status": "open" });
 
     const granted = commit(store, (state) => {
       const leaf = nodesOf(state).leaf;

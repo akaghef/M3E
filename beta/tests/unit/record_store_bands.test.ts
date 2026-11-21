@@ -496,7 +496,10 @@ describe("link and promotion", () => {
     const linked = accepted(store.linkToEntity(MAP, ISSUER, { nodeId: "b", targetId: "other" }));
     expect(nodesOf(stateOf(store)).b?.nodeType).toBe("alias");
     expect(nodesOf(stateOf(store)).b?.targetNodeId).toBe("other");
-    expect(new Set(store.records().map((record) => record.kind))).toEqual(kinds);
+    const afterKinds = new Set(store.records().map((record) => record.kind));
+    expect(afterKinds.has("decay")).toBe(true);
+    afterKinds.delete("decay");
+    expect(afterKinds).toEqual(kinds);
     const again = accepted(store.linkToEntity(MAP, ISSUER, { nodeId: "b", targetId: "other" }));
     expect(again.seq).toBe(linked.seq);
     refused(store.linkToEntity(MAP, ISSUER, { nodeId: "b", targetId: "a" }), "INVALID_COMMAND", /different entity/);

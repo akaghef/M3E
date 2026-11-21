@@ -18,12 +18,14 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { applyChanges, diffState, type FieldConflict, type MapCommand, type RecordChange } from "../../shared/map_changes";
-import { extensionDefShapeError } from "../../shared/record_model/extensions";
+import { advanceDecay, readDecay } from "../../shared/record_model/decay";
+import { extensionDefShapeError, fillRequiredDefaults } from "../../shared/record_model/extensions";
 import { fromSnapshot } from "../../shared/record_model/from_snapshot";
 import { checkInvariants, type InvariantProblem } from "../../shared/record_model/invariants";
 import { parseSnapshot, recordKeyString, serializeSnapshot, sortRecords } from "../../shared/record_model/jsonl";
+import { NeighbourhoodIndex, subjectOfProblemKey } from "../../shared/record_model/neighbourhood";
 import { MapProjector, recordRk, sameJson, type ProjectionResult } from "../../shared/record_model/steady";
-import { compareStrings, type CommitRecord, type ExtensionDefRecord, type IdMapRecord, type MapRecord, type ScopeRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
+import { compareStrings, type CommitRecord, type DecayRecord, type ExtensionDefRecord, type IdMapRecord, type JsonValue, type MapRecord, type ScopeRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
 import type { AppState, TreeNode } from "../../shared/types";
 import { applyChangesReduced } from "./apply_reduced";
 import {
@@ -197,6 +199,8 @@ interface MapEntry {
   counts?: { nodes: number; chars: number };
   /** `idMap` records with `alias: true` as lookup tables; rebuilt when `idMaps` changes. */
   aliases?: { size: number; in: AliasTable; out: AliasTable };
+  /** Reverse links for the local invariant check. Rebuilt when `warm` is rebuilt. */
+  graph?: NeighbourhoodIndex;
 }
 
 /** Ids a commit is about to renumber: the `idMap` records to write and the tables that include them. */
@@ -239,6 +243,10 @@ function assertNotLiveM3e(dir: string): void {
 
 function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isPlain(value: unknown): value is Dict {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function jsonClone<T>(value: T): T {
@@ -322,6 +330,29 @@ function sameExceptRev(left: SnapshotRecord, right: SnapshotRecord): boolean {
 
 function problemKey(problem: InvariantProblem): string {
   return `${problem.rule}|${problem.kind}|${problem.key}|${problem.message}`;
+}
+
+/** Keeps problems outside the neighbourhood. Drops a problem whose subject was checked and is no longer reported. */
+function mergeBaseline(baseline: ReadonlySet<string>, problems: readonly InvariantProblem[], checked: ReadonlySet<string>): Set<string> {
+  const local = new Set(problems.map(problemKey));
+  const next = new Set<string>();
+  for (const key of baseline) {
+    const subject = subjectOfProblemKey(key);
+    if (subject !== undefined && checked.has(subject) && !local.has(key)) continue;
+    next.add(key);
+  }
+  for (const key of local) next.add(key);
+  return next;
+}
+
+/** Node ids a commit's own operations touched: the node record, or its details, once each. Decay rows are not operations yet. */
+function activityNodeIds(ops: readonly RecordOp[], before: (rk: string) => SnapshotRecord | undefined): string[] {
+  const ids = new Set<string>();
+  for (const entry of touchedOf(ops, before)) {
+    if (entry.rk.startsWith("node|")) ids.add(entry.rk.slice("node|".length));
+    else if (entry.rk.startsWith("details|")) ids.add(entry.rk.slice("details|".length));
+  }
+  return [...ids];
 }
 
 function commandKey(mapId: string, commandId: string): string {
@@ -408,6 +439,8 @@ export class RecordWorkspaceStore {
   private readonly all = new Map<string, SnapshotRecord>();
   /** Workspace extensionDef records. They are not owned by a map. */
   private readonly extensionDefs = new Map<string, SnapshotRecord>();
+  /** Decay record rks by map. Decay is state of the snapshot and is not a projected map record. */
+  private readonly decayByMap = new Map<string, Set<string>>();
   private readonly maps = new Map<string, MapEntry>();
   /** Ids of node, connection and annotation records: unique across those kinds and across maps. */
   private readonly idIndex = new Map<string, string>();
@@ -573,6 +606,10 @@ export class RecordWorkspaceStore {
         this.extensionDefs.set(rk, record);
         continue;
       }
+      if (record.kind === "decay") {
+        this.rememberDecay(record);
+        continue;
+      }
       const mapId = record.kind === "map" ? record.id : (record as { mapId?: unknown }).mapId;
       const entry = typeof mapId === "string" ? this.maps.get(mapId) : undefined;
       if (!entry) continue;
@@ -677,6 +714,17 @@ export class RecordWorkspaceStore {
   /** The current full record set in canonical order. The records are copies. */
   records(): SnapshotRecord[] {
     return sortRecords(jsonClone([this.header(), ...this.all.values()]));
+  }
+
+  /**
+   * Activity of a node or scope at `at`, one multiply per scale and no increment.
+   * `target` is the rk (`node|id` or `scope|id`). Undefined when that target has never been touched.
+   */
+  activityAt(target: string, at: string): number[] | undefined {
+    this.assertOpen();
+    const record = this.all.get(`decay|${target}`);
+    if (record?.kind !== "decay") return undefined;
+    return readDecay(record.v, record.t, at);
   }
 
   /** The journal line of a Command committed under this id, from the journal or the archive; null when neither holds it. */
@@ -864,6 +912,7 @@ export class RecordWorkspaceStore {
       ops.push({ op: "delete", rk });
     }
     for (const rk of entry.idMaps.keys()) ops.push({ op: "delete", rk });
+    for (const rk of [...(this.decayByMap.get(mapId) ?? [])]) ops.push({ op: "delete", rk });
     this.append({ seq: this.currentSeq + 1, issuer, committedAt: this.now(), mapId, intent: "delete-map", mapOp: "delete", ops });
     this.maps.delete(mapId);
   }
@@ -896,6 +945,12 @@ export class RecordWorkspaceStore {
     move(entry.records, renamed.records);
     move(entry.idMaps, renamed.idMaps);
     for (const [rk, record] of [...renamed.records, ...renamed.idMaps]) ops.push({ op: "put", rk, record });
+    for (const rk of [...(this.decayByMap.get(oldId) ?? [])]) {
+      const record = this.all.get(rk);
+      if (record?.kind !== "decay") continue;
+      const copy: DecayRecord = { ...record, mapId: newId, rev: seq };
+      ops.push({ op: "put", rk, record: copy });
+    }
     this.append({ seq, issuer, committedAt: this.now(), mapId: oldId, intent: "rename-map", mapOp: "rename", newMapId: newId, ops });
     this.maps.delete(oldId);
     this.maps.set(newId, renamed);
@@ -1497,6 +1552,7 @@ export class RecordWorkspaceStore {
     } catch {
       // Records the projection cannot reproduce: the first commit of the map reports why.
     }
+    entry.graph = NeighbourhoodIndex.fromRecords(entry.records.values());
     entry.warm = {
       projector,
       state,
@@ -1557,6 +1613,7 @@ export class RecordWorkspaceStore {
       return this.failure("INVALID_COMMAND", current(), (error as Error).message);
     }
     if (!applied.ok) return this.failure("CONFLICT", current(), undefined, clientConflicts(applied.conflicts));
+    this.fillExtensionDefaults(warm?.state, applied.state, changes);
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
     const validationErrors = commitValidationErrorCount(applied.state);
@@ -1577,7 +1634,11 @@ export class RecordWorkspaceStore {
     } catch (error) {
       return this.failure("INVALID_STATE", current(), (error as Error).message);
     }
+    let undoGraph: (() => void) | undefined;
+    let postGraph: NeighbourhoodIndex | undefined;
     const refuse = (message: string): CommitFailure => {
+      undoGraph?.();
+      undoGraph = undefined;
       result.revert?.();
       return this.failure("INVALID_STATE", current(), message);
     };
@@ -1617,23 +1678,28 @@ export class RecordWorkspaceStore {
 
     const baseline = warm ? warm.problems : new Set<string>();
     let problemKeys = baseline;
-    // The check runs on the whole final record set of the map, plus workspace extension
-    // definitions this commit does not replace. It is skipped only when no fact it reads
-    // changed: its outcome is then the one already known.
-    if (!invariantFactsUnchanged(result.replaced, ops)) {
-      const deleted = new Set(ops.filter((op) => op.op === "delete").map((op) => op.rk));
-      const checkRecords = [...result.records.values()];
-      const have = new Set(checkRecords.filter((record) => record.kind === "extensionDef").map((record) => recordRk(record)));
-      for (const [rk, record] of this.extensionDefs) {
-        if (!have.has(rk) && !deleted.has(rk)) checkRecords.push(record);
+    const activityIds = activityNodeIds(ops, (rk) => this.all.get(rk));
+    const preScope = new Map<string, string[]>();
+    if (entry?.graph) {
+      const pre = (rk: string): SnapshotRecord | undefined => this.all.get(rk);
+      for (const id of activityIds) {
+        if (pre(`node|${id}`)) preScope.set(id, entry.graph.scopeIdsOf(id, pre));
       }
-      const problems = checkInvariants(checkRecords);
-      const fresh = problems.filter((problem) => !baseline.has(problemKey(problem)) && !this.satisfiedElsewhere(problem));
+    }
+    // Checked on the records the Command touched and their neighbourhood, after every
+    // reparent in the Command. The whole-map scan stays available as `checkInvariants`.
+    // Skipped when no fact it reads changed: the outcome is then the one already known.
+    if (!invariantFactsUnchanged(result.replaced, ops)) {
+      const graph = entry?.graph ?? NeighbourhoodIndex.fromRecords(result.records.values());
+      if (entry?.graph) undoGraph = graph.apply(ops, (rk) => result.replaced.get(rk));
+      const outcome = graph.check((rk) => result.records.get(rk), ops, (rk) => result.replaced.get(rk), this.defsFor(ops));
+      const fresh = outcome.problems.filter((problem) => !baseline.has(problemKey(problem)) && !this.satisfiedElsewhere(problem));
       if (fresh.length > 0) {
         const shown = fresh.slice(0, 5).map((problem) => `rule ${problem.rule}: ${problem.kind} ${problem.key}: ${problem.message}`);
         return refuse(`The commit breaks an invariant (${fresh.length}): ${shown.join("; ")}`);
       }
-      problemKeys = new Set(problems.map(problemKey));
+      problemKeys = mergeBaseline(baseline, outcome.problems, outcome.checked);
+      postGraph = graph;
     }
 
     // 6. Locks, grants, operation shape and id reuse, judged on the pre-commit record set.
@@ -1662,12 +1728,22 @@ export class RecordWorkspaceStore {
     line.changes = translated?.sent ?? changes;
     line.changesHash = hashChanges(line.changes);
     const aliasRecords = translated?.aliases ?? [];
-    line.ops = aliasRecords.length === 0
+    const userOps = aliasRecords.length === 0
       ? ops
       : [...ops, ...aliasRecords.map((record): RecordOp => ({ op: "put", rk: recordRk(record), record }))];
+    const scopeOf = postGraph ?? entry?.graph;
+    const targets = new Set<string>();
+    for (const id of activityIds) {
+      targets.add(`node|${id}`);
+      const scopes = preScope.get(id) ?? scopeOf?.scopeIdsOf(id, (rk) => result.records.get(rk)) ?? [];
+      for (const scopeId of scopes) targets.add(`scope|${scopeId}`);
+    }
+    const decayOps = targets.size === 0 ? [] : this.decayPuts(mapId, targets, committedAt, seq);
+    line.ops = decayOps.length === 0 ? userOps : [...userOps, ...decayOps];
     try {
       this.append(line);
     } catch (error) {
+      undoGraph?.();
       result.revert?.();
       throw error;
     }
@@ -1676,6 +1752,7 @@ export class RecordWorkspaceStore {
     const target = entry ?? { id: mapId, records: new Map<string, SnapshotRecord>(), idMaps: new Map<string, SnapshotRecord>() };
     if (!entry) this.maps.set(mapId, target);
     target.records = result.records;
+    target.graph = postGraph ?? entry?.graph ?? target.graph;
     target.counts = undefined;
     if (aliasRecords.length > 0) {
       for (const record of aliasRecords) target.idMaps.set(recordRk(record), record);
@@ -1689,6 +1766,117 @@ export class RecordWorkspaceStore {
     };
     this.noteNamedSnapshots(result.replaced);
     return { ok: true, savedAt: committedAt, seq, replayed: false };
+  }
+
+  /** Definitions in force for this commit: the workspace set, then this Command's puts and deletes. */
+  private defsFor(ops: readonly RecordOp[]): Map<string, ExtensionDefRecord> {
+    const defs = new Map<string, ExtensionDefRecord>();
+    for (const record of this.extensionDefs.values()) {
+      if (record.kind === "extensionDef") defs.set(`${record.name}@${record.version}`, record);
+    }
+    for (const op of ops) {
+      if (op.op === "delete") {
+        const prior = this.all.get(op.rk);
+        if (prior?.kind === "extensionDef") defs.delete(`${prior.name}@${prior.version}`);
+      } else if (op.record?.kind === "extensionDef") {
+        defs.set(`${op.record.name}@${op.record.version}`, op.record);
+      }
+    }
+    return defs;
+  }
+
+  /** Fills required defaults on extensions this Command newly attaches. The filled values are projected into the ops. */
+  private fillExtensionDefaults(before: object | undefined, after: object, changes: readonly RecordChange[]): void {
+    const defs = this.defsFor([]);
+    const afterDict = after as unknown as Dict;
+    const beforeDict = (before ?? {}) as unknown as Dict;
+    const listed = afterDict.extensionDefs;
+    if (Array.isArray(listed)) {
+      for (const item of listed) {
+        if (!isPlain(item)) continue;
+        const def = item as unknown as ExtensionDefRecord;
+        if (typeof def.name !== "string" || !Number.isInteger(def.version) || !Array.isArray(def.fields)) continue;
+        defs.set(`${def.name}@${def.version}`, def);
+      }
+    }
+    const nodeIds = new Set<string>();
+    const linkIds = new Set<string>();
+    for (const change of changes) {
+      if (!change || !Array.isArray(change.key)) continue;
+      const head = typeof change.key[0] === "string" ? change.key[0] : "";
+      const second = typeof change.key[1] === "string" ? change.key[1] : "";
+      if (change.kind === "node" || change.kind === "edge") nodeIds.add(head);
+      else if (change.kind === "graph-link") linkIds.add(head);
+      else if (change.kind === "attribute") {
+        if (head === "graph-link") linkIds.add(second);
+        else nodeIds.add(second);
+      }
+    }
+    const asAttrs = (value: unknown): { [key: string]: JsonValue } | undefined => (
+      isPlain(value) ? value as { [key: string]: JsonValue } : undefined
+    );
+    const fillTable = (beforeTable: unknown, afterTable: unknown, ids: ReadonlySet<string>, edge: boolean): Dict | undefined => {
+      if (!isPlain(afterTable) || ids.size === 0) return undefined;
+      const previous = isPlain(beforeTable) ? beforeTable : {};
+      let table = afterTable;
+      let copied = false;
+      for (const id of ids) {
+        if (!hasOwn(table, id)) continue;
+        const raw = table[id];
+        if (!isPlain(raw)) continue;
+        const prev = isPlain(previous[id]) ? previous[id] : undefined;
+        const attributes = fillRequiredDefaults(prev?.extensions, raw.extensions, asAttrs(raw.attributes), defs);
+        const edgeAttributes = edge
+          ? fillRequiredDefaults(prev?.edgeExtensions, raw.edgeExtensions, asAttrs(raw.edgeAttributes), defs)
+          : undefined;
+        if (!attributes && !edgeAttributes) continue;
+        if (!copied && table === afterTable && beforeTable === afterTable) {
+          table = { ...table };
+          copied = true;
+        }
+        let next = raw;
+        if (prev && raw === prev) {
+          next = { ...raw };
+          table[id] = next;
+        }
+        if (attributes) next.attributes = attributes;
+        if (edgeAttributes) next.edgeAttributes = edgeAttributes;
+      }
+      return copied ? table : undefined;
+    };
+    const nodes = fillTable(beforeDict.nodes, afterDict.nodes, nodeIds, true);
+    if (nodes) afterDict.nodes = nodes;
+    const links = fillTable(beforeDict.links, afterDict.links, linkIds, false);
+    if (links) afterDict.links = links;
+  }
+
+  private decayPuts(mapId: string, targets: ReadonlySet<string>, committedAt: string, seq: number): RecordOp[] {
+    const ops: RecordOp[] = [];
+    for (const target of [...targets].sort(compareStrings)) {
+      const rk = `decay|${target}`;
+      const previous = this.all.get(rk);
+      const prior = previous?.kind === "decay" ? previous : undefined;
+      const advanced = advanceDecay(prior?.v, prior?.t, committedAt, 1);
+      const record: DecayRecord = { kind: "decay", target, mapId, v: advanced.v, t: advanced.t, rev: seq };
+      ops.push({ op: "put", rk, record });
+    }
+    return ops;
+  }
+
+  private rememberDecay(record: DecayRecord): void {
+    let set = this.decayByMap.get(record.mapId);
+    if (!set) {
+      set = new Set();
+      this.decayByMap.set(record.mapId, set);
+    }
+    set.add(recordRk(record));
+  }
+
+  private forgetDecay(record: DecayRecord): void {
+    const set = this.decayByMap.get(record.mapId);
+    if (!set) return;
+    set.delete(recordRk(record));
+    if (set.size === 0) this.decayByMap.delete(record.mapId);
   }
 
   /** An alias may point into another map of the workspace; the map's own records cannot show that. */
@@ -1798,6 +1986,7 @@ export class RecordWorkspaceStore {
         if (this.idIndex.get(id) === op.rk) this.idIndex.delete(id);
       }
       const touchedDef = before?.kind === "extensionDef" || (op.op === "put" && (op.record as SnapshotRecord | undefined)?.kind === "extensionDef");
+      if (before?.kind === "decay") this.forgetDecay(before);
       if (op.op === "delete") {
         if (before?.kind === "node") this.retired.set(before.id, this.retiredBody(before));
         this.all.delete(op.rk);
@@ -1811,6 +2000,7 @@ export class RecordWorkspaceStore {
       if (record.kind === "node" && this.retired.get(record.id) === this.retiredBody(record)) this.retired.delete(record.id);
       this.all.set(op.rk, record);
       if (SHARED_ID_KINDS.has(record.kind)) this.idIndex.set((record as { id: string }).id, op.rk);
+      if (record.kind === "decay") this.rememberDecay(record);
       if (touchedDef) {
         this.extensionDefs.set(op.rk, record);
         this.broadcastExtensionDef(op.rk, record);
