@@ -99,7 +99,7 @@ M3E の製品 Model を書き換える操作を、operation molecule（操作の
 ## 10. relation edge と alias
 
 1. relation edge の向きは正規形で持つ。端点を交換するときは端点ごとの port も交換し、効果と逆に含める。両端を同時に付け替える relink を持つ。
-2. 重複する relation edge の同一性の規則を、全更新経路で共通にする（重複を禁じるかは実装ログで akaghef の判断待ち）。
+2. 【決定】（akaghef、2026-11-22）同一端点・同一 relationType の relation edge の重複は不変条件では禁じない（多重エッジを構造上許容する）。重複抑止は link 操作の便宜に留め、relink や relationType の変更で重複が生じることは不変条件違反としない。
 3. 【決定】参照先が削除された alias は「broken link」の状態として残す。target の ID を保持し、同じ identity が復活（Undo など）したら再解決する。その間に alias の target が別のものへ変わっていたら、古い参照へ戻さない。
 
 ## 11. copy
