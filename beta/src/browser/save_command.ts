@@ -34,7 +34,6 @@ export function commandForChanges(changes: RecordChange[], tabId: string): MapCo
     commandId: unconfirmed.commandId,
     actor: { kind: "human", id: tabId },
     intent: "assert",
-    provenance: { tabId },
     changes,
   };
 }

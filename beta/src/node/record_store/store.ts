@@ -55,6 +55,7 @@ import {
   type PruneResult,
   type TouchedRecord,
 } from "./journal_archive";
+import { normalizeProvenance, type Provenance } from "./provenance";
 import { validationErrorCount } from "./validate";
 import {
   EngineQueue,
@@ -596,6 +597,39 @@ export class RecordWorkspaceStore {
     return String(this.mapSeq.get(mapId) ?? 0);
   }
 
+  /**
+   * The records a reader of map `mapId` is shown for these nodes and relation edges, with their
+   * current `rev` (Database_Spec 6, provenance). Ids are the ones the reader got (the store may hold
+   * a record under another id); a node also brings its details record. Unknown ids are skipped.
+   */
+  shownRecords(mapId: string, ids: { nodes?: readonly string[]; links?: readonly string[] }): Array<{ rk: string; rev: number }> {
+    const entry = this.maps.get(mapId);
+    if (!entry) return [];
+    const aliases = this.aliasesOf(entry);
+    const out: Array<{ rk: string; rev: number }> = [];
+    const add = (rk: string): void => {
+      const record = entry.records.get(rk) as { rev?: unknown } | undefined;
+      if (record && typeof record.rev === "number") out.push({ rk, rev: record.rev });
+    };
+    for (const id of ids.nodes ?? []) {
+      const stored = aliases.in.node.get(id) ?? id;
+      add(`node|${stored}`);
+      add(`details|${stored}`);
+    }
+    for (const id of ids.links ?? []) add(`connection|${aliases.in.graphlink.get(id) ?? id}`);
+    return out;
+  }
+
+  /** Current `rev` of each record key that exists; absent keys are left out. */
+  revsOf(rks: Iterable<string>): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const rk of rks) {
+      const record = this.all.get(rk) as { rev?: unknown } | undefined;
+      if (record && typeof record.rev === "number") out.set(rk, record.rev);
+    }
+    return out;
+  }
+
   /** The current full record set in canonical order. The records are copies. */
   records(): SnapshotRecord[] {
     return sortRecords(jsonClone([this.header(), ...this.all.values()]));
@@ -698,7 +732,13 @@ export class RecordWorkspaceStore {
     } catch {
       return this.failure("INVALID_COMMAND", this.currentOf(entry), "changes cannot be written as JSON.");
     }
-    const meta = { commandId: command.commandId, intent: command.intent, actor: command.actor, provenance: command.provenance };
+    let provenance: Provenance | undefined;
+    try {
+      provenance = normalizeProvenance(command.provenance);
+    } catch (error) {
+      return this.failure("INVALID_COMMAND", this.currentOf(entry), (error as Error).message);
+    }
+    const meta = { commandId: command.commandId, intent: command.intent, actor: command.actor, provenance };
     // The client names records by its own ids; the store may hold some of them under another id.
     const plan = this.planAliases(entry, mapId, idsCreatedBy(changes));
     if (plan === null) return this.commitChanges(mapId, entry, changes, issuer, meta);
@@ -1149,7 +1189,7 @@ export class RecordWorkspaceStore {
     entry: MapEntry | undefined,
     changes: RecordChange[],
     issuer: string,
-    meta: { commandId: string; intent: string; actor?: MapCommand["actor"]; provenance?: unknown },
+    meta: { commandId: string; intent: string; actor?: MapCommand["actor"]; provenance?: Provenance },
     /**
      * `changes` use stored ids. `aliases`: the `idMap` records this commit adds. `sent`: the
      * changes with the ids the client used, kept in the journal in place of `changes`.

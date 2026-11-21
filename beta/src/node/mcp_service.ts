@@ -10,6 +10,8 @@ import { parseIndentedTextToNodes } from "./indented_text_parser";
 import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand, readCommittedCommand, type StoredCommand } from "./map_commit";
 import { diffState } from "../shared/map_changes";
+import { activeRecordStore } from "./record_store/active";
+import { PROVENANCE_LIMIT, type Provenance, type ProvenanceItem } from "./record_store/provenance";
 
 const TOOLS = ["m3e_context", "m3e_get", "m3e_create", "m3e_update", "m3e_delete", "m3e_feedback"];
 const DOCUMENTS = ["glossary", "data-model", "map-manager", "operations"].map((name) => `m3e://docs/${name}`);
@@ -18,6 +20,8 @@ const MAX_EVENTS = 256;
 const MAX_BATCH = 1000;
 const MAX_TEXT = 32_000;
 const CONTEXT_TTL = 8 * 60 * 60 * 1000;
+/** Records a participation remembers having been shown, newest kept (provenance, Database_Spec 6). */
+const READ_SET_LIMIT = 10_000;
 type Args = Record<string, unknown>;
 type Ref = { mapId: string; nodeId: string; kind: "map" | "scope" | "node"; uri: string; name: string; ancestors: string[] };
 type Event = { cursor: number; type: string; message: string; [key: string]: unknown };
@@ -25,6 +29,13 @@ type Context = {
   id: string; dbPath: string; focus: Ref | null; subscriptions: Map<string, Ref>;
   baseline: Map<string, SavedMap>; observed: Map<string, string>; invalidated: boolean;
   events: Event[]; cursor: number; touched: number; listeners: Set<(event: Event) => void>;
+  /**
+   * Read set: the records (rk) this participation was shown, at the rev it saw, oldest first.
+   * Kept only on the record store (M3E_STORE_DIR); SQLite has no record keys.
+   */
+  readSet: Map<string, number>;
+  /** Sequence numbers of this participation's own commits: a record it rewrote is still what it read. */
+  ownSeqs: Set<number>;
 };
 export interface M3eMcpServiceOptions {
   dbPath: () => string;
@@ -232,6 +243,8 @@ export class M3eMcpService {
       const changedFields = [...new Set([...Object.keys(old ?? {}), ...Object.keys(node ?? {})])].filter((key) => JSON.stringify((old as unknown as Args)?.[key]) !== JSON.stringify((node as unknown as Args)?.[key]));
       return { ...publicRef(refFor(mapId, state, id)), change: !old ? "created" : !node ? "deleted" : "updated", changed_fields: changedFields, ...(node ? { text: node.text.slice(0, 2000), node_type: node.nodeType ?? "text", child_count: node.children.length, attributes: Object.fromEntries(Object.entries(node.attributes ?? {}).slice(0, 12).map(([key, value]) => [key.slice(0, 100), value.slice(0, 500)])) } : {}) };
     });
+    // The nodes whose content the event shows (the first 30 that still exist).
+    const shownIds = changedIds.slice(0, 30).filter((id) => doc?.state.nodes[id]);
     const attributesTruncated = changedIds.some((id) => {
       const entries = Object.entries(doc?.state.nodes[id]?.attributes ?? {});
       return entries.length > 12 || entries.some(([key, value]) => key.length > 100 || value.length > 500);
@@ -245,6 +258,7 @@ export class M3eMcpService {
         const ancestor = old.ancestors.find((id) => doc?.state.nodes[id] && (old.kind !== "scope" || id === doc.state.rootId || doc.state.nodes[id]!.nodeType === "folder"));
         context.focus = ancestor && doc ? refFor(mapId, doc.state, ancestor) : null;
         context.invalidated = true; invalidated = true;
+        this.observe(context, mapId, { nodes: shownIds });
         this.emit(context, "focus_invalidated", "The focused boundary disappeared. Re-evaluate and explicitly focus a surviving target before writing.", { map_uri: mapUri(mapId), affected_uri: old.uri, revision: nextRevision, ...delta });
       } else if (doc) context.focus = refFor(mapId, doc.state, old.nodeId, old.kind);
     }
@@ -256,6 +270,7 @@ export class M3eMcpService {
         this.emit(context, "subscription_invalidated", "A subscribed boundary disappeared.", { map_uri: mapUri(mapId), affected_uri: uri, revision: nextRevision });
       } else if (doc) context.subscriptions.set(uri, refFor(mapId, doc.state, ref.nodeId, ref.kind));
     }
+    if (!invalidated && !ownChange) this.observe(context, mapId, { nodes: shownIds });
     if (!invalidated && !ownChange) this.emit(context, "map_changed", "The map changed. Review the change before applying further edits.", { map_uri: mapUri(mapId), revision: nextRevision, ...delta });
   }
   /** Called by the server's real change broadcast, never by a polling timer. */
@@ -280,6 +295,45 @@ export class M3eMcpService {
     if (context.listeners.size >= 8) fail("LISTENER_LIMIT", "This participation already has the maximum number of listeners.");
     context.listeners.add(listener);
     return () => context.listeners.delete(listener);
+  }
+  /** Adds the records shown for these nodes and relation edges to the read set at their current rev. */
+  private observe(context: Context, mapId: string, ids: { nodes?: string[]; links?: string[] }): void {
+    const store = activeRecordStore();
+    if (!store) return;
+    for (const { rk, rev } of store.shownRecords(mapId, ids)) {
+      context.readSet.delete(rk);
+      context.readSet.set(rk, rev);
+    }
+    for (const rk of context.readSet.keys()) {
+      if (context.readSet.size <= READ_SET_LIMIT) break;
+      context.readSet.delete(rk);
+    }
+  }
+  /**
+   * Provenance of the commit about to be made: the declared sources first, then the read set,
+   * newest read first. A record another issuer changed after it was read is left out (what was read
+   * is no longer what is there); one this participation rewrote itself stays at the rev it read.
+   */
+  private provenanceOf(context: Context, declared: Array<{ rk: string; rev: number }>): Provenance {
+    const store = activeRecordStore();
+    if (!store) return { items: [] };
+    const items: ProvenanceItem[] = [];
+    const seen = new Set<string>();
+    let truncated = false;
+    const push = (item: ProvenanceItem): void => {
+      if (seen.has(item.rk)) return;
+      if (items.length === PROVENANCE_LIMIT) { truncated = true; return; }
+      seen.add(item.rk);
+      items.push(item);
+    };
+    for (const { rk, rev } of declared) push({ mode: "declared", rk, rev });
+    const current = store.revsOf(context.readSet.keys());
+    for (const [rk, rev] of [...context.readSet].reverse()) {
+      const now = current.get(rk);
+      if (now === undefined || (now !== rev && !context.ownSeqs.has(now))) continue;
+      push({ mode: "observed", rk, rev });
+    }
+    return truncated ? { items, truncated: true } : { items };
   }
   private summary(context: Context): Args {
     const focus = context.focus;
@@ -320,7 +374,7 @@ export class M3eMcpService {
       const { ref, doc } = this.resolve(args.target);
       for (const [id, old] of this.contexts) if (Date.now() - old.touched > CONTEXT_TTL) this.contexts.delete(id);
       if (this.contexts.size >= MAX_CONTEXTS) fail("CONTEXT_LIMIT", "Too many active participations. Leave unused contexts first.");
-      context = { id: randomUUID(), dbPath: this.options.dbPath(), focus: ref, subscriptions: new Map([[ref.uri, ref]]), baseline: new Map([[ref.mapId, doc]]), observed: new Map([[ref.mapId, revision(doc)]]), invalidated: false, events: [], cursor: 0, touched: Date.now(), listeners: new Set() };
+      context = { id: randomUUID(), dbPath: this.options.dbPath(), focus: ref, subscriptions: new Map([[ref.uri, ref]]), baseline: new Map([[ref.mapId, doc]]), observed: new Map([[ref.mapId, revision(doc)]]), invalidated: false, events: [], cursor: 0, touched: Date.now(), listeners: new Set(), readSet: new Map(), ownSeqs: new Set() };
       this.contexts.set(context.id, context);
     } else {
       if (!context) fail("CONTEXT_REQUIRED", "Enter a map or scope first.");
@@ -392,6 +446,7 @@ export class M3eMcpService {
       return text.length > 24_000 ? { kind: entry.kind, key: entry.key, value_preview: text.slice(0, 24_000), content_truncated: true } : { ...entry, content_truncated: false };
     });
     const payloadResult = bounded(payload, page(args, "payload_offset"), limit);
+    if (context) this.observe(context, ref.mapId, { nodes: ids.slice(offset, offset + result.items.length), links: links.slice(linkOffset, linkOffset + linkResult.items.length).map((link) => link.id) });
     return { ok: true, target: publicRef(ref), revision: revision(doc), nodes: result.items, links: linkResult.items, scope_payload: payloadResult.items, payload_total: payload.length, next_payload_offset: payloadResult.next, total: nodes.length, link_total: links.length, offset, limit, next_offset: result.next, next_link_offset: linkResult.next, ...(context ? { context_id: context.id, requires_refocus: context.invalidated, event_cursor: context.cursor } : {}) };
   }
   private mutate(tool: string, args: Args, context: Context): Args {
@@ -417,6 +472,7 @@ export class M3eMcpService {
     const created: string[] = [];
     const createdLinks: string[] = [];
     let deletedLinks = 0;
+    let declared: Array<{ rk: string; rev: number }> = [];
     const before = Object.keys(current.state.nodes).length;
     let updated = 0;
     const deletedLink = tool === "m3e_delete" ? parseLinkUri(args.target) : null;
@@ -458,6 +514,8 @@ export class M3eMcpService {
           const ids = new Set(descendants(source.doc.state, source.ref.nodeId));
           if ([...ids].some((id) => { const node = source.doc.state.nodes[id]!; return node.nodeType === "alias" && node.targetNodeId && !ids.has(node.targetNodeId); })) fail("CROSS_MAP_ALIAS", "The subtree contains an external alias. Resolve its cross-map meaning before copying.");
         }
+        // The copied subtree is the Command's declared source.
+        declared = activeRecordStore()?.shownRecords(source.ref.mapId, { nodes: descendants(source.doc.state, source.ref.nodeId) }) ?? [];
         created.push(...model.copySubtree(source.doc.state, source.ref.nodeId, target));
       } else if (kind === "import_structure") {
         const graph = object(args.structure);
@@ -541,7 +599,7 @@ export class M3eMcpService {
       commandId: sentCommandId,
       actor: { kind: "ai-agent", id: context.id },
       intent: commandIntent(tool, args),
-      provenance: { contextId: context.id, tool },
+      provenance: this.provenanceOf(context, declared),
       changes,
     }, expected);
     if (!committed.ok) {
@@ -552,6 +610,8 @@ export class M3eMcpService {
       const prior = readCommittedCommand(this.options.dbPath(), mapId, sentCommandId);
       if (prior) return this.replayedMutation(context, mapId, prior);
     }
+    context.ownSeqs.add(committed.seq);
+    if (context.ownSeqs.size > READ_SET_LIMIT) context.ownSeqs.delete(context.ownSeqs.values().next().value!);
     const result = saved(this.options.dbPath(), mapId);
     context.baseline.set(mapId, result);
     const changed = { created: created.length + createdLinks.length, updated, deleted: Math.max(0, before - Object.keys(result.state.nodes).length) + deletedLinks };
