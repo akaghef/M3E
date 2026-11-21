@@ -87,13 +87,13 @@ M3E の製品 Model を書き換える操作を、operation molecule（操作の
 【決定】同じ node を root とする複数の scope は、同じ node から出る意味の違う展開の方向（たとえば detail の方向の木と、task だけの所属の整理）である。
 
 1. scope ごとの parent edge の集合は互いに素。root は共有してよい。
-2. scope をまたぐ reparent は、対象の node に入る parent edge と、同じ scope の中で続く子孫側の parent edge の閉包を一緒に移す。別の方向の scope の parent edge には触れない。Undo は実際の所属変更を復元する。
+2. 【保留】scope をまたぐ移動は当面実装せず、確定する側で未対応として拒否する（[同期の要件](sync-requirements.md) R2.4、[DB 仕様書](../../../docs/03_Spec/Database_Spec.md) 5.2 節規則 8 の【決定】）。将来実装するときの意味論は、対象の node に入る parent edge と、同じ scope の中で続く子孫側の parent edge の閉包を一緒に移し、別の方向の scope の parent edge には触れず、Undo は実際の所属変更を復元するものとする。
 3. scopen / unscopen は主選択の 1 node だけを対象にする。複数の対象を列挙した依頼は拒否する。【決定】
 4. scopen は、選んだ直接の枝の閉包を新しい scope に移す。任意の部分集合は指定できない。
 5. unscopen は対象の scope を scopeId で指定し、戻し先を明示する。
 6. 【仮決め】unscopen で、処分の方針が決まっていない所有データ（linear-text・注釈・既定でない Surface View の設定）があれば拒否する。明示した移管・削除だけを同じ Command に含める。同じ root の別の scope へ自動で合流させない。
 7. 【仮決め】scope の移動だけでは relationType を変えず、推論もしない。
-8. 同じ実体を二つの方向に置くときは alias を使う。alias は子を持てないので、子孫を共有して両方向に展開することはできない（追加要件）。
+8. 同じ実体を二つの方向に置くときは alias を使う。alias は子を持てるが、その子はその alias が載る面での子であり、参照先の実体が正本の面で持つ子とは別の集まりである（[DB 仕様書](../../../docs/03_Spec/Database_Spec.md) 4 節不変条件 3・12.2 節の【決定】）。したがって、alias は子孫を共有して両方向に展開する仕組みではない。
 9. 受入要件: scopen / unscopen の結果は viewer の有無に依存しない。
 
 ## 10. relation edge と alias

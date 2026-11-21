@@ -85,7 +85,7 @@
 - 対象: DB 仕様書 3.2 節、4 節の不変条件 3、12.2 節。`beta/src/shared/record_model/invariants.ts:108-111`、`beta/src/node/rapid_mvp.ts:425`、`beta/src/node/mcp_service.ts:434`・`524`、`beta/src/node/flash_jobs.ts:121`
 - 中身: akaghef が 2026-11-21 に「alias は子を持たない」を廃止した。面をまたいで同じ実体をつなぐために、正本の面に実体を置き、他の面には alias を置いて、その下に子を並べる（例: 組織図の人を正本にし、タスクの割り当ての面に alias を置く）。DB 仕様書、record-schema、post-migration-spec、Glossary は改めた。実装は、上の 4 か所で alias の子を拒否している。次の文書は、今の実装の説明か、他の session の文書なので、まだ「持てない」と書いている: `docs/03_Spec/Data_Model.md` 87 行目、`docs/protocols/map-write-protocol.md` 27 行目、`operation-algebra-requirements.md` 96 行目（alias が子を持てないことを前提に、子孫の共有を論じている）、`draft-record-model.md` 172 行目。
 - 根拠: `git grep` で「子を持たない」「cannot own children」を探して読んだ。
-- 扱い: 仕様へ反映（DB 仕様書 3.2・4・12.2 節）。実装は未対応。viewer が alias の子をどう描くか、alias を畳んだときの表示、MCP の応答の形は決まっていない
+- 扱い: 仕様へ反映（DB 仕様書 3.2・4・12.2 節、2026-11-22 に `operation-algebra-requirements.md` 96 行目も整合）。残る文書（現行実装の説明である `Data_Model.md`・`map-write-protocol.md` と草案 `draft-record-model.md`）および実装（上記 4 か所）は未対応。viewer が alias の子をどう描くか、alias を畳んだときの表示、MCP の応答の形は決まっていない
 
 ### 2026-11-21 射影・書き戻し・エンジンの分担を、DB 仕様書 12 節に【提案】として書いた
 
@@ -181,7 +181,7 @@
 - 対象: DB 仕様書 4 節の 6 番
 - 中身: node a を scope S から別の scope T の node の下へ移し、a の子への parent edge が S のままだと、不変条件 6 を破る（a は S の root ではなく、a に入る parent edge の scope は T）。付け替えの Command は、同じ面に載る子孫側の parent edge の scope も、次の scope の境界まで T へ書き換えて含める必要がある。この書き換えを出す側が作るのか、確定する側が補うのかが決まっていない。scopen・unscopen の逆も、実際に書き換えた parent edge の集合と元の scope を持つ必要がある。
 - 根拠: 仕様書 4 節の 6 番の文から導いた。実装の挙動（拒否になるか）は未確認。
-- 扱い: 未対応
+- 扱い: 仕様へ反映（同期の要件 R2.4・DB 仕様書 5.2 節規則 8 の「scope をまたぐ移動は当面未対応・拒否」に合わせて、2026-11-22 に操作の代数の要件 9 節へ【保留】を明記）。実装の確定前拒否ガードおよび将来実装時の生成責任は未対応
 
 ### 2026-11-19 journal の 1 行が、送られた変更と変更後のレコードの両方を持っている
 
