@@ -190,10 +190,10 @@ map を記述・設計する4区分。独立した保存層や固定の処理順
 
 | 正規語 | 意味 | 関連語 | 備考 |
 |---|---|---|---|
-| **Flash** | 断片・素材の領域。マルチモーダル（テキスト/画像/音声/貼付）、日常との連結、突発・散発的アイデア。構造化前 | 昇格, Rapid | inbox は Flash 内の受け皿名 |
+| **Flash** | 取り込みの入口。マルチモーダルの素材（テキスト/画像/音声/貼付）から Rapid を生成する（Mapify に当たる） | 昇格, Rapid | Flash のまま保存される段階は持たない。生成物は Rapid になる |
 | **Rapid** | **文書 1 つ単位**の領域。syntax tree（親子・章立て・節、説明順序あり、線形化可能） | syntax tree, Flash, Deep | 現在の実装中心。Freeplane mindmap / LaTeX 章立て的 |
 | **Deep** | **文書群・知識体系**の領域。semantic graph（多種エッジ、説明順序と独立、同ノードが複数経路に現れる） | semantic graph, 世界モデル, 射影 | nLab / Wikidata / mathlib4 dep 網的 |
-| **昇格 (promote)** | 帯域を Deep の向きへ一段進める操作。Flash → Rapid と Rapid → Deep の二つがある | Flash, Rapid, Deep, 体系化, 射影 | Deep に近いほど昇格した状態。Rapid → Deep の昇格を体系化と呼ぶ。逆向き（Deep → Rapid）は射影で、昇格を戻す操作ではない |
+| **昇格 (promote)** | 帯域を Deep の向きへ一段進める操作。Flash → Rapid（取り込み）と Rapid → Deep（体系化）の二つがある | Flash, Rapid, Deep, 体系化, 射影 | Deep に近いほど昇格した状態。Rapid → Deep の昇格を体系化と呼ぶ。逆向き（Deep → Rapid）は射影で、昇格を戻す操作ではない |
 | **体系化** | **Rapid → Deep** への昇格。複数文書を束ねて概念網に編み上げる | Rapid, Deep, 昇格, 射影 | 射影の逆方向 |
 | **射影 (projection)** | **Deep → Rapid** への変換操作。体系から特定目的の説明順序を持つ 1 文書を切り出す | Deep, Rapid, 世界モデル, 体系化, materialization | 同じ Deep から科研費/学振/JST 等を別々に射影。世界モデル=資産、射影出力=使い捨て。storage / index の derived read model は `materialization` と呼ぶ。`memory/project_projection_vision.md` 参照 |
 | **syntax tree** | 親子・線形化可能・説明順序ありの木構造。Rapid の内部構造 | Rapid, semantic graph | 本文・章立て・Freeplane mindmap 的 |
