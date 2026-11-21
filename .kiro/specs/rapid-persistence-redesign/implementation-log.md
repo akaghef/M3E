@@ -56,7 +56,7 @@
 - 対象: DB 仕様書 12.6・12.8 節。operation-algebra-requirements 11 節、`docs/04_Architecture/Multi_Select.md`
 - 中身: akaghef が 2026-11-21 に、正本の面と alias の読みの上では、実体をコピーすることの意味も分かれる、と述べた。案は、コピーを種類の列挙ではなく軸の組み合わせで定義することである。Command が選ぶ軸は、同一性（出現を増やすか、実体を複製するか）、範囲（node 一つ、部分木、scope）、置き先、時間の四つ。範囲の中の alias は alias のまま写す、外を指す参照は共有する、範囲の中の scope は中まで写す、の三つは固定とした（operation-algebra-requirements 11 節の仮決めと同じ）。同一性と範囲の組み合わせで、alias の作成・部分木の射影・射影と、shallow copy・deep copy・scope copy が、一つの表に並ぶ。射影は、出現を増やす操作を範囲に広げたものと読める。出現を増やす操作は、workspace をまたげない。元になった会話は `docs/research/m3e_data_structure_conversations/raw_conversations/261121_コピーの体系整理.md` にある（主の checkout、git には入れていない）。
 - 根拠: operation-algebra-requirements 11 節と、DB 仕様書 12.2〜12.4 節を読んだ。実装の copy と貼り付けの経路は、この件では読んでいない。
-- 扱い: akaghef の判断待ち。決めること: 別の面への貼り付けをどちらの操作に割り当てるか、範囲の中の alias を引き継ぐままでよいか、面の一部だけを射影したときの書き戻しの基準をどこに持つか。Multi_Select.md の貼り付け規則は、この案とも operation-algebra-requirements 11 節とも食い違っている
+- 扱い: 一部が決まった（akaghef、2026-11-22。仕様へ反映、DB 仕様書 12.8 節「操作の入口」）。決まったこと: コピーの意味は copy する時点で入口を分けて選ぶ、選択肢はすべて Command の引数に持たせて人の入口は絞り細かい選択は AI agent が出す、書き戻しの対象は射影で作った新しい面だけ、時点の写しは今は定義しない。akaghef の判断待ち: 範囲の中の alias を写すときの省いたときの値、貼り付けの規則を書いた文書をどちらに合わせるか。Multi_Select.md の貼り付け規則は、この案とも operation-algebra-requirements 11 節とも食い違っている
 ### 2026-11-22 journal の provenance を決めた形にし、observed を MCP の読み取り集合から作った。6 件の選択は akaghef が決めた
 
 - 種類: 気づき
