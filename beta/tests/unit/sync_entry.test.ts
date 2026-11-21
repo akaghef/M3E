@@ -300,7 +300,9 @@ describe("sync HTTP, issuer, and outbox", () => {
     expect(systemPush.body.results[0].status).toBe("committed");
     const systemLines = await call("GET", `/api/sync/pull?after=${systemPush.body.results[0].seq - 1}`);
     const systemLine = systemLines.body.lines.find((line: { commandId?: string }) => line.commandId === "cmd-system");
-    expect(systemLine.issuer).toBe(accountForConnection({ kind: "system" }).accountId);
+    // A request cannot claim the server-internal system account through a header.
+    expect(systemLine.issuer).toBe(accountForConnection({ kind: "viewer" }).accountId);
+    expect(systemLine.issuer).not.toBe(accountForConnection({ kind: "system" }).accountId);
     expect(systemLine.issuer).not.toBe("not-the-system");
     expect(systemLine.issuer).not.toBe("system:not-the-system");
 

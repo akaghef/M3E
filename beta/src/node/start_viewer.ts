@@ -15,7 +15,7 @@ import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand } from "./map_commit";
 import { activeRecordStore, closeActiveRecordStoreOnSignal } from "./record_store/active";
 import { handleRecordSyncHttp } from "./sync/http";
-import { accountForConnection, noteAccount } from "./sync/issuer";
+import { accountForConnection } from "./sync/issuer";
 import { enforceMinSeq } from "./sync/min_seq";
 import type { MapCommand } from "../shared/map_changes";
 import { extractScopeView, ScopeViewError, SCOPE_VIEW_HEADER, type ScopeViewInfo } from "../shared/scope_view";
@@ -2581,8 +2581,6 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
     saveAcquired = true;
     const command = JSON.parse(rawBody) as MapCommand;
     const viewer = accountForConnection({ kind: "viewer" });
-    const store = activeRecordStore();
-    if (store) noteAccount(() => store.records(), viewer);
     const result = commitMapCommand(currentSqliteDbPath(), mapId, command, undefined, viewer.accountId);
     if (!result.ok) {
       if (result.code === "NOT_FOUND") {

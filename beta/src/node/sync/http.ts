@@ -9,7 +9,8 @@
  * `scope` is accepted. Disclosure rights are not modelled, so the answer is the
  * whole workspace. The issuer is taken from the connection headers, never from
  * the Command:
- *   x-m3e-connection: mcp | viewer | system   (default viewer)
+ *   x-m3e-connection: mcp | viewer   (default viewer)
+ * The system account is server-internal; a request cannot name it.
  *   x-m3e-actor-instance: <Actor Instance id>  (mcp only)
  */
 import type http from "http";
@@ -26,7 +27,6 @@ function header(req: http.IncomingMessage, name: string): string {
 
 export function connectionFromRequest(req: http.IncomingMessage): ConnectionIdentity {
   const kind = header(req, "x-m3e-connection");
-  if (kind === "system") return { kind: "system" };
   if (kind === "mcp") return { kind: "mcp", instanceId: header(req, "x-m3e-actor-instance") || "anonymous" };
   return { kind: "viewer" };
 }

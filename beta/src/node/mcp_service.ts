@@ -14,7 +14,7 @@ import { activeRecordStore } from "./record_store/active";
 import type { NodeChoice } from "./record_store/bands";
 import { applyDelete, type DeleteOperation } from "./record_store/operations";
 import { PROVENANCE_LIMIT, type Provenance, type ProvenanceItem } from "./record_store/provenance";
-import { accountForConnection, noteAccount } from "./sync/issuer";
+import { accountForConnection } from "./sync/issuer";
 import { MIN_SEQ_TIMEOUT_CODE, minSeqTimeoutMs, waitForAppliedSeq } from "./sync/min_seq";
 
 const TOOLS = ["m3e_context", "m3e_get", "m3e_create", "m3e_update", "m3e_delete", "m3e_feedback"];
@@ -768,8 +768,6 @@ export class M3eMcpService {
   /** The account id for this participation. The Command's actor is not the issuer. */
   private issuerAccount(context: Context): string {
     const choice = accountForConnection({ kind: "mcp", instanceId: context.id });
-    const store = activeRecordStore();
-    if (store) noteAccount(() => store.records(), choice);
     return choice.accountId;
   }
   private wholeNumber(value: unknown, label: string): number | undefined {

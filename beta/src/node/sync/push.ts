@@ -15,7 +15,7 @@ import path from "path";
 import type { MapCommand } from "../../shared/map_changes";
 import type { RecordWorkspaceStore } from "../record_store/store";
 import { fsyncDir } from "../record_store/journal_archive";
-import { accountForConnection, noteAccount, type ConnectionIdentity } from "./issuer";
+import { accountForConnection, type ConnectionIdentity } from "./issuer";
 
 export type PushStatus = "committed" | "rejected" | "duplicate";
 
@@ -167,8 +167,7 @@ export function pushCommands(store: RecordWorkspaceStore, storeDir: string, comm
   return { results };
 }
 
-export function issuerForConnection(connection: ConnectionIdentity, store: RecordWorkspaceStore): string {
+export function issuerForConnection(connection: ConnectionIdentity, _store?: RecordWorkspaceStore): string {
   const choice = accountForConnection(connection);
-  noteAccount(() => store.records(), choice);
   return choice.accountId;
 }
