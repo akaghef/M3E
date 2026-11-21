@@ -82,7 +82,7 @@ workspace > map > scope > node
 | `node` | `id` | `mapId`、`nodeType`、`text`（ラベル）、`collapsed`、`attributes`、`alias`、`extra`、`rev` |
 | `details` | `nodeId` | `mapId`、`v`（形の版）、`body`（Markdown の本文）、`note`、`link`、`rev` |
 | `connection`（edge） | `id` | `mapId`、`type`、`source`、`target`、`label`、`rev`。種類ごとの欄は 3.4 |
-| `scope` | `id` | `mapId`、`rootNodeId`、`label`、`primarySurfaceId`、`rev` |
+| `scope` | `id` | `mapId`、`rootNodeId`、`label`、`primarySurfaceId`、`projection`（射影で作った面だけが持つ。12.3）、`rev` |
 | `linearText` | `scopeId`（または `mapId` ＋ `orphanKey`） | `text`、`anchorNodeId`、`rev` |
 | `surface` | `id` | `mapId`、`scopeId`、`surfaceKind`、`layout`、`surfaceView`、`rev` |
 | `nodeView` | `surfaceId` ＋ `nodeId` | `x`、`y`、`flowCol`、`flowRow`、`shape` |
