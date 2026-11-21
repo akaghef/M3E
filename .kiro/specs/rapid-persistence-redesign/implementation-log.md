@@ -83,6 +83,58 @@
 - 対象: DB 仕様書 10.2、`beta/src/shared/record_model/extensions.ts`（`extensionValueErrors`）
 - 中身: 10.2 は、ref の指す node が存在するとき、その node が同じ extension を持つことを確定時に検査する、と書く。ref の文字列が `name@version` なのか `prefix:class:name` なのかは書いていない。実装は、`name@version` ならその版だけを、`prefix:class:name` ならどの版でも、extensions に含まれるかを見る。どちらでもない文字列（既存の `ref: "node"` を含む）は保存し、照合しない。参照先の node が無いときは broken として保存を許す。
 - 根拠: DB 仕様書 10.2 を読んだ。`record_store_decay.test.ts` が、存在するが extension を持たない node の拒否と、無い node の保存を見ている。
+### 2026-11-22 account record を Command で作れない
+
+- 種類: 問題
+- 書いた agent: format 2 の同期入口の session
+- 対象: DB 仕様書 5.1、format2-requirements.md 3 節、`beta/src/node/sync/issuer.ts`
+- 中身: 接続から選んだ account id を journal の issuer に書く。account record 自体は作らない。store は map の差分しか Command で書けず、account record を置く API が無い。初めて見た接続でも account record は増えない。
+- 根拠: `RecordWorkspaceStore.commitMapCommand` と `applyLine` を読んだ。account を書く公開 API は無い。
+- 扱い: 未対応
+
+### 2026-11-22 pull と clone は scope の開示で絞らない
+
+- 種類: 問題
+- 書いた agent: format 2 の同期入口の session
+- 対象: format2-requirements.md R10.14、`beta/src/node/sync/journal_read.ts`、`beta/src/node/sync/http.ts`
+- 中身: `GET /api/sync/pull` は `scope` を受け取る。`GET /api/sync/clone` も同じである。開示の権利は store に無いので、どちらも workspace の journal 全体と portable snapshot 全体を返す。
+- 根拠: `pullSince` は `scope` を読まない。clone は `store.records()` をそのまま返す。
+- 扱い: 未対応
+
+### 2026-11-22 古い base の移動は LWW にならない
+
+- 種類: 問題
+- 書いた agent: format 2 の同期入口の session
+- 対象: DB 仕様書 14 節、`beta/src/node/sync/push.ts`
+- 中身: push は `baseSeq` を受け取る。store の適用は field の CAS のままである。古い base の移動を LWW で受け入れる経路は無い。`baseSeq` は結果に使わない。
+- 根拠: `pushCommands` は `baseSeq` を `commitMapCommand` に渡さない。store の Command 適用は `before` の一致を見る。
+- 扱い: 未対応
+
+### 2026-11-22 commandId の冪等は map 単位で、拒否の記憶は store の backup に入らない
+
+- 種類: 問題
+- 書いた agent: format 2 の同期入口の session
+- 対象: format2-requirements.md R3.17、DB 仕様書 5.3、`beta/src/node/sync/push.ts`、`beta/src/node/record_store/store.ts` の `commitMapCommand`
+- 中身: 成功した Command の再送は store が `(mapId, commandId)` で最初の結果を返す。workspace 全体の commandId ではない。拒否は store が覚えないので、同期入口が `sync-rejections.jsonl` に書く。この file は store の backup に含まれない。
+- 根拠: `commandKey` は mapId と commandId である。`backupTo` は snapshot、journal、commit index を写し、`sync-rejections.jsonl` を写さない。
+- 扱い: 未対応
+
+### 2026-11-22 SQLite には minSeq が待つ applied seq が無い
+
+- 種類: 問題
+- 書いた agent: format 2 の同期入口の session
+- 対象: DB 仕様書 14 節、`beta/src/node/sync/min_seq.ts`
+- 中身: record store が開いていないとき、minSeq が 0 より大きい read は `ENGINE_BEHIND` を返す。SQLite の command_log には workspace の applied seq が無い。0 は待たない。
+- 根拠: `enforceMinSeq` は `activeRecordStore()` が null で minSeq が 0 より大きいとき 503 を返す。
+- 扱い: 未対応
+
+### 2026-11-22 マップ全体の保存の issuer は接続の account ではない
+
+- 種類: 問題
+- 書いた agent: format 2 の同期入口の session
+- 対象: DB 仕様書 5.1、`beta/src/node/record_store/legacy_api.ts` の `SERVER_ISSUER`、`beta/src/node/start_viewer.ts` の map Command 経路、`beta/src/node/mcp_service.ts`
+- 中身: MCP の参加、viewer の Command、`/api/sync/push` は接続から選んだ account id を issuer にする。map 全体の保存は `legacy_api` の `system:server` のままである。この file は今回の範囲外である。
+- 根拠: `SERVER_ISSUER` は `"system:server"` である。`saveWholeMap` の呼び出しは `legacy_api` に残っている。
 - 扱い: 未対応
 
 ### 2026-11-22 scope ごとの履歴は、共有の journal を切らない

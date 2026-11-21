@@ -14,6 +14,9 @@ import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand } from "./map_commit";
 import { activeRecordStore, closeActiveRecordStoreOnSignal } from "./record_store/active";
+import { handleRecordSyncHttp } from "./sync/http";
+import { accountForConnection, noteAccount } from "./sync/issuer";
+import { enforceMinSeq } from "./sync/min_seq";
 import type { MapCommand } from "../shared/map_changes";
 import { extractScopeView, ScopeViewError, SCOPE_VIEW_HEADER, type ScopeViewInfo } from "../shared/scope_view";
 import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
@@ -245,7 +248,7 @@ async function handleMcpApi(req: http.IncomingMessage, res: http.ServerResponse)
         sendJson(res, 400, { ok: false, error: { code: "INVALID_REQUEST", message: "Provide name and arguments." } });
         return true;
       }
-      const result = mcpService.call(body.name, body.arguments);
+      const result = await mcpService.callAsync(body.name, body.arguments);
       sendJson(res, result.ok ? 200 : 400, result);
       return true;
     }
@@ -2577,7 +2580,10 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
     activeMapSaves.add(mapId);
     saveAcquired = true;
     const command = JSON.parse(rawBody) as MapCommand;
-    const result = commitMapCommand(currentSqliteDbPath(), mapId, command);
+    const viewer = accountForConnection({ kind: "viewer" });
+    const store = activeRecordStore();
+    if (store) noteAccount(() => store.records(), viewer);
+    const result = commitMapCommand(currentSqliteDbPath(), mapId, command, undefined, viewer.accountId);
     if (!result.ok) {
       if (result.code === "NOT_FOUND") {
         sendJson(res, 404, { error: "Map not found." });
@@ -2635,6 +2641,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
   const depthParam = url.searchParams.get("depth");
 
   if (req.method === "GET") {
+    const waited = await enforceMinSeq(url.searchParams.get("minSeq"));
+    if (!waited.ok) {
+      sendJson(res, waited.status, waited.body);
+      return true;
+    }
     try {
       if (scopeParam && scopeParam.trim().length > 0 && url.searchParams.get("view") === "scope") {
         sendScopeView(res, mapId, scopeParam.trim());
@@ -4324,6 +4335,7 @@ export function createAppServer(): http.Server {
       return;
     }
     if (await handleMcpApi(req, res)) return;
+    if (await handleRecordSyncHttp(req, res)) return;
     if (orreryApi.handle(req, res)) return;
     if (await handleOpenLocalPathApi(req, res)) {
       return;

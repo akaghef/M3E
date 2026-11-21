@@ -14,6 +14,8 @@ import { activeRecordStore } from "./record_store/active";
 import type { NodeChoice } from "./record_store/bands";
 import { applyDelete, type DeleteOperation } from "./record_store/operations";
 import { PROVENANCE_LIMIT, type Provenance, type ProvenanceItem } from "./record_store/provenance";
+import { accountForConnection, noteAccount } from "./sync/issuer";
+import { MIN_SEQ_TIMEOUT_CODE, minSeqTimeoutMs, waitForAppliedSeq } from "./sync/min_seq";
 
 const TOOLS = ["m3e_context", "m3e_get", "m3e_create", "m3e_update", "m3e_delete", "m3e_feedback"];
 const DOCUMENTS = ["glossary", "data-model", "map-manager", "operations"].map((name) => `m3e://docs/${name}`);
@@ -364,6 +366,31 @@ export class M3eMcpService {
     if ((err as Error)?.message === "REVISION_CONFLICT") return { ok: false, error: { code: "REVISION_CONFLICT", message: "The saved map changed before commit. Refresh the context before retrying." } };
     return { ok: false, error: { code: "INVALID_OPERATION", message: "The Core rejected this operation. No partial batch was saved." } };
   }
+  /**
+   * `m3e_get` may name `minSeq`. The read waits until the journal and, when an engine is
+   * attached, the engine have applied it. `call` stays synchronous and does not wait.
+   */
+  async callAsync(tool: string, input: unknown): Promise<any> {
+    if (tool === "m3e_get" && input !== null && typeof input === "object") {
+      const minSeq = (input as Args).minSeq;
+      if (minSeq !== undefined) {
+        if (typeof minSeq !== "number" || !Number.isInteger(minSeq) || minSeq < 0) {
+          return { ok: false, error: { code: "INVALID_ARGUMENT", message: "minSeq must be a non-negative integer." } };
+        }
+        if (minSeq > 0) {
+          const store = activeRecordStore();
+          if (!store) {
+            return { ok: false, error: { code: MIN_SEQ_TIMEOUT_CODE, message: "minSeq waits on the record store, which is not open." } };
+          }
+          const waited = await waitForAppliedSeq(store, minSeq, minSeqTimeoutMs());
+          if (!waited.ok) {
+            return { ok: false, error: { code: MIN_SEQ_TIMEOUT_CODE, message: "Applied sequence has not reached minSeq." } };
+          }
+        }
+      }
+    }
+    return this.call(tool, input);
+  }
   call(tool: string, input: unknown): any {
     let context: Context | undefined;
     try {
@@ -416,7 +443,7 @@ export class M3eMcpService {
     return { ok: true, ...this.summary(context) };
   }
   private get(args: Args, context?: Context): Args {
-    fields(args, ["kind", "target", "context_id", "query", "offset", "limit", "link_offset", "payload_offset"]);
+    fields(args, ["kind", "target", "context_id", "query", "offset", "limit", "link_offset", "payload_offset", "minSeq"]);
     const kind = str(args.kind, "kind", 20);
     const offset = page(args), limit = page(args, "limit", 50, 100);
     if (!limit) fail("INVALID_ARGUMENT", "limit must be positive.");
@@ -650,7 +677,7 @@ export class M3eMcpService {
       intent,
       provenance: this.provenanceOf(context, declared),
       changes,
-    }, expected);
+    }, expected, this.issuerAccount(context));
     if (!committed.ok) {
       if (committed.code === "CONFLICT" || committed.code === "NOT_FOUND") fail("REVISION_CONFLICT", "The map changed since the retained context. Read the relevant state or explicitly refocus before retrying.");
       fail("INVALID_STATE", (committed as { message?: string }).message ?? "The requested operation violates the Core invariants.");
@@ -685,6 +712,7 @@ export class M3eMcpService {
     const name = args.name === undefined ? undefined : str(args.name, "name", 400);
     const confirm = args.confirm === undefined ? undefined : args.confirm === true ? true : args.confirm === false ? false : fail("INVALID_ARGUMENT", "confirm must be true or false.");
     const sent = commandId ?? randomUUID();
+    const issuer = this.issuerAccount(context);
     let seq = 0;
     const done = (result: { ok: boolean; code?: string; message?: string; seq?: number }): void => {
       if (result.ok && typeof result.seq === "number") { seq = result.seq; return; }
@@ -699,29 +727,29 @@ export class M3eMcpService {
       const depth = this.wholeNumber(args.depth, "depth");
       const entities = this.entityIds(args.entities);
       const parentId = args.parent === undefined ? undefined : this.resolve(args.parent).ref.nodeId;
-      done(store.project(mapId, context.id, {
+      done(store.project(mapId, issuer, {
         commandId: sent, mode: args.mode, scopeKey: args.scope_key === undefined ? undefined : scopeKey,
         relationType, root: entities ? undefined : target, entities, depth, parentId,
         label: args.text === undefined ? undefined : str(args.text, "text"),
       }));
     } else if (kind === "write-back") {
-      done(store.writeBack(mapId, context.id, { commandId: sent, scopeKey, reason: reason ?? "", name, nodes: args.nodes === undefined ? undefined : this.nodeChoices(args.nodes) }));
+      done(store.writeBack(mapId, issuer, { commandId: sent, scopeKey, reason: reason ?? "", name, nodes: args.nodes === undefined ? undefined : this.nodeChoices(args.nodes) }));
     } else if (kind === "link-entity") {
       const entity = args.unlink === true ? undefined : this.resolve(args.entity).ref.nodeId;
-      done(store.linkToEntity(mapId, context.id, { commandId: sent, nodeId: target, targetId: entity, unlink: args.unlink === true }));
+      done(store.linkToEntity(mapId, issuer, { commandId: sent, nodeId: target, targetId: entity, unlink: args.unlink === true }));
     } else if (kind === "set-band") {
       const band = args.band === undefined ? undefined : args.band === "rapid" || args.band === "deep" ? args.band : fail("INVALID_ARGUMENT", "band is rapid or deep.");
-      done(store.setBand(mapId, context.id, {
+      done(store.setBand(mapId, issuer, {
         commandId: sent, scopeKey, band, confirm,
         retentionMs: this.wholeNumber(args.retention_ms, "retention_ms"),
         retentionBytes: this.wholeNumber(args.retention_bytes, "retention_bytes"),
       }));
     } else if (kind === "promote") {
-      done(store.promote(mapId, context.id, { commandId: sent, scopeKey, reason, nodes: this.nodeChoices(args.nodes) }));
+      done(store.promote(mapId, issuer, { commandId: sent, scopeKey, reason, nodes: this.nodeChoices(args.nodes) }));
     } else if (kind === "named-snapshot") {
-      done(store.createNamedSnapshot(mapId, context.id, { commandId: sent, scopeKey, name: name ?? "", reason: reason ?? "" }));
+      done(store.createNamedSnapshot(mapId, issuer, { commandId: sent, scopeKey, name: name ?? "", reason: reason ?? "" }));
     } else {
-      done(store.deleteNamedSnapshot(mapId, context.id, { commandId: sent, id: str(args.snapshot_id, "snapshot_id", 200), confirm }));
+      done(store.deleteNamedSnapshot(mapId, issuer, { commandId: sent, id: str(args.snapshot_id, "snapshot_id", 200), confirm }));
     }
     context.ownSeqs.add(seq);
     if (context.ownSeqs.size > READ_SET_LIMIT) context.ownSeqs.delete(context.ownSeqs.values().next().value!);
@@ -736,6 +764,13 @@ export class M3eMcpService {
     } catch {
       return { ok: true, committed: true, context_id: context.id, revision: revision(result), focus: publicRef(context.focus), requires_refocus: context.invalidated, event_cursor: context.cursor, changed, created: [], created_truncated: false, warning: "The map was committed, but downstream notification failed. Read current state if a listener missed it." };
     }
+  }
+  /** The account id for this participation. The Command's actor is not the issuer. */
+  private issuerAccount(context: Context): string {
+    const choice = accountForConnection({ kind: "mcp", instanceId: context.id });
+    const store = activeRecordStore();
+    if (store) noteAccount(() => store.records(), choice);
+    return choice.accountId;
   }
   private wholeNumber(value: unknown, label: string): number | undefined {
     if (value === undefined) return undefined;

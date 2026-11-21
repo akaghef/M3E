@@ -11,7 +11,8 @@ import type { AppState, SavedMap } from "../shared/types";
 import { applyChanges, type FieldConflict, type MapCommand, type RecordChange } from "../shared/map_changes";
 import { RapidMvpModel } from "./rapid_mvp";
 import { activeRecordStore } from "./record_store/active";
-import { storeCommitMapCommand, storeReadCommittedCommand } from "./record_store/legacy_api";
+import { storeCommitMapCommand, storeLoadSavedMap, storeReadCommittedCommand } from "./record_store/legacy_api";
+import type { RecordWorkspaceStore } from "./record_store/store";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -122,6 +123,22 @@ function invalid(code: CommitFailure["code"], current: CommitFailure["current"],
   return { ok: false, code, conflicts, current };
 }
 
+function commitWithIssuer(store: RecordWorkspaceStore, mapId: string, command: MapCommand, expectedRevision: string | undefined, issuer: string): CommitResult {
+  let expected: string | undefined;
+  if (expectedRevision !== undefined && store.hasMap(mapId)) {
+    expected = RapidMvpModel.savedRevision(storeLoadSavedMap(store, mapId)) === expectedRevision ? store.revisionOf(mapId) : "stale";
+  }
+  const result = store.commitMapCommand(mapId, command, issuer, expected);
+  if (result.ok) return { ok: true, savedAt: result.savedAt, seq: result.seq, replayed: result.replayed };
+  const code: CommitFailure["code"] = result.code === "SAME_ID_DIFFERENT_CONTENT" ? "CONFLICT"
+    : result.code === "ENGINE_BEHIND" ? "ENGINE_BEHIND"
+    : result.code === "NOT_FOUND" ? "NOT_FOUND"
+    : result.code === "CONFLICT" ? "CONFLICT"
+    : result.code === "INVALID_STATE" ? "INVALID_STATE"
+    : "INVALID_COMMAND";
+  return { ok: false, code, conflicts: result.conflicts, current: result.current };
+}
+
 function commandShape(command: MapCommand): string | null {
   if (!command || typeof command !== "object") return "Command must be an object.";
   if (typeof command.commandId !== "string" || !command.commandId.trim()) return "commandId is required.";
@@ -135,10 +152,17 @@ function commandShape(command: MapCommand): string | null {
  * `expectedRevision`, when given, is the whole-map revision the caller read
  * (RapidMvpModel.savedRevision). A different stored revision rejects the Command.
  * The check, the state write and the journal row are one transaction.
+ *
+ * `issuer`, when given, is the account id the server chose from the connection.
+ * It is written on the journal line. The Command's actor is not the issuer.
+ * Without it, the record store still derives an issuer from the actor (legacy).
  */
-export function commitMapCommand(dbPath: string, mapId: string, command: MapCommand, expectedRevision?: string): CommitResult {
+export function commitMapCommand(dbPath: string, mapId: string, command: MapCommand, expectedRevision?: string, issuer?: string): CommitResult {
   const store = activeRecordStore();
-  if (store) return storeCommitMapCommand(store, mapId, command, expectedRevision, RapidMvpModel.savedRevision);
+  if (store) {
+    if (issuer === undefined) return storeCommitMapCommand(store, mapId, command, expectedRevision, RapidMvpModel.savedRevision);
+    return commitWithIssuer(store, mapId, command, expectedRevision, issuer);
+  }
   if (!command || typeof command !== "object" || typeof command.commandId !== "string") {
     return invalid("INVALID_COMMAND", null);
   }
