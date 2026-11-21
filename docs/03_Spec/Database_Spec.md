@@ -312,12 +312,12 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - 正規化した後の比較で、`rev` だけの差分は入れない。計算で求まる値（有効な極性など）だけが変わった子孫も入れない。
   - rk の文字列順に並べ、重複させない。
   - event kind は接頭辞の付いた名前の開いた集合で、最初の値は `m3e:create`、`m3e:delete`、`m3e:content`（`text`・本文）、`m3e:attribute`、`m3e:reparent`（parent edge・scope の付け替え）、`m3e:order`（`ord`）、`m3e:extension`（拡張の付け外し）、`m3e:target`（目標の更新間隔の変更）。読み手は知らない kind を無視する。
-- 【仮決め】`provenance.items` の要素は `{mode: "observed" | "declared", rk, rev}`。上限は 100 件で、超えたら `truncated: true` にする。長く残す来歴は record の側に持つ（下）。
+- 【決定】`provenance.items` の要素は `{mode: "observed" | "declared", rk, rev}`。上限は 100 件で、超えたら `truncated: true` にする。長く残す来歴は record の側に持つ（下）。
 - 【実装済み】`provenance`（`beta/src/node/record_store/provenance.ts`、`beta/src/node/mcp_service.ts`）:
   - store は確定のときに形を検査する。形の合わない item は `INVALID_COMMAND` で断る。同じ rk は最初の 1 件を残す。100 件を超えた分は切り、`truncated: true` を付ける。これまでの値（`{contextId, tool}`、`{tabId}`）は `actor.id` と同じ情報なので、journal に残さない。
-  - 【仮決め】observed: MCP の参加が見せられた record の read set（rk と、読んだ時点の `rev`）。見せられたものは、`m3e_get`（state）が返したページの node（details record を含む）と relation edge、変更の event が本文を見せた node である。参加ごとに 10,000 件まで持つ。確定のときに、読んだ後で他の発行者が書き換えた record と、消えた record は外す。自分で書き換えた record は、読んだ時点の `rev` で残す。
-  - 【仮決め】declared: copy の出所の subtree。出所を明示する引数はまだ無い。
-  - 【仮決め】並び: declared が先、次に observed を新しく読んだ順。SQLite の上では `items` は空になる。
+  - 【決定】observed: MCP の参加が見せられた record の read set（rk と、読んだ時点の `rev`）。見せられたものは、`m3e_get`（state）が返したページの node（details record を含む）と relation edge、変更の event が本文を見せた node である。参加ごとに 10,000 件まで持つ。確定のときに、読んだ後で他の発行者が書き換えた record と、消えた record は外す。自分で書き換えた record は、読んだ時点の `rev` で残す。
+  - 【決定】declared: copy の出所の subtree。出所を明示する引数はまだ無い。
+  - 【決定】並び: declared が先、次に observed を新しく読んだ順。SQLite の上では `items` は空になる。
 - 【仮決め】`changes` と `ops` の二重持ちは、format 2 では解消しない。replay の決定性を確かめる試験ができてから扱う。
 - 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 3 点ある。
   - snapshot の `format` は、まだ 1 である。format 2 への bump は、ほかの format の変更と合わせて base snapshot で行う。
