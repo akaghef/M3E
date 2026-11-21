@@ -63,8 +63,11 @@ workspace > map > scope > node
 - 【決定】（akaghef、2026-11-18。[sync-principles](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md)「remote と local」「データの形」）remote は workspace ごとにちょうど一つあり、確定の全順序はそこで付ける（single-leader）。確定の記録が journal で、workspace ごとに一本である。remote の sequencer が `seq` を振る。
 - local の commit は確定ではない。端末は、未確定の Command を outbox に積む。
 - 【実装済み】journal は workspace ごとに一つである。local outbox は無い。
+- 【決定】local outbox は、端末の永続の記憶に置く。Command は、端末の状態へ当てる前に outbox へ追記する。再読込や再起動の後も、outbox に残った Command を、同じ commandId で送り直す。
+  - outbox の 1 件は `{commandId, baseSeq, command, createdAt}` である。`baseSeq` は、その Command を作った時点で端末が知っていた最後の通し番号。
+  - 送り方は、HTTP の push と pull（ADR 014）。push の結果は commandId ごとの確定の通し番号か、拒否の理由である。確定した Command と、拒否された Command は、outbox から外す。拒否された Command は、端末の状態から戻す。
 - node・edge・scope・Surface View の保存設定・注釈の ID は、map と workspace をまたいで一意である。
-- ID は作った後に変えない。消した ID は再利用しない。ただし Undo による復活の扱いは未決（13 節）。
+- ID は作った後に変えない。消した ID は再利用しない。消した Command の Undo だけが、消した node を同じ ID で戻せる。新しく作る node は、消した ID を使わない。
 - ID に意味を埋め込まない。種別の名前、本文、親の ID を含めない。
 - 保存エンジンが内部で振る ID（Neo4j の内部 ID など）は、外に出さない。
 - 【実装済み】移行で振り直す ID は、決定的に作る。形は「接頭辞 ＋ `sha256("<workspace>|<map>|<種別>|<種>")` の先頭 24 桁」。接頭辞は node が `n_`、edge が `c_`、scope が `s_`、Surface View が `v_`、注釈が `a_`。旧い ID との対応は `idMap` のレコードに残す（snapshot-format 3.1）。
@@ -79,10 +82,10 @@ workspace > map > scope > node
 |---|---|---|
 | `snapshot` | （1 行目） | `format`（schemaVersion）、`workspaceId`、`seq`（この snapshot が含む最後の通し番号） |
 | `map` | `id` | `rootNodeId`、`tags`、`archived`、`pinned`、`source`、linear-text の表示設定、`extra`、`rev` |
-| `node` | `id` | `mapId`、`nodeType`、`text`（ラベル）、`collapsed`、`attributes`、`alias`、`extra`、`rev` |
+| `node` | `id` | `mapId`、`nodeType`、`text`（ラベル）、`collapsed`、`attributes`、`alias`、`valid`（任意。`from`・`to`。12.7）、`extra`、`rev` |
 | `details` | `nodeId` | `mapId`、`v`（形の版）、`body`（Markdown の本文）、`note`、`link`、`rev` |
 | `connection`（edge） | `id` | `mapId`、`type`、`source`、`target`、`label`、`rev`。種類ごとの欄は 3.4 |
-| `scope` | `id` | `mapId`、`rootNodeId`、`label`、`primarySurfaceId`、`projection`（射影で作った面だけが持つ。12.3）、`rev` |
+| `scope` | `id` | `mapId`、`rootNodeId`、`label`、`primarySurfaceId`、`band`（`rapid` / `deep`。12.6）、`projection`（射影で作った面だけが持つ。`mode`・`from`・`range`・`baseSeq`・`dissolved`。12.3）、`retention`（任意。下）、`rev` |
 | `linearText` | `scopeId`（または `mapId` ＋ `orphanKey`） | `text`、`anchorNodeId`、`rev` |
 | `surface` | `id` | `mapId`、`scopeId`、`surfaceKind`、`layout`、`surfaceView`、`rev` |
 | `nodeView` | `surfaceId` ＋ `nodeId` | `x`、`y`、`flowCol`、`flowRow`、`shape` |
@@ -90,6 +93,7 @@ workspace > map > scope > node
 | `relationTypeDef` | `name` | `label`、`description`、`reads`（`source-to-target` / `target-to-source`）、`rev` |
 | `prefix` | `prefix` | `uri`、`rev` |
 | `lock` | `target`（対象の rk） | `rev`。掛けている間だけ在る（3 節） |
+| `namedSnapshot` | `id` | `name`、`seq`、`scopeId`、`reason`、`rev`（12.4） |
 | `grant` | `id` | `scopeId`、`principal`、`capability`、`grantedBy`、`expiresAt`、`rev`（3 節） |
 | `account` | `id` | `accountKind`（`ai-agent` / `human` / `system`）、`displayName`、`externalIds`、`roles`、`rev` |
 | `commit` | `seq` | `committedAt`、`issuer`（アカウントの ID）、`sessionId` |
@@ -328,12 +332,14 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - `commit-index.json` に、map ごとの最後の確定、確定済みの Command の ID（直近 100,000 件）、新しい snapshot の `{seq, sha256}`（`snapshot` の欄）を書く。
   - 圧縮した後、Neo4j の追いつきと、確定済みの Command の行の読み出し（`committedCommand`）は archive を読む。再送の判定は、archive ではなく `commit-index.json` の Command の ID と hash（直近 100,000 件）で行う。
 - 【実装済み】契機: snapshot より後の journal が 50,000 行に達したとき（環境変数 `M3E_COMPACT_AFTER_LINES`、0 で止める）。確定の直後と、開いたときに判定する。圧縮と retention の失敗は確定を失敗にしない。
-- 【決定】（freeze v1、akaghef、2026-11-19）schemaVersion を上げるたびに、移行した直後の snapshot を base snapshot として書く。replay を保証するのは、最新の base snapshot から後だけである。それより前の journal を新しい format へ書き換える upcasting はしない。compaction の契機は replay の長さで決める（値は未決、12 節）。
+- 【決定】（freeze v1、akaghef、2026-11-19）schemaVersion を上げるたびに、移行した直後の snapshot を base snapshot として書く。replay を保証するのは、最新の base snapshot から後だけである。それより前の journal を新しい format へ書き換える upcasting はしない。compaction の契機は replay の長さで決める。値は、snapshot より後の journal が 50,000 行に達したとき（上の【実装済み】の値）である。
 - 【決定】（akaghef、2026-11-19）【実装済み】archive の segment は、archive へ移してから 90 日で削除する（retention の操作。圧縮のあとと、開いたときに走る）。削除できるのは、次の二つを満たす segment だけである。
   - その範囲を覆う base snapshot か snapshot が fsync 済みで、checksum を検証済みである。
   - archive へ移してから 90 日を過ぎている。
   - 検証に失敗したら、消さずに止める。
+  - `archive/index.json` で削減の対象から外す印の付いた file（名前付きの snapshot。12.4）は、消さない。
 - PITR の窓は、最新の snapshot と 90 日分の archive である。
+- 【決定】scope の `retention`（`{ms?, bytes?}`）は、その scope の journal の保持の上限である。欄が無いときの `ms` の既定値は 30 日（2,592,000,000）。archive の segment の 90 日とは別の値である。
 - 書かれる頻度は、journal から作り直せない。そのため、減衰する量の累積は snapshot に状態として持つ（9 節）。envelope-stable な欄（`seq`・`committedAt`・`issuer`・確定ごとに触れたレコードと event kind）は、90 日の窓の中での集計に使う。
 - copy の来歴と provenance は、journal ではなく record の側（attribute か専用の欄）に持つ。compaction と削除で失われないようにするためである。
 - 複製は、三つのファイルを一度に写す。確定と圧縮は同期処理なので、複製の途中に確定が入らない。
@@ -472,7 +478,7 @@ task や極性のような意味を、保存の形を作り直さずに足すた
 
 ### 10.5 最初の拡張
 
-- `m3e:nodeType:task`: 状態（`open`・`in_progress`・`blocked`・`done`・`dropped`）、担当（アカウントか agent の node）、期限、優先度、完了条件。待ち合わせは relationType `m3e:blocks` の relation edge で表す。
+- `m3e:nodeType:task`: 欄は `status`（enum: `open`・`in_progress`・`blocked`・`done`・`dropped`、required、default `open`）、`assignee`（`list<nodeRef>`。人か agent の node を指す。アカウントは、その node から引く）、`due`（time）、`priority`（int。小さいほど高い）、`doneCondition`（string）。待ち合わせは relationType `m3e:blocks` の relation edge で表す。
 - `m3e:parentEdge:polarity`: 欄 `value` に `preserve`（既定）か `invert`（key は `m3e:parentEdge:polarity/value`）。node の有効な極性はキャッシュ（9 節）。alias の有効な極性は、alias が置かれた位置の経路で決める案を推す。
 
 ### 10.6 描画の宣言
@@ -861,26 +867,18 @@ JA1 と JA2 の組み合わせが、操作の集まりになる。
 
 ## 13. 未決
 
-保存の形に入るもの:
+- 面の中を扱う木のエンジンを置くか（12.5）。計測してから決める。
+- facet と 12.1 の「一つの側面」の語の組（12.6 の KB5）。Glossary の側で決める。
 
-- scope の `retention.ms` の既定値（sync-principles の Rapid の目安は 30 日。archive の segment の 90 日とは別の値）
-- 面の中を扱う木のエンジンを置くか（12.5）。計測してから決める
+## 14. 決めた値と規則
 
-- task の欄の正確な組と、担当の参照先
-- 計算で求まる値の定義の名前の分類
-- 接頭辞 `m3e:` と `misc:` が指す URI（Turtle へ書き出すときに要る）
-- `note`・`link` を details に持つこと、`extra`、HTML を載せる種別などの担当の決め打ち（record-schema DA39〜DA53）の承認
-- compaction の契機にする replay の長さの値
-
-実装と運用に関わるもの:
-
-- Undo による ID の復活と「消した ID は再利用しない」の衝突
-- 確定済み・未反映の間に、読み込みと再送へ何を返すか
-- 未確定の Command を、再読込や再起動の後まで保つ方法
-- map の最終更新の出し方（確定の表は map を持たない）
-- 大きな取り込み（100 万 node）を、見えない状態で分割して作る方法
-- local outbox の形と、remote への送り方
-- 欄ごとの CAS（5.2 規則 3）と、move の LWW（規則 9）の適用範囲の境界。outbox から届いた、基準が古い move をどちらで扱うか
+- 計算で求まる値の定義の名前は、`m3e:derived:<名前>` とする。計算で求まる値は、レコードに保存しない（9 節）。
+- 接頭辞 `m3e:` は `urn:m3e:`、`misc:` は `urn:m3e:misc:` を指す。Turtle へ書き出すときに使う。
+- record-schema の担当の決め打ち（`note`・`link` を details に持つこと、`extra`、HTML を載せる種別など）は、record-schema に書いたとおりとする。
+- 確定済みで、端末の状態へまだ反映していない間: push の結果は確定の通し番号を返す。読み込みは `minSeq` を受け、remote がその通し番号まで反映してから返す。再送には、確定済みの結果（5.3）を返す。
+- map の最終更新は、確定ごとに触れたレコード（`touched`）の `mapId` から、キャッシュとして求める。レコードには持たない。
+- 大きな取り込み（100 万 node）は、どの scope からもたどれない部分木として、複数の Command に分けて確定する。最後の Command が、その部分木の root を親へつなぐ。つなぐまでは、読み込みに現れない。
+- 位置（move と `ord`）は LWW（5.2 規則 9）、それ以外の欄は CAS（5.2 規則 3）で判定する。outbox から届いた、基準が古い move は LWW で受ける。ロックの判定（3 節）は、別に行う。
 
 ## Related
 
