@@ -73,7 +73,7 @@ import {
 } from "./journal_archive";
 import { commitTimeRefusal } from "./operations";
 import { normalizeProvenance, type Provenance } from "./provenance";
-import { commitValidationErrorCount } from "./validate";
+import { commitValidationErrorCount, validationUnaffected } from "./validate";
 import {
   EngineQueue,
   Neo4jApplier,
@@ -1616,7 +1616,10 @@ export class RecordWorkspaceStore {
     this.fillExtensionDefaults(warm?.state, applied.state, changes);
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
-    const validationErrors = commitValidationErrorCount(applied.state);
+    // A Command that only edits node content cannot change what validation reports.
+    const validationErrors = warm && validationUnaffected(changes)
+      ? warm.validationErrors
+      : commitValidationErrorCount(applied.state);
     const allowedErrors = warm ? warm.validationErrors : 0;
     if (validationErrors > allowedErrors) {
       return this.failure("INVALID_STATE", current(), "The resulting state does not pass validation.");

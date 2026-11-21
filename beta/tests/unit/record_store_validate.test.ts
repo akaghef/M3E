@@ -1,7 +1,8 @@
 // validateState must report exactly what RapidMvpModel.fromJSON(state).validate() reports.
 
 import { describe, expect, it } from "vitest";
-import { validateState, validationErrorCount } from "../../src/node/record_store/validate";
+import { commitValidationErrorCount, validateState, validationErrorCount, validationUnaffected } from "../../src/node/record_store/validate";
+import { diffState } from "../../src/shared/map_changes";
 import { RapidMvpModel } from "../../src/node/rapid_mvp";
 import type { AppState } from "../../src/shared/types";
 import { bigState, clone, node, randomEdit, richState, rng, type Loose } from "./record_store_helpers";
@@ -86,5 +87,41 @@ describe("validateState", () => {
       expect(validateState(damaged)).toEqual(literal(damaged));
       state = next;
     }
+  });
+});
+
+describe("validationUnaffected", () => {
+  it("keeps the validation count for content-only edits, on valid and damaged states", () => {
+    for (const [name, breakIt] of BROKEN) {
+      const before = clone(richState()) as Loose;
+      breakIt(before);
+      if (!before.nodes || typeof before.nodes !== "object") continue; // nothing to edit
+      const after = clone(before) as Loose;
+      for (const id of Object.keys(nodesOf(after))) {
+        const n = nodesOf(after)[id]!;
+        n.text = `${String(n.text ?? "")}!`;
+        n.details = "d";
+        n.note = "n";
+        n.collapsed = !n.collapsed;
+        n.link = "https://example.invalid/";
+      }
+      const changes = diffState(before as never, after as never);
+      expect(validationUnaffected(changes), name).toBe(true);
+      expect(commitValidationErrorCount(after), name).toBe(commitValidationErrorCount(before));
+    }
+  });
+
+  it("does not hold for a change validation reads", () => {
+    const before = clone(richState()) as Loose;
+    const typed = clone(before) as Loose;
+    nodesOf(typed).leaf.nodeType = "alias";
+    expect(validationUnaffected(diffState(before as never, typed as never))).toBe(false);
+    const moved = clone(before) as Loose;
+    nodesOf(moved).island = node("island", null);
+    expect(validationUnaffected(diffState(before as never, moved as never))).toBe(false);
+    const attributed = clone(before) as Loose;
+    nodesOf(attributed).leaf.attributes = { k: "v" };
+    expect(validationUnaffected(diffState(before as never, attributed as never))).toBe(false);
+    expect(validationUnaffected([])).toBe(false);
   });
 });

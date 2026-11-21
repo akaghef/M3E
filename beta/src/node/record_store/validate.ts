@@ -60,3 +60,24 @@ export function commitValidationErrorCount(state: object): number {
     }
   }
 }
+
+/**
+ * Node fields `validate` never reads: it reads ids, `parentId`, `children`, the alias fields
+ * (`nodeType`, `access`, `targetNodeId`, `isBroken`, `targetSnapshotLabel`), `edgeOutsideScope`,
+ * `scopeId` and the relation edges. A Command that only updates these fields on existing nodes
+ * leaves the validation result as it was, so a commit need not walk the whole map again.
+ */
+const CONTENT_ONLY_NODE_FIELDS = new Set(["text", "details", "note", "collapsed", "link"]);
+
+/** True when every change updates only `CONTENT_ONLY_NODE_FIELDS` of an existing node. */
+export function validationUnaffected(changes: readonly { kind: string; op: string; before?: Record<string, unknown>; after?: Record<string, unknown> }[]): boolean {
+  if (changes.length === 0) return false;
+  for (const change of changes) {
+    if (change.kind !== "node" || change.op !== "update") return false;
+    for (const side of [change.before, change.after]) {
+      if (!side) continue;
+      for (const field of Object.keys(side)) if (!CONTENT_ONLY_NODE_FIELDS.has(field)) return false;
+    }
+  }
+  return true;
+}
