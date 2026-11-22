@@ -146,7 +146,8 @@ function replay(snapshotText: string, journalText: string): SnapshotRecord[] {
     all.set(recordRk(commitRecord), commitRecord);
     seq = line.seq;
   }
-  return sortRecords([{ kind: "snapshot", format: 2, workspaceId: header.workspaceId, seq }, ...all.values()]);
+  // The header carries the workspace and its history (workspaceId, historyId, epoch) through a rebuild.
+  return sortRecords([{ ...header, format: 2, seq }, ...all.values()]);
 }
 
 describe("format 2 migration", () => {
@@ -159,7 +160,7 @@ describe("format 2 migration", () => {
     const format1 = fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8");
     const store = openStore(dir);
     const archive = path.join(dir, ARCHIVE_DIR);
-    expect(store.records()[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, seq: 0 });
+    expect(store.records()[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, historyId: expect.any(String), epoch: 1, seq: 0 });
     expect(store.records().slice(1)).toEqual(sortRecords(born).slice(1));
     expect(fs.readFileSync(path.join(archive, "snapshot.0.f1.jsonl"), "utf8")).toBe(format1);
     expect(fs.readdirSync(archive).filter((name) => name.startsWith("journal."))).toEqual([]);

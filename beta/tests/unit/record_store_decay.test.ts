@@ -124,7 +124,8 @@ function replay(snapshotText: string, journalText: string): SnapshotRecord[] {
     all.set(recordRk(commitRecord), commitRecord);
     seq = line.seq;
   }
-  return sortRecords([{ kind: "snapshot", format: 2, workspaceId: header.workspaceId, seq }, ...all.values()]);
+  // The header carries the workspace and its history (workspaceId, historyId, epoch) through a rebuild.
+  return sortRecords([{ ...header, format: 2, seq }, ...all.values()]);
 }
 
 function taskDef(fields: ExtensionDefRecord["fields"]): ExtensionDefRecord {

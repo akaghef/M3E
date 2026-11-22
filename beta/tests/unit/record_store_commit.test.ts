@@ -237,7 +237,7 @@ describe("record store: every kind of change", () => {
     expect(byRk.get("node|leaf")).toMatchObject({ rev: 1, text: "one" });
     expect(byRk.get("node|inner")).toMatchObject({ rev: 2, text: "two" });
     expect(byRk.get("node|img")).toMatchObject({ rev: 0 });
-    expect(records[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, seq: 2 });
+    expect(records[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, historyId: expect.any(String), epoch: 1, seq: 2 });
     expect(byRk.get("commit|2")).toMatchObject({ kind: "commit", seq: 2, issuer: ISSUER });
     expect(store.revisionOf("map_a")).toBe("2");
     expect(store.getMapRow("map_a").savedAt).toBe((byRk.get("commit|2") as { committedAt: string }).committedAt);
@@ -388,8 +388,12 @@ describe("record store: journal, reopen, compaction", () => {
     expect(again.getMapRow("map_b")).toEqual(rowB);
     expect(again.revisionOf("map_a")).toBe("3");
     expect(again.revisionOf("map_b")).toBe("4");
-    // The snapshot file is still the one written at creation.
-    expect(fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8")).toBe(text(snapshotOf(seedRows())));
+    // The snapshot file is still the one written at creation, except that the first open gave its header
+    // the history of the store (historyId, epoch) once.
+    const [fileHeader, ...fileRest] = fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8").trimEnd().split("\n");
+    const [createdHeader, ...createdRest] = text(snapshotOf(seedRows())).trimEnd().split("\n");
+    expect(fileRest).toEqual(createdRest);
+    expect(JSON.parse(fileHeader)).toEqual({ ...JSON.parse(createdHeader), historyId: again.syncIdentity().historyId, epoch: 1 });
     edit(again, (state) => { nodesOf(state).leaf.text = "after reopen"; });
     expect(again.seq()).toBe(5);
   });

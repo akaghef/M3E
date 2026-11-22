@@ -244,7 +244,8 @@ describe("sync HTTP, issuer, and outbox", () => {
     const empty = await call("GET", `/api/sync/pull?after=${suffix.body.throughSeq}`);
     expect(empty.body).toMatchObject({ lines: [], throughSeq: suffix.body.throughSeq });
     const ahead = await call("GET", `/api/sync/pull?after=${suffix.body.throughSeq + 1}`);
-    expect(ahead.body).toEqual({ reclone: true, snapshotSeq: suffix.body.throughSeq });
+    expect(ahead.body).toEqual({ reclone: true, snapshotSeq: suffix.body.throughSeq, workspaceId: suffix.body.workspaceId, historyId: suffix.body.historyId, epoch: suffix.body.epoch });
+    expect(typeof suffix.body.historyId).toBe("string");
     const scoped = await call("GET", `/api/sync/pull?after=${results[0].seq}&scope=scope%3Aroot`);
     expect(scoped.body.lines.map((line: { commandId?: string }) => line.commandId)).toEqual(["cmd-c"]);
 

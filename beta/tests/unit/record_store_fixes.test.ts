@@ -125,7 +125,8 @@ describe("record store: a map whose ids another map already uses", () => {
       open.push(store);
       save(store, "first", richState());
       save(store, "second", richState());
-      return text(store.records()).replace(/"commandId":"save:[^"]*"/g, "");
+      // The history id of a store is random; everything else must be the same.
+      return text(store.records()).replace(/"commandId":"save:[^"]*"/g, "").replace(/"historyId":"[^"]*"/, "");
     };
     expect(build("alias-det-1")).toBe(build("alias-det-2"));
   });
