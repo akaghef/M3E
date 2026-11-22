@@ -4,8 +4,6 @@
 <dict>
     <key>Label</key>
     <string>com.m3e.remote-beta</string>
-    <key>UserName</key>
-    <string>swingby</string>
     <key>ProgramArguments</key>
     <array>
         <string>@NODE@</string>
@@ -13,6 +11,8 @@
     </array>
     <key>WorkingDirectory</key>
     <string>@CHECKOUT@/beta</string>
+    <key>RunAtLoad</key>
+    <true/>
     <key>KeepAlive</key>
     <true/>
     <key>EnvironmentVariables</key>

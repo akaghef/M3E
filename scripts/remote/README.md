@@ -35,13 +35,13 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
   plutil -replace StandardOutPath -string "$log_dir/remote-beta.log" "$job"
   plutil -replace StandardErrorPath -string "$log_dir/remote-beta.err.log" "$job"
   plutil -lint "$job"
-  sudo install -o root -g wheel -m 644 "$job" /Library/LaunchDaemons/com.m3e.remote-beta.plist
-  sudo launchctl bootstrap system /Library/LaunchDaemons/com.m3e.remote-beta.plist
-  sudo launchctl print system/com.m3e.remote-beta
+  install -m 644 "$job" "$HOME/Library/LaunchAgents/com.m3e.remote-beta.plist"
+  launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.m3e.remote-beta.plist"
+  launchctl print "gui/$(id -u)/com.m3e.remote-beta"
 )
 ```
 
-LaunchDaemon はログイン前から `swingby` として `start_viewer.js` を直接起動し、終了時は launchd が再起動する。サンプル生成とブラウザー起動を無効にし、明示した `M3E_STORE_DIR` を開けなければ起動に失敗する。
+LaunchAgent は `swingby` のログイン session（Mac mini は常時ログインしている）で `start_viewer.js` を直接起動し、`swingby` は sudo にパスワードが要るため LaunchDaemon にはしない。終了時は launchd が再起動する。サンプル生成とブラウザー起動を無効にし、明示した `M3E_STORE_DIR` を開けなければ起動に失敗する。
 
 `lsof` の出力でリスナーが `127.0.0.1:4173` に限られ、`curl` が 403 を返すことを確認してから Serve を設定する。Serve の出力に表示される MagicDNS 名を MacBook で使う。
 
