@@ -68,7 +68,7 @@ import { FrameInvalidation } from "./frame_invalidation";
 import { markupBounds, type MarkupBox } from "./markup_bounds";
 import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./webgl_scene_tiles";
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
-import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
+import { hasPrimaryModifier, isAltLetter, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
 import { reorderInsertionIndex } from "../shared/reorder_insertion";
 import { treeGrabMove } from "../shared/tree_grab";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
@@ -17061,13 +17061,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "e") {
+  if (isAltLetter(event, "e")) {
     event.preventDefault();
     toggleEntityListPanel();
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "d") {
+  if (isAltLetter(event, "d")) {
     event.preventDefault();
     toggleMarkdownPreviewForSelectedNode();
     return;
@@ -17079,13 +17079,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "h") {
+  if (isAltLetter(event, "h")) {
     event.preventDefault();
     window.location.href = buildHomeHref();
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "s") {
+  if (isAltLetter(event, "s")) {
     event.preventDefault();
     toggleHomeScreen();
     return;
@@ -17097,31 +17097,31 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "j") {
+  if (isAltLetter(event, "j")) {
     event.preventDefault();
     jumpToAliasTarget();
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "l") {
+  if (isAltLetter(event, "l")) {
     event.preventDefault();
     startIncomingEdgeLabelEdit();
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "a") {
+  if (isAltLetter(event, "a")) {
     event.preventDefault();
     addAliasAsChild();
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "p") {
+  if (isAltLetter(event, "p")) {
     event.preventDefault();
     makeSelectedFolder();
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "m") {
+  if (isAltLetter(event, "m")) {
     event.preventDefault();
     toggleHoldReparent();
     return;

@@ -24,3 +24,14 @@ export function nodeLabelEditAction(event: KeyInput, platform: KeyboardPlatform)
   if (event.key === "Enter" && !event.shiftKey) return "sibling";
   return "none";
 }
+
+/**
+ * True when the event is Alt (Option) + the given letter. On macOS, Option + a letter types
+ * another character (Option+J is "∆"), so `key` alone never matches there; the physical key
+ * (`code`, e.g. "KeyJ") is checked as well.
+ */
+export function isAltLetter(event: Modifiers & Pick<KeyboardEvent, "key" | "code">, letter: string): boolean {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+  const lower = letter.toLowerCase();
+  return event.key.toLowerCase() === lower || event.code === `Key${lower.toUpperCase()}`;
+}

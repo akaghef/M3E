@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type KeyboardPlatform } from "../../src/browser/viewer_keyboard";
+import { hasPrimaryModifier, isAltLetter, keyboardPlatform, nodeLabelEditAction, type KeyboardPlatform } from "../../src/browser/viewer_keyboard";
 
 const key = (name: string, modifiers = {}) => ({ key:name,ctrlKey:false,metaKey:false,altKey:false,shiftKey:false,isComposing:false,...modifiers });
 
@@ -45,3 +45,23 @@ for (const platform of ["mac", "other"] as KeyboardPlatform[]) {
     });
   });
 }
+
+describe("isAltLetter", () => {
+  const alt = (keyName: string, code: string, modifiers = {}) => ({ key: keyName, code, ctrlKey: false, metaKey: false, altKey: true, shiftKey: false, ...modifiers });
+  it("matches macOS Option + letter, which types another character", () => {
+    expect(isAltLetter(alt("∆", "KeyJ"), "j")).toBe(true);
+    expect(isAltLetter(alt("¬", "KeyL"), "l")).toBe(true);
+  });
+  it("matches Windows/Linux Alt + letter", () => {
+    expect(isAltLetter(alt("j", "KeyJ"), "j")).toBe(true);
+  });
+  it("needs Alt alone", () => {
+    expect(isAltLetter(alt("j", "KeyJ", { altKey: false }), "j")).toBe(false);
+    expect(isAltLetter(alt("J", "KeyJ", { shiftKey: true }), "j")).toBe(false);
+    expect(isAltLetter(alt("j", "KeyJ", { ctrlKey: true }), "j")).toBe(false);
+    expect(isAltLetter(alt("j", "KeyJ", { metaKey: true }), "j")).toBe(false);
+  });
+  it("does not match another key", () => {
+    expect(isAltLetter(alt("˚", "KeyK"), "j")).toBe(false);
+  });
+});
