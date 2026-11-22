@@ -24,7 +24,9 @@ M3E の保存データ（DB）の仕様をまとめる。保存の形、識別�
 ### 現在の運用状態
 
 - 通常の Beta は、まだ旧い保存（workspace ごとの SQLite に map 全体の JSON を置く形）で動いている。
-- 本書の保存は【実装済み】だが、環境変数 `M3E_STORE_DIR` を設定したときだけ使う。個人の workspace の一度きりの移行と、通常の Beta の切り替えは、まだ行っていない。
+- 本書の保存は【実装済み】である。server は、環境変数 `M3E_STORE_DIR` を設定したとき、または workspace のデータの置き場（`M3E_DATA_DIR`）に移行済みの保存（`store/snapshot.jsonl`）があるときに、本書の保存を使う。どちらも無いときは SQLite を使う（`beta/src/node/record_store/active.ts` の `recordStoreDir()`）。
+  - 通常の Beta の workspace は、2026-11-22 に SQLite の file から format 2 へ移行し、本書の保存で動いている。元の SQLite の file はそのまま残し、書き込まない。
+  - Final の workspace（Personal）と Swingby の workspace は、SQLite のままである。
 
 ## 1. 全体の構成
 
