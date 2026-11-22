@@ -1653,7 +1653,9 @@ export { RapidMvpModel };
 
 if (require.main === module) {
   // The sample generator writes its own sample files; it never writes into the record store of a workspace.
+  // A migrated workspace is found through M3E_DATA_DIR as well (record_store/active.ts), so both are cleared.
   delete process.env.M3E_STORE_DIR;
+  delete process.env.M3E_DATA_DIR;
   const model = new RapidMvpModel("Research Root");
   const a = model.addNode(model.state.rootId, "Question");
   const b = model.addSibling(a, "Hypothesis");
