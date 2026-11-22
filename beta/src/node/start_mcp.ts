@@ -76,7 +76,7 @@ export async function startM3eMcpHttp(options: M3eMcpOptions & { port?: number }
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   if (args.includes('--help')) {
-    process.stderr.write('M3E MCP: node start_mcp.js [--http --port 4174]\nM3E_API_URL defaults to http://127.0.0.1:4173. Stdio is the default; stdout carries MCP only. HTTP binds to 127.0.0.1.\n');
+    process.stderr.write('M3E MCP: node start_mcp.js [--http --port 4174]\nM3E_API_URL accepts a loopback HTTP(S) or HTTPS *.ts.net origin and defaults to http://127.0.0.1:4173.\nStdio is the default; stdout carries MCP only. HTTP binds to 127.0.0.1.\n');
     return;
   }
   const http = args.includes('--http');

@@ -17,6 +17,7 @@ import { activeRecordStore, closeActiveRecordStoreOnSignal } from "./record_stor
 import { handleRecordSyncHttp } from "./sync/http";
 import { accountForConnection } from "./sync/issuer";
 import { enforceMinSeq } from "./sync/min_seq";
+import { allowedLogin, viewerListenOptions } from "./remote_access";
 import type { MapCommand } from "../shared/map_changes";
 import { extractScopeView, ScopeViewError, SCOPE_VIEW_HEADER, type ScopeViewInfo } from "../shared/scope_view";
 import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
@@ -230,11 +231,14 @@ async function handleFlashJobsApi(req: http.IncomingMessage, res: http.ServerRes
   return true;
 }
 
-async function handleMcpApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+async function handleMcpApi(req: http.IncomingMessage, res: http.ServerResponse, tailscaleAuthenticated: boolean): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (!url.pathname.startsWith("/api/mcp/")) return false;
-  if (!mcpRequestAllowed(req)) {
-    sendJson(res, 403, { ok: false, error: { code: "LOCAL_ONLY", message: "MCP access is limited to the local application." } });
+  if (!mcpRequestAllowed(req, tailscaleAuthenticated)) {
+    const message = tailscaleAuthenticated
+      ? "MCP access requires a local or Tailscale Serve origin."
+      : "MCP access is limited to the local application.";
+    sendJson(res, 403, { ok: false, error: { code: "LOCAL_ONLY", message } });
     return true;
   }
   try {
@@ -4055,7 +4059,7 @@ function startServer(): void {
 
   const server = createAppServer();
 
-  server.listen(PORT, () => {
+  server.listen(viewerListenOptions(PORT), () => {
     currentFlashJobs();
     const isFirstRun = !fs.existsSync(currentFirstRunMarker());
     const params = new URLSearchParams({ ws: WORKSPACE_ID });
@@ -4326,13 +4330,19 @@ async function handleCollabApi(
 export function createAppServer(): http.Server {
   refreshCloudSyncConfigFromEnv();
 
+  const tailscaleUsers = process.env.M3E_TAILSCALE_USERS;
+  const tailscaleGateEnabled = tailscaleUsers !== undefined;
   const orreryApi = createOrreryApi(createOrreryRuntime());
   const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
-    instrumentRequestForPerfLog(req, res);
-    if (redirectLoopbackHost(req, res)) {
+    if (!allowedLogin(req.headers["tailscale-user-login"], tailscaleUsers)) {
+      sendJson(res, 403, { ok: false, code: "FORBIDDEN", error: "Tailscale login is not allowed." });
       return;
     }
-    if (await handleMcpApi(req, res)) return;
+    instrumentRequestForPerfLog(req, res);
+    if (!tailscaleGateEnabled && redirectLoopbackHost(req, res)) {
+      return;
+    }
+    if (await handleMcpApi(req, res, tailscaleGateEnabled)) return;
     if (await handleRecordSyncHttp(req, res)) return;
     if (orreryApi.handle(req, res)) return;
     if (await handleOpenLocalPathApi(req, res)) {
@@ -4572,6 +4582,6 @@ export function createAppServer(): http.Server {
 }
 
 if (require.main === module) {
-  runSampleGeneration();
+  if (process.env.M3E_SKIP_SAMPLE_GENERATION !== "1") runSampleGeneration();
   startServer();
 }

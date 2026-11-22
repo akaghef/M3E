@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.m3e.remote-beta</string>
+    <key>UserName</key>
+    <string>swingby</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@NODE@</string>
+        <string>@CHECKOUT@/beta/dist/node/start_viewer.js</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>@CHECKOUT@/beta</string>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>M3E_HOST</key>
+        <string>127.0.0.1</string>
+        <key>M3E_PORT</key>
+        <string>4173</string>
+        <key>M3E_DATA_DIR</key>
+        <string>@DATA_DIR@</string>
+        <key>M3E_STORE_DIR</key>
+        <string>@DATA_DIR@/store</string>
+        <key>M3E_WORKSPACE_ID</key>
+        <string>ws_REMH1Z5TFA7S93R3HA0XK58JNR</string>
+        <key>M3E_WORKSPACE_LABEL</key>
+        <string>Akaghef-personal</string>
+        <key>M3E_MAP_ID</key>
+        <string>map_BG9BZP6NRDTEH1JYNDFGS6S3T5</string>
+        <key>M3E_MAP_LABEL</key>
+        <string>開発</string>
+        <key>M3E_MAP_SLUG</key>
+        <string>beta-dev</string>
+        <key>M3E_DB_FILE</key>
+        <string>data.sqlite</string>
+        <key>M3E_TAILSCALE_USERS</key>
+        <string>@TAILSCALE_USERS@</string>
+        <key>M3E_OPEN_BROWSER</key>
+        <string>0</string>
+        <key>M3E_SKIP_SAMPLE_GENERATION</key>
+        <string>1</string>
+        <key>M3E_CLOUD_SYNC</key>
+        <string>0</string>
+        <key>M3E_AUTO_SYNC</key>
+        <string>0</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>@LOG_DIR@/remote-beta.log</string>
+    <key>StandardErrorPath</key>
+    <string>@LOG_DIR@/remote-beta.err.log</string>
+</dict>
+</plist>

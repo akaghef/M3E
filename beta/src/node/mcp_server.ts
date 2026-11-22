@@ -2,6 +2,9 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { SubscribeRequestSchema, UnsubscribeRequestSchema, McpError, ErrorCode, type CallToolResult, type ResourceLink } from '@modelcontextprotocol/sdk/types.js';
 import { createParser } from 'eventsource-parser';
 import { z } from 'zod';
+import { validateM3eApiUrl } from './remote_access';
+
+export { validateM3eApiUrl } from './remote_access';
 
 type RecordValue = Record<string, unknown>;
 type Reference = { uri: string; name: string; kind?: string; map_name?: string };
@@ -22,16 +25,6 @@ export const M3E_DOC_RESOURCES = [
   { key: 'map-manager', name: 'M3E structural guidance', description: 'Canonical scope purpose, hierarchy and relation decisions, explicit constraints and verification.' },
   { key: 'operations', name: 'M3E operations', description: 'Canonical MCP participation, retained context, change handling and operation guidance.' },
 ] as const;
-
-/** Only the existing local app may be addressed. Resource/tool arguments never become fetch URLs. */
-export function validateM3eApiUrl(value: string): string {
-  const url = new URL(value);
-  if (!['http:', 'https:'].includes(url.protocol) || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-      || url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) {
-    throw new Error('M3E_API_URL must be a loopback HTTP origin without credentials, path, query or fragment.');
-  }
-  return url.origin;
-}
 
 function record(value: unknown): RecordValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as RecordValue : {};

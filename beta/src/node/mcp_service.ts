@@ -16,6 +16,7 @@ import { applyDelete, type DeleteOperation } from "./record_store/operations";
 import { PROVENANCE_LIMIT, type Provenance, type ProvenanceItem } from "./record_store/provenance";
 import { accountForConnection } from "./sync/issuer";
 import { MIN_SEQ_TIMEOUT_CODE, minSeqTimeoutMs, waitForAppliedSeq } from "./sync/min_seq";
+import { isTailscaleHttpsOrigin } from "./remote_access";
 
 const TOOLS = ["m3e_context", "m3e_get", "m3e_create", "m3e_update", "m3e_delete", "m3e_feedback"];
 const DOCUMENTS = ["glossary", "data-model", "map-manager", "operations"].map((name) => `m3e://docs/${name}`);
@@ -848,10 +849,14 @@ export class M3eMcpService {
   }
 }
 
-export function mcpRequestAllowed(req: http.IncomingMessage): boolean {
+export function mcpRequestAllowed(req: http.IncomingMessage, tailscaleAuthenticated = false): boolean {
   const address = req.socket.remoteAddress;
   if (address && address !== "127.0.0.1" && address !== "::1" && address !== "::ffff:127.0.0.1") return false;
   try {
+    if (tailscaleAuthenticated && address && req.headers.host && !/[\s/@\\?#]/.test(req.headers.host)) {
+      const serve = new URL(`https://${req.headers.host}`);
+      if (isTailscaleHttpsOrigin(serve)) return !req.headers.origin || req.headers.origin === serve.origin;
+    }
     const host = new URL(`http://${req.headers.host || "localhost"}`).hostname;
     if (!["localhost", "127.0.0.1", "[::1]"].includes(host)) return false;
     if (req.headers.origin) {

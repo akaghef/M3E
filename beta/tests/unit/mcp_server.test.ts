@@ -220,10 +220,16 @@ describe('M3E MCP SDK protocol adapter', () => {
     expect(fixture.streamRequests.map(request => request.after)).toEqual([0, 1]);
   });
 
-  it('rejects nonloopback and credential-bearing backend origins', () => {
-    for (const value of ['https://example.com', 'http://127.0.0.1.evil.test', 'file:///tmp/data', 'http://u:p@localhost', 'http://localhost/api', 'http://localhost/?target=evil', 'http://localhost/#x']) expect(() => validateM3eApiUrl(value)).toThrow();
+  it('accepts loopback and HTTPS MagicDNS origins only, without credentials or URL suffixes', () => {
+    for (const value of [
+      'https://example.com', 'http://127.0.0.1.evil.test', 'file:///tmp/data', 'http://u:p@localhost',
+      'http://localhost/api', 'http://localhost/?target=evil', 'http://localhost/#x',
+      'http://x.ts.net', 'https://ts.net', 'https://x.ts.net.example.com', 'https://user@x.ts.net',
+      'https://x.ts.net/api', 'https://x.ts.net/api/..', 'https://x.ts.net/?', 'https://x.ts.net/#',
+    ]) expect(() => validateM3eApiUrl(value)).toThrow(/M3E_API_URL/);
     expect(validateM3eApiUrl('http://127.0.0.1:4173/')).toBe('http://127.0.0.1:4173');
     expect(validateM3eApiUrl('http://[::1]:4173')).toBe('http://[::1]:4173');
+    expect(validateM3eApiUrl('https://x.tail1234.ts.net')).toBe('https://x.tail1234.ts.net');
   });
 
   it('runs the SDK Streamable HTTP client and validates Origin/Host on the loopback endpoint', async () => {
