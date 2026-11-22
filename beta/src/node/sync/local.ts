@@ -80,11 +80,22 @@ function activateDirectory(link: string, target: string): void {
   }
 }
 
+const GATEWAY_DOWN = new Set([502, 503, 504]);
+
 async function request<T>(url: URL, options?: RequestInit): Promise<T> {
   let response: Response;
   let body: T & { code?: string };
   try {
     response = await fetch(url, { ...options, redirect: "manual", signal: AbortSignal.timeout(15_000) });
+  } catch {
+    throw new LocalSyncError(503, "REMOTE_UNREACHABLE", "The remote could not be reached.");
+  }
+  // A gateway in front of the remote (tailscale serve, a reverse proxy) answers 502 / 503 / 504
+  // while the remote process is down: the remote is unreachable, it has not refused anything.
+  if (GATEWAY_DOWN.has(response.status)) {
+    throw new LocalSyncError(503, "REMOTE_UNREACHABLE", "The remote could not be reached.");
+  }
+  try {
     body = await response.json() as typeof body;
   } catch (error) {
     if (error instanceof SyntaxError) throw new LocalSyncError(502, "REMOTE_REFUSED", "The remote did not return a sync response.");

@@ -198,6 +198,17 @@ describe("local sync with isolated viewer processes", () => {
     })]);
   });
 
+  test("a gateway answering 502 while the remote is down reads as unreachable, not refused", async () => {
+    // tailscale serve (or any reverse proxy) in front of a stopped remote answers 502.
+    const remote = await viewer(seed("gateway-remote"));
+    const gateway = await relay(remote.origin, (_url, body) => body);
+    const local = await viewer(path.join(temp, "gateway-local"), gateway);
+    await stop(remote.process);
+    await edit(local.origin, "main-root", "Behind a gateway");
+    await call(local.origin, "/api/sync/local/push", "POST");
+    expect(await status(local.origin)).toMatchObject({ remote: { state: "unreachable" }, unsent: 1 });
+  });
+
   test("commits with the remote stopped and replays a non-empty outbox after a cold restart", async () => {
     const dir = seed("remote");
     let remote = await viewer(dir);
