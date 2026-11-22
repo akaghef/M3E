@@ -17,8 +17,26 @@ import { RecordWorkspaceStore, type OpenOptions } from "./store";
 
 let local: LocalSync | null = null;
 
+/**
+ * The remote a local runs against, or null when the server is not a local. M3E_SYNC_REMOTE wins
+ * (it is needed for the first clone). Otherwise a data directory that holds a clone
+ * (`sync/remote.json`) is a local of the remote recorded there: once cloned, no launcher can open
+ * the working store as a remote of its own by leaving M3E_SYNC_REMOTE out.
+ */
+export function localModeRemote(env: NodeJS.ProcessEnv = process.env): string | null {
+  const remote = env.M3E_SYNC_REMOTE?.trim();
+  if (remote) return remote;
+  const dataDir = env.M3E_DATA_DIR?.trim();
+  if (!dataDir) return null;
+  const metadata = path.resolve(dataDir, "sync", "remote.json");
+  if (!fs.existsSync(metadata)) return null;
+  const origin = (JSON.parse(fs.readFileSync(metadata, "utf8")) as { origin?: unknown }).origin;
+  if (typeof origin !== "string" || origin.trim() === "") throw new Error(`${metadata} names no remote origin.`);
+  return origin;
+}
+
 export async function startLocalMode(): Promise<void> {
-  const remote = process.env.M3E_SYNC_REMOTE?.trim();
+  const remote = localModeRemote();
   if (!remote) return;
   const dataDir = process.env.M3E_DATA_DIR?.trim();
   if (!dataDir) throw new Error("Local mode requires M3E_DATA_DIR.");

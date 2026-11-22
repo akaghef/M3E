@@ -13,7 +13,7 @@ import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand } from "./map_commit";
-import { activeRecordStore, closeActiveRecordStoreOnSignal, localModeStore, startLocalMode } from "./record_store/active";
+import { activeRecordStore, closeActiveRecordStoreOnSignal, localModeRemote, localModeStore, startLocalMode } from "./record_store/active";
 import { handleRecordSyncHttp } from "./sync/http";
 import { handleLocalSyncHttp } from "./sync/local_http";
 import { accountForConnection } from "./sync/issuer";
@@ -4595,7 +4595,7 @@ if (require.main === module) {
     console.error(`[M3E] This workspace lives on a remote M3E now: ${remote}. Not starting on the local copy in ${currentDataDir()}.`);
     process.exit(1);
   }
-  if (process.env.M3E_SYNC_REMOTE?.trim()) {
+  if (localModeRemote()) {
     void startLocalMode().then(startServer).catch((error) => {
       console.error("[M3E] Local mode startup failed:", error);
       process.exitCode = 1;
