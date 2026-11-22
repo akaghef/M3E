@@ -1,5 +1,5 @@
 // Record store CLI.
-//   node dist/node/record_store_cli.js --create <dir> --from-snapshot <jsonl>
+//   node dist/node/record_store_cli.js --create <dir> --from-snapshot <jsonl> [--new-history]
 //   node dist/node/record_store_cli.js --verify <dir> [--bolt <uri>] [--database <name>]
 //   node dist/node/record_store_cli.js --export <dir> --out <jsonl>
 // --create writes snapshot.jsonl and an empty journal.jsonl into an empty (or new) directory.
@@ -9,6 +9,7 @@
 // Credentials, when the server needs them, come from M3E_NEO4J_USER / M3E_NEO4J_PASSWORD.
 // Exit code 0: done, nothing wrong. 1: verification found a problem, or the run failed. 2: bad usage or a refusal.
 
+import { randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -23,7 +24,7 @@ export interface CliIo {
   err: (line: string) => void;
 }
 
-const USAGE = "Usage: --create <dir> --from-snapshot <jsonl> | --verify <dir> [--bolt <uri>] [--database <name>] | --export <dir> --out <jsonl>";
+const USAGE = "Usage: --create <dir> --from-snapshot <jsonl> [--new-history] | --verify <dir> [--bolt <uri>] [--database <name>] | --export <dir> --out <jsonl>";
 
 function assertNotLiveM3e(filePath: string): void {
   if (process.env.M3E_FORBID_LIVE_DATA !== "1") return;
@@ -38,6 +39,10 @@ function parseArgs(argv: string[]): Map<string, string> {
   const args = new Map<string, string>();
   for (let i = 0; i < argv.length; i += 1) {
     const name = argv[i];
+    if (name === "--new-history") {
+      args.set("new-history", "true");
+      continue;
+    }
     const value = argv[i + 1];
     if (!name.startsWith("--") || value === undefined) throw new Error(`Bad argument: ${name}`);
     args.set(name.slice(2), value);
@@ -65,6 +70,7 @@ export async function main(argv: string[], io: CliIo = { out: console.log, err: 
     const modes = (["create", "verify", "export"] as const).filter((name) => args.has(name));
     if (modes.length !== 1) throw new Error("Give exactly one of --create, --verify, --export.");
     mode = modes[0];
+    if (mode !== "create" && args.has("new-history")) throw new Error("--new-history requires --create.");
     if (mode === "create" && !args.has("from-snapshot")) throw new Error("--create needs --from-snapshot.");
     if (mode === "export" && !args.has("out")) throw new Error("--export needs --out.");
     for (const name of ["create", "verify", "export", "from-snapshot", "out"]) {
@@ -82,6 +88,14 @@ export async function main(argv: string[], io: CliIo = { out: console.log, err: 
       const dir = args.get("create")!;
       const records = parseSnapshot(fs.readFileSync(args.get("from-snapshot")!, "utf8"));
       try {
+        if (args.has("new-history")) {
+          const header = records[0];
+          if (header.kind !== "snapshot") throw new Error("Snapshot is missing its header.");
+          const epoch = header.epoch ?? 1;
+          if (!Number.isSafeInteger(epoch) || epoch < 1 || epoch >= Number.MAX_SAFE_INTEGER) throw new Error("Invalid snapshot epoch.");
+          header.historyId = randomUUID();
+          header.epoch = epoch + 1;
+        }
         RecordWorkspaceStore.create(dir, records);
       } catch (error) {
         io.err((error as Error).message);

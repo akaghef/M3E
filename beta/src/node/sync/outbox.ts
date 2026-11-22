@@ -9,17 +9,18 @@
  */
 import fs from "fs";
 import path from "path";
-import type { MapCommand } from "../../shared/map_changes";
+import { writeFileDurably } from "../record_store/store";
+import type { SyncCommand } from "../record_store/sync_types";
 import { fsyncDir } from "../record_store/journal_archive";
 import type { PushResponse, PushResultItem } from "./push";
 
-export interface OutboxEntry {
+export type OutboxEntry = SyncCommand & {
   commandId: string;
   baseSeq: number;
-  command: MapCommand;
   createdAt: string;
-  mapId: string;
-}
+  mapName?: string;
+  issuer?: string;
+};
 
 export interface OutboxRejection {
   entry: OutboxEntry;
@@ -50,51 +51,23 @@ export class DeviceOutbox {
       try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fsyncDir(dir);
     }
+    readDurableLines<OutboxEntry>(filePath, isEntry, true);
     return new DeviceOutbox(filePath);
   }
 
   /** Append one Command and fsync it. Returns only after the line is durable. */
-  append(input: { commandId: string; baseSeq: number; command: MapCommand; mapId: string; createdAt?: string }): OutboxEntry {
+  append(input: SyncCommand & { commandId: string; baseSeq: number; createdAt?: string; issuer?: string; mapName?: string }): OutboxEntry {
     if (!input.commandId.trim()) throw new Error("commandId is required.");
     if (!input.mapId.trim()) throw new Error("mapId is required.");
     if (!Number.isInteger(input.baseSeq) || input.baseSeq < 0) throw new Error("baseSeq must be a non-negative integer.");
-    const entry: OutboxEntry = {
-      commandId: input.commandId,
-      baseSeq: input.baseSeq,
-      command: input.command,
-      mapId: input.mapId,
-      createdAt: input.createdAt ?? new Date().toISOString(),
-    };
-    const fd = fs.openSync(this.filePath, "a");
-    try {
-      fs.writeSync(fd, `${JSON.stringify(entry)}\n`);
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
-    }
-    fsyncDir(path.dirname(this.filePath));
+    const entry: OutboxEntry = { ...input, createdAt: input.createdAt ?? new Date().toISOString() };
+    appendJsonLine(this.filePath, entry);
     return entry;
   }
 
   /** Entries still waiting, oldest first. A torn last line is dropped. */
   list(): OutboxEntry[] {
-    const text = fs.readFileSync(this.filePath, "utf8");
-    const parts = text.split("\n");
-    const out: OutboxEntry[] = [];
-    for (let i = 0; i < parts.length; i += 1) {
-      const line = parts[i] ?? "";
-      if (line.trim() === "") continue;
-      try {
-        const value = JSON.parse(line) as unknown;
-        if (!isEntry(value)) throw new Error("not an outbox entry");
-        out.push(value);
-      } catch (error) {
-        const rest = parts.slice(i + 1).some((item) => item.trim() !== "");
-        if (rest) throw error;
-        break;
-      }
-    }
-    return out;
+    return readDurableLines<OutboxEntry>(this.filePath, isEntry);
   }
 
   /**
@@ -106,39 +79,88 @@ export class DeviceOutbox {
     if (pending.length === 0) return { rejected: [] };
     const response = await send(pending);
     if (!response || !Array.isArray(response.results)) throw new Error("The push response has no results.");
-    const rejected: OutboxRejection[] = [];
-    const keep: OutboxEntry[] = [];
-    for (let i = 0; i < pending.length; i += 1) {
-      const entry = pending[i]!;
-      const result: PushResultItem | undefined = response.results[i];
-      if (!result || result.commandId !== entry.commandId) {
-        keep.push(entry);
-        continue;
-      }
-      if (result.status === "rejected") {
-        rejected.push({ entry, code: result.code, message: result.message });
-        continue;
-      }
-      if (result.status !== "committed" && result.status !== "duplicate") keep.push(entry);
-    }
-    this.replace(keep);
+    const { rejected, done } = settlePushResults(pending, response.results);
+    this.remove(done);
     return { rejected };
   }
 
-  private replace(entries: OutboxEntry[]): void {
-    const dir = path.dirname(this.filePath);
-    const tmp = `${this.filePath}.tmp`;
-    const body = entries.map((entry) => JSON.stringify(entry)).join("\n") + (entries.length > 0 ? "\n" : "");
-    const fd = fs.openSync(tmp, "w");
-    try {
-      fs.writeSync(fd, body);
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
-    }
-    fs.renameSync(tmp, this.filePath);
-    fsyncDir(dir);
+  remove(commandIds: ReadonlySet<string>): void {
+    if (commandIds.size === 0) return;
+    const waiting = this.list().filter((entry) => !commandIds.has(entry.commandId));
+    writeFileDurably(this.filePath, waiting.map((entry) => JSON.stringify(entry) + "\n").join(""));
   }
+}
+
+export function settlePushResults(pending: OutboxEntry[], results: PushResultItem[]): {
+  rejected: OutboxRejection[];
+  done: Set<string>;
+  committed: number;
+  noOp: number;
+} {
+    const rejected: OutboxRejection[] = [];
+    const done = new Set<string>();
+    let committed = 0;
+    let noOp = 0;
+  for (let i = 0; i < pending.length; i += 1) {
+    const entry = pending[i]!;
+    const result = results[i];
+    if (!result || result.commandId !== entry.commandId) continue;
+    if (result.status === "rejected" || result.status === "conflict") {
+      rejected.push({ entry, code: result.code, message: result.message });
+    } else if (result.status === "committed" || result.status === "duplicate") {
+      committed += 1;
+    } else if (result.status === "no-op") {
+      noOp += 1;
+    } else continue;
+    done.add(entry.commandId);
+  }
+  return { rejected, done, committed, noOp };
+}
+
+/** Recover a torn tail before any new append; damage before the tail is an error. */
+export function readDurableLines<T>(file: string, valid: (row: unknown) => boolean = () => true, repair = false): T[] {
+  const text = fs.readFileSync(file, "utf8");
+  const lines = text.split("\n");
+  const rows: T[] = [];
+  let position = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!;
+    if (line.trim() !== "") {
+      try {
+        const value = JSON.parse(line) as T;
+        if (!valid(value)) throw new Error("Invalid JSON Lines entry.");
+        rows.push(value);
+      } catch (error) {
+        if (i < lines.length - 1 || !repair) throw error;
+        if (repair) writeFileDurably(file, text.slice(0, position));
+        return rows;
+      }
+    }
+    position += line.length + 1;
+  }
+  if (repair && text !== "" && !text.endsWith("\n")) writeFileDurably(file, text + "\n");
+  return rows;
+}
+
+export function appendJsonLine(file: string, value: unknown): void {
+  const fd = fs.openSync(file, "a+");
+  const original = fs.fstatSync(fd).size;
+  try {
+    const buffer = Buffer.from(JSON.stringify(value) + "\n", "utf8");
+    let offset = 0;
+    while (offset < buffer.length) offset += fs.writeSync(fd, buffer, offset, buffer.length - offset);
+    fs.fsyncSync(fd);
+  } catch (error) {
+    fs.ftruncateSync(fd, original);
+    throw error;
+  } finally {
+    fs.closeSync(fd);
+  }
+  fsyncDir(path.dirname(file));
+}
+
+export function pushEnvelope({ commandId, baseSeq, createdAt: _at, issuer: _issuer, mapName: _name, ...payload }: OutboxEntry) {
+  return { commandId, baseSeq, ...payload };
 }
 
 /** Push the outbox at `outboxPath` to a server's `/api/sync/push`, in order. */
@@ -149,12 +171,7 @@ export async function pushOutboxFile(outboxPath: string, serverBase: string, hea
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify({
-        commands: entries.map((entry) => ({
-          commandId: entry.commandId,
-          mapId: entry.mapId,
-          baseSeq: entry.baseSeq,
-          command: entry.command,
-        })),
+        commands: entries.map(pushEnvelope),
       }),
     });
     const text = await response.text();

@@ -85,6 +85,8 @@ import {
   type RecordOp,
 } from "./engine";
 
+import type { SyncCommand, SyncIdentity, SyncMapOperation } from "./sync_types";
+
 export const SNAPSHOT_FILE = "snapshot.jsonl";
 export const JOURNAL_FILE = "journal.jsonl";
 export const COMMIT_INDEX_FILE = "commit-index.json";
@@ -101,6 +103,7 @@ export interface CommitSuccess {
   /** Workspace-wide commit sequence number of the commit. */
   seq: number;
   replayed: boolean;
+  noOp?: true;
 }
 
 export interface CommitFailure {
@@ -173,8 +176,9 @@ export interface JournalLine {
   changes?: RecordChange[];
   /** sha256 of the canonical JSON of `changes`; compared when the same command id comes again. */
   changesHash?: string;
-  /** Set on the commits that delete or rename a map, or change only its row columns (tags, archived, pinned, source). */
-  mapOp?: "delete" | "rename" | "columns";
+  /** Map-level operation, when this commit carries one. */
+  mapOp?: "create" | "delete" | "rename" | "columns";
+  syncHash?: string;
   newMapId?: string;
   /** Reason carried by a promotion or a write-back. */
   reason?: string;
@@ -223,7 +227,7 @@ const COLUMN_FIELDS = ["tags", "archived", "pinned", "source"] as const;
 const SHARED_ID_KINDS = new Set(["node", "connection", "annotation"]);
 const EMPTY_RECORDS: ReadonlyMap<string, SnapshotRecord> = new Map();
 
-function assertNotLiveM3e(dir: string): void {
+export function assertNotLiveM3e(dir: string): void {
   if (process.env.M3E_FORBID_LIVE_DATA !== "1") return;
   const live = path.join(os.homedir(), "Library", "Application Support", "M3E");
   const inside = (candidate: string): boolean => candidate === live || candidate.startsWith(live + path.sep);
@@ -367,7 +371,28 @@ function commandShape(command: MapCommand): string | null {
   return null;
 }
 
-function writeFileDurably(filePath: string, content: string): void {
+const SYNC_CHANGE_KEY_LENGTH: Record<RecordChange["kind"], number> = {
+  node: 1, edge: 1, attribute: 3, "graph-link": 1, "linear-text": 1, "scope-setting": 1,
+  surface: 1, "surface-node-view": 2, annotation: 1, "map-field": 1,
+};
+
+function validSyncChange(change: RecordChange): boolean {
+  return isPlain(change) && hasOwn(SYNC_CHANGE_KEY_LENGTH, change.kind)
+    && Array.isArray(change.key) && change.key.length === SYNC_CHANGE_KEY_LENGTH[change.kind]
+    && change.key.every((key) => typeof key === "string")
+    && (change.kind !== "attribute" || change.key[0] === "node" || change.key[0] === "graph-link")
+    && (change.op === "create" || change.op === "update" || change.op === "delete")
+    && (change.op === "create" ? change.before === undefined : isPlain(change.before))
+    && (change.op === "delete" ? change.after === undefined : isPlain(change.after));
+}
+
+export function syncHash({ mapId, command, ...operation }: SyncCommand): string {
+  return hashChanges([mapId, command, operation]);
+}
+
+type MapOpCommit = { command: MapCommand; hash: string };
+
+export function writeFileDurably(filePath: string, content: string): void {
   const tmp = `${filePath}.tmp`;
   const fd = fs.openSync(tmp, "w");
   try {
@@ -432,7 +457,10 @@ function readJournal(journalPath: string): JournalRead {
 
 export class RecordWorkspaceStore {
   readonly workspaceId: string;
+  private readonly historyId: string;
+  private readonly epoch: number;
 
+  private capture: ((command: SyncCommand, issuer: string, at: string, mapName: string) => void) | undefined;
   private readonly dir: string;
   private readonly now: () => string;
   /** Every record of the workspace but the snapshot header, keyed by rk. */
@@ -468,7 +496,7 @@ export class RecordWorkspaceStore {
   private closed = false;
 
   /** Writes `snapshot.jsonl` and an empty `journal.jsonl`. Refuses a directory that is not empty. */
-  static create(dir: string, records: SnapshotRecord[]): void {
+  static create(dir: string, records: SnapshotRecord[], index?: string): void {
     assertNotLiveM3e(dir);
     if (fs.existsSync(dir)) {
       if (!fs.statSync(dir).isDirectory()) throw new Error(`Not a directory: ${dir}`);
@@ -482,8 +510,17 @@ export class RecordWorkspaceStore {
       if (seen.has(rk)) throw new Error(`Two records share the key ${JSON.stringify(rk)}.`);
       seen.add(rk);
     }
-    writeFileDurably(path.join(dir, SNAPSHOT_FILE), serializeSnapshot(records));
+    const content = serializeSnapshot(records);
+    if (index !== undefined) {
+      const metadata = JSON.parse(index) as { snapshot?: { seq: number; sha256: string } };
+      const header = records.find((record) => record.kind === "snapshot");
+      if (metadata.snapshot?.seq !== header?.seq || metadata.snapshot?.sha256 !== sha256(content)) {
+        throw new Error("The commit index does not match the snapshot.");
+      }
+    }
+    writeFileDurably(path.join(dir, SNAPSHOT_FILE), content);
     writeFileDurably(path.join(dir, JOURNAL_FILE), "");
+    if (index !== undefined) writeFileDurably(path.join(dir, COMMIT_INDEX_FILE), index);
   }
 
   /** Number of journal lines after the snapshot. */
@@ -528,9 +565,12 @@ export class RecordWorkspaceStore {
     const snapshotPath = path.join(dir, SNAPSHOT_FILE);
     const journalPath = path.join(dir, JOURNAL_FILE);
     if (!fs.existsSync(snapshotPath)) throw new Error(`No record store in ${dir} (${SNAPSHOT_FILE} is missing).`);
-    const records = parseSnapshot(fs.readFileSync(snapshotPath, "utf8"));
+    const snapshotText = fs.readFileSync(snapshotPath, "utf8");
+    const records = parseSnapshot(snapshotText);
     const header = records[0] as SnapshotHeader;
     this.workspaceId = header.workspaceId;
+    this.historyId = header.historyId ?? randomUUID();
+    this.epoch = header.epoch ?? 1;
     if (header.format !== 1 && header.format !== 2) {
       throw new Error(`Unsupported snapshot format: ${String(header.format)}`);
     }
@@ -593,6 +633,18 @@ export class RecordWorkspaceStore {
       this.journalSize += 1;
     }
     if (this.snapshotFormat === 1) this.migrateToFormat2();
+    else if (header.historyId === undefined || header.epoch === undefined) {
+      header.historyId = this.historyId;
+      header.epoch = this.epoch;
+      const content = serializeSnapshot(records);
+      // Keep the checksum used by archive retention in step with the upgraded header.
+      if (this.snapshotSum !== undefined && this.snapshotSum.sha256 === sha256(snapshotText)) {
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+        this.snapshotSum = { seq: this.snapshotSeq, sha256: sha256(content) };
+        writeFileDurably(indexPath, JSON.stringify({ ...index, snapshot: this.snapshotSum }) + "\n");
+      }
+      writeFileDurably(snapshotPath, content);
+    }
 
     this.idIndex.clear();
     for (const [rk, record] of this.all) {
@@ -711,6 +763,33 @@ export class RecordWorkspaceStore {
     return out;
   }
 
+  syncIdentity(): SyncIdentity {
+    return { workspaceId: this.workspaceId, historyId: this.historyId, epoch: this.epoch };
+  }
+
+  /** The index preserves record reuse checks, map revisions and deduplication across a clone. */
+  snapshotIndex(records: SnapshotRecord[]): string {
+    return this.commitIndexText({ seq: this.currentSeq, sha256: sha256(serializeSnapshot(records)) });
+  }
+
+  /** Install the durable outbox writer once a local working store is ready. */
+  setCapture(capture: NonNullable<RecordWorkspaceStore["capture"]>): void {
+    this.capture = capture;
+  }
+
+  /** Import exact committed lines into a confirmed store. Reopen it before reading map caches. */
+  appendConfirmed(lines: JournalLine[], throughSeq: number): void {
+    if (!Array.isArray(lines) || throughSeq !== this.currentSeq + lines.length || lines.some((line, index) =>
+      !line || line.seq !== this.currentSeq + index + 1
+      || typeof line.mapId !== "string" || typeof line.issuer !== "string"
+      || typeof line.intent !== "string" || typeof line.committedAt !== "string"
+      || !Array.isArray(line.ops) || line.ops.some((op) =>
+        !op || typeof op.rk !== "string" || (op.op !== "delete"
+          && (op.op !== "put" || !op.record || recordRk(op.record as SnapshotRecord) !== op.rk)))
+    )) throw new Error("The remote journal is not a contiguous suffix.");
+    for (const line of lines) this.append(line, true);
+  }
+
   /** The current full record set in canonical order. The records are copies. */
   records(): SnapshotRecord[] {
     return sortRecords(jsonClone([this.header(), ...this.all.values()]));
@@ -793,7 +872,7 @@ export class RecordWorkspaceStore {
 
   // ---------------------------------------------------------------- commits
 
-  commitMapCommand(mapId: string, command: MapCommand, issuer: string, expectedRevision?: string): CommitResult {
+  commitMapCommand(mapId: string, command: MapCommand, issuer: string, expectedRevision?: string, sync?: { hash: string; create: boolean }): CommitResult {
     this.assertOpen();
     if (this.engineTooFarBehind()) return this.engineBehind();
     if (!command || typeof command !== "object" || typeof command.commandId !== "string") {
@@ -812,23 +891,24 @@ export class RecordWorkspaceStore {
         `Command ${command.commandId} was already committed with different changes.`,
       );
     }
-    if (!entry) return this.failure("NOT_FOUND", null);
+    if (!entry && !sync?.create) return this.failure("NOT_FOUND", null);
+    if (entry && sync?.create) return this.failure("CONFLICT", this.currentOf(entry), "The map already exists.");
     const shape = commandShape(command);
-    if (shape) return this.failure("INVALID_COMMAND", this.currentOf(entry), shape);
+    if (shape) return this.failure("INVALID_COMMAND", entry ? this.currentOf(entry) : null, shape);
     if (expectedRevision !== undefined && expectedRevision !== this.revisionOf(mapId)) {
-      return this.failure("CONFLICT", this.currentOf(entry), "The map changed since the revision the command was built on.");
+      return this.failure("CONFLICT", entry ? this.currentOf(entry) : null, "The map changed since the revision the command was built on.");
     }
     let changes: RecordChange[];
     try {
       changes = jsonClone(command.changes);
     } catch {
-      return this.failure("INVALID_COMMAND", this.currentOf(entry), "changes cannot be written as JSON.");
+      return this.failure("INVALID_COMMAND", entry ? this.currentOf(entry) : null, "changes cannot be written as JSON.");
     }
     let provenance: Provenance | undefined;
     try {
       provenance = normalizeProvenance(command.provenance);
     } catch (error) {
-      return this.failure("INVALID_COMMAND", this.currentOf(entry), (error as Error).message);
+      return this.failure("INVALID_COMMAND", entry ? this.currentOf(entry) : null, (error as Error).message);
     }
     const meta = {
       commandId: command.commandId,
@@ -837,6 +917,8 @@ export class RecordWorkspaceStore {
       provenance,
       reason: typeof command.reason === "string" ? command.reason : undefined,
       confirm: command.confirm === true,
+      syncHash: sync?.hash,
+      sent: changes,
     };
     // The client names records by its own ids; the store may hold some of them under another id.
     const plan = this.planAliases(entry, mapId, idsCreatedBy(changes));
@@ -860,6 +942,7 @@ export class RecordWorkspaceStore {
     }
     // Ids of this state that another map already holds get a stored id of their own; the state
     // is committed with the stored ids, and the client keeps seeing the ids it sent.
+    const sent = this.capture ? diffState(entry ? this.clientState(entry) : {}, next) : undefined;
     const plan = this.planAliases(entry, mapId, idsOfState(next));
     if (plan !== null) next = translateState(next, plan.in);
     const changes = diffState(entry ? this.warm(entry).state : {}, next);
@@ -870,11 +953,12 @@ export class RecordWorkspaceStore {
       commandId: `save:${randomUUID()}`,
       intent: intent ?? (entry ? "save-map" : "create-map"),
       actor: { kind: "system", id: issuer },
+      sent,
     }, plan !== null ? { aliases: plan.records } : undefined);
   }
 
   /** Sets the row columns of a map. A key that is present with null or undefined removes the column. */
-  setMapColumns(mapId: string, columns: MapColumns, issuer: string): void {
+  setMapColumns(mapId: string, columns: MapColumns, issuer: string, sync?: MapOpCommit): void {
     this.assertOpen();
     this.assertEngineNotTooFarBehind();
     const entry = this.requireMap(mapId);
@@ -896,13 +980,25 @@ export class RecordWorkspaceStore {
     }
     // A journal line and a commit number of its own, but not a change of the map's content:
     // the saved-at time and the revision of the map stay as they are.
-    this.append({ seq, issuer, committedAt: this.now(), mapId, intent: "set-map-columns", mapOp: "columns", ops });
+    const capture = this.capture && !sync;
+    const before: MapColumns = {};
+    const after: MapColumns = {};
+    if (capture) {
+      const prior = this.mapRecord(entry);
+      for (const field of COLUMN_FIELDS) {
+        if (!hasOwn(columns, field)) continue;
+        before[field] = prior[field] ?? null;
+        after[field] = columns[field] ?? null;
+      }
+    }
+    this.appendMapOperation({ seq, issuer, committedAt: this.now(), mapId, intent: "set-map-columns", mapOp: "columns", ops },
+      entry, sync, capture ? { mapOp: "columns", before, columns: after } : undefined);
     entry.records = result.records;
     warm.state = result.state;
   }
 
   /** Deletes the map and every record that belongs to it. */
-  deleteMap(mapId: string, issuer: string): void {
+  deleteMap(mapId: string, issuer: string, sync?: MapOpCommit): void {
     this.assertOpen();
     this.assertEngineNotTooFarBehind();
     const entry = this.requireMap(mapId);
@@ -913,12 +1009,13 @@ export class RecordWorkspaceStore {
     }
     for (const rk of entry.idMaps.keys()) ops.push({ op: "delete", rk });
     for (const rk of [...(this.decayByMap.get(mapId) ?? [])]) ops.push({ op: "delete", rk });
-    this.append({ seq: this.currentSeq + 1, issuer, committedAt: this.now(), mapId, intent: "delete-map", mapOp: "delete", ops });
+    this.appendMapOperation({ seq: this.currentSeq + 1, issuer, committedAt: this.now(), mapId, intent: "delete-map", mapOp: "delete", ops },
+      entry, sync, this.capture && !sync ? { mapOp: "delete", before: this.mapFingerprint(entry) } : undefined);
     this.maps.delete(mapId);
   }
 
   /** Gives the map another id. Node, connection, scope and surface ids stay as they are. */
-  renameMapId(oldId: string, newId: string, issuer: string): void {
+  renameMapId(oldId: string, newId: string, issuer: string, sync?: MapOpCommit): void {
     this.assertOpen();
     this.assertEngineNotTooFarBehind();
     const entry = this.requireMap(oldId);
@@ -951,10 +1048,103 @@ export class RecordWorkspaceStore {
       const copy: DecayRecord = { ...record, mapId: newId, rev: seq };
       ops.push({ op: "put", rk, record: copy });
     }
-    this.append({ seq, issuer, committedAt: this.now(), mapId: oldId, intent: "rename-map", mapOp: "rename", newMapId: newId, ops });
+    this.appendMapOperation({ seq, issuer, committedAt: this.now(), mapId: oldId, intent: "rename-map", mapOp: "rename", newMapId: newId, ops },
+      entry, sync, this.capture && !sync ? { mapOp: "rename", newMapId: newId } : undefined);
     this.maps.delete(oldId);
     this.maps.set(newId, renamed);
     if (entry.warm) this.warm(renamed);
+  }
+
+  private mapFingerprint(entry: MapEntry): string {
+    const columns: MapColumns = {};
+    this.copyColumns(columns, this.mapRecord(entry));
+    return hashChanges([this.clientState(entry), columns]);
+  }
+
+  private mapName(entry: MapEntry | undefined): string {
+    if (!entry) return "";
+    const map = this.mapRecord(entry);
+    const label = map.extra?.mapLabel;
+    if (typeof label === "string" && label.trim()) return label;
+    const root = entry.records.get(`node|${map.rootNodeId}`);
+    return root?.kind === "node" ? root.text ?? "" : "";
+  }
+
+  private appendMapOperation(
+    line: JournalLine, entry: MapEntry, sync: MapOpCommit | undefined,
+    operation: SyncMapOperation | undefined,
+  ): void {
+    if (operation && this.capture) {
+      const command: MapCommand = {
+        commandId: randomUUID(), intent: line.intent, actor: { kind: "system", id: line.issuer }, changes: [],
+      };
+      const payload = { ...operation, mapId: line.mapId, command };
+      this.capture(payload, line.issuer, line.committedAt, this.mapName(entry));
+      sync = { command, hash: syncHash(payload) };
+    }
+    if (sync) {
+      line.commandId = sync.command.commandId;
+      line.actor = sync.command.actor;
+      line.intent = sync.command.intent;
+      line.syncHash = sync.hash;
+    }
+    this.append(line);
+  }
+
+  syncReceipt(payload: SyncCommand): CommitResult | undefined {
+    const { command } = payload;
+    const known = this.commands.get(commandKey("", command.commandId));
+    if (known === undefined) return undefined;
+    if (known.hash !== syncHash(payload)) {
+      return this.failure("SAME_ID_DIFFERENT_CONTENT", null, "The Command ID was already used with different content.");
+    }
+    return { ok: true, seq: known.seq, savedAt: this.committedAtOf(known.seq), replayed: true };
+  }
+
+  /** Validates a pending Command against the current state, for push and working-store replay. */
+  commitSyncCommand(payload: SyncCommand, issuer: string): CommitResult {
+    this.assertOpen();
+    const prior = this.syncReceipt(payload);
+    if (prior !== undefined) return prior;
+    const { command, mapId, mapOp } = payload;
+    const shape = commandShape(command);
+    if (shape) return this.failure("INVALID_COMMAND", null, shape);
+    if (command.changes.some((change) => !validSyncChange(change))) {
+      return this.failure("INVALID_COMMAND", null, "The Command has an unsupported record change.");
+    }
+    if (this.engineTooFarBehind()) return this.engineBehind();
+    const entry = this.maps.get(mapId);
+    if (!entry && mapOp !== "create") return this.failure("CONFLICT", null, "The map does not exist.");
+    const hash = syncHash(payload);
+    if (mapOp === undefined || mapOp === "create") {
+      return this.commitMapCommand(mapId, command, issuer, undefined, { hash, create: mapOp === "create" });
+    }
+    // The shape checks above ensure all other map operations have an existing source map.
+    const source = this.requireMap(mapId);
+    const conflict = (message: string): CommitFailure => this.failure("CONFLICT", this.currentOf(source), message);
+    const sync = { command, hash };
+    const previousSeq = this.currentSeq;
+    if (mapOp === "delete") {
+      if (payload.before !== undefined && payload.before !== this.mapFingerprint(source)) return conflict("The map changed before deletion.");
+      this.deleteMap(mapId, issuer, sync);
+    } else if (mapOp === "rename") {
+      if (payload.newMapId !== mapId && this.hasMap(payload.newMapId)) return conflict("The destination map already exists.");
+      this.renameMapId(mapId, payload.newMapId, issuer, sync);
+    } else {
+      const current = this.mapRecord(source);
+      for (const field of COLUMN_FIELDS) {
+        const desired = payload.columns[field] ?? null;
+        const actual = current[field] ?? null;
+        if (hasOwn(payload.before ?? {}, field) && !sameJson(actual, payload.before?.[field]) && !sameJson(actual, desired)) {
+          return conflict(`The map column ${field} changed.`);
+        }
+      }
+      this.setMapColumns(mapId, payload.columns, issuer, sync);
+    }
+    return {
+      ok: true, seq: this.currentSeq, savedAt: this.committedAtOf(this.currentSeq), replayed: false,
+      ...(this.currentSeq === previousSeq ? { noOp: true as const } : {}),
+    };
   }
 
   /**
@@ -1348,7 +1538,7 @@ export class RecordWorkspaceStore {
   }
 
   private header(): SnapshotHeader {
-    return { kind: "snapshot", format: this.snapshotFormat, workspaceId: this.workspaceId, seq: this.currentSeq };
+    return { kind: "snapshot", format: this.snapshotFormat, ...this.syncIdentity(), seq: this.currentSeq };
   }
 
   /**
@@ -1581,7 +1771,7 @@ export class RecordWorkspaceStore {
     entry: MapEntry | undefined,
     changes: RecordChange[],
     issuer: string,
-    meta: { commandId: string; intent: string; actor?: MapCommand["actor"]; provenance?: Provenance; reason?: string; confirm?: boolean },
+    meta: { commandId: string; intent: string; actor?: MapCommand["actor"]; provenance?: Provenance; reason?: string; confirm?: boolean; sent?: RecordChange[]; syncHash?: string },
     /**
      * `changes` use stored ids. `aliases`: the `idMap` records this commit adds. `sent`: the
      * changes with the ids the client used, kept in the journal in place of `changes`.
@@ -1608,7 +1798,7 @@ export class RecordWorkspaceStore {
     // 2. Compare-and-set on the `before` values.
     let applied: ReturnType<typeof applyChanges>;
     try {
-      applied = applyChangesReduced(warm ? warm.state : {}, changes);
+      applied = applyChangesReduced(warm ? warm.state : {}, changes, meta.syncHash !== undefined);
     } catch (error) {
       return this.failure("INVALID_COMMAND", current(), (error as Error).message);
     }
@@ -1734,6 +1924,16 @@ export class RecordWorkspaceStore {
     const userOps = aliasRecords.length === 0
       ? ops
       : [...ops, ...aliasRecords.map((record): RecordOp => ({ op: "put", rk: recordRk(record), record }))];
+    if (meta.syncHash !== undefined && entry && userOps.length === 0) {
+      undoGraph?.();
+      result.revert?.();
+      return { ok: true, savedAt: this.savedAtOf(entry), seq: this.currentSeq, replayed: false, noOp: true };
+    }
+    if (meta.syncHash !== undefined) {
+      line.syncHash = meta.syncHash;
+      if (!entry) line.mapOp = "create";
+      line.changesHash = hashChanges(meta.sent ?? line.changes);
+    }
     const scopeOf = postGraph ?? entry?.graph;
     const targets = new Set<string>();
     for (const id of activityIds) {
@@ -1744,6 +1944,18 @@ export class RecordWorkspaceStore {
     const decayOps = targets.size === 0 ? [] : this.decayPuts(mapId, targets, committedAt, seq);
     line.ops = decayOps.length === 0 ? userOps : [...userOps, ...decayOps];
     try {
+      if (this.capture && meta.syncHash === undefined && meta.actor !== undefined) {
+        const command: MapCommand = {
+          commandId: meta.commandId, intent: meta.intent, actor: meta.actor,
+          provenance: meta.provenance, reason: meta.reason, confirm: meta.confirm || undefined,
+          changes: meta.sent ?? line.changes,
+        };
+        const payload: SyncCommand = { mapId, command, ...(entry ? {} : { mapOp: "create" }) };
+        const state = result.state as AppState;
+        const root = state.nodes?.[state.rootId];
+        this.capture(payload, issuer, committedAt, this.mapName(entry) || root?.text || "");
+        line.changesHash = hashChanges(command.changes);
+      }
       this.append(line);
     } catch (error) {
       undoGraph?.();
@@ -1892,10 +2104,12 @@ export class RecordWorkspaceStore {
   }
 
   /** Appends the journal line (the commit point), then updates memory and hands the commit to the engine. */
-  private append(line: JournalLine): void {
+  private append(line: JournalLine, confirmed = false): void {
     if (this.journalFd === undefined) throw new Error("The record store is closed.");
-    const touched = touchedOf(line.ops, (rk) => this.all.get(rk));
-    if (touched.length > 0) line.touched = touched;
+    if (!confirmed) {
+      const touched = touchedOf(line.ops, (rk) => this.all.get(rk));
+      if (touched.length > 0) line.touched = touched;
+    }
     const buffer = Buffer.from(JSON.stringify(line) + "\n", "utf8");
     try {
       let written = 0;
@@ -1919,7 +2133,7 @@ export class RecordWorkspaceStore {
 
   private engineCommit(line: JournalLine): EngineCommit {
     const commit: CommitRecord = { kind: "commit", seq: line.seq, committedAt: line.committedAt, issuer: line.issuer };
-    const header: SnapshotHeader = { kind: "snapshot", format: this.snapshotFormat, workspaceId: this.workspaceId, seq: line.seq };
+    const header: SnapshotHeader = { kind: "snapshot", format: this.snapshotFormat, ...this.syncIdentity(), seq: line.seq };
     return {
       seq: line.seq,
       ops: [
@@ -1972,7 +2186,10 @@ export class RecordWorkspaceStore {
       // test reads journals written before such lines were marked.)
       this.mapSeq.set(line.mapId, line.seq);
     }
-    if (line.commandId !== undefined) {
+    if (line.commandId !== undefined && line.syncHash !== undefined) {
+      this.commands.set(commandKey("", line.commandId), { seq: line.seq, hash: line.syncHash });
+    }
+    if (line.commandId !== undefined && (line.mapOp === undefined || line.mapOp === "create")) {
       this.commands.set(commandKey(line.mapId, line.commandId), {
         seq: line.seq,
         hash: line.changesHash ?? hashChanges(line.changes),
@@ -2190,7 +2407,7 @@ export class RecordWorkspaceStore {
 
   private retainSnapshot(seq: number): void {
     const name = snapshotArchiveName(seq, this.snapshotFormat);
-    const header: SnapshotHeader = { kind: "snapshot", format: this.snapshotFormat, workspaceId: this.workspaceId, seq };
+    const header: SnapshotHeader = { kind: "snapshot", format: this.snapshotFormat, ...this.syncIdentity(), seq };
     const content = serializeSnapshot([header, ...this.all.values()]);
     const dir = archiveDir(this.dir);
     fs.mkdirSync(dir, { recursive: true });

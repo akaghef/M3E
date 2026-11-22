@@ -49,6 +49,25 @@
 
 ## 記録
 
+### 2026-11-23 local モードの v1 で共有する状態と今後の境界
+
+- 種類: 気づき
+- 書いた agent: local モード実装
+- 対象: [local モードの設計](local-mode-design.md) 2〜6 節、[同期の要件](sync-requirements.md) R4.4、R4.5、R6.9
+- 中身: local は snapshot と journal を保持する。clone に commit index を添えると、map の更新日時、削除した ID の再利用制約、確定済み Command の重複排除を引き継げる。working store の再構築で番号が同じでも内容が変わりうる。既存の Neo4j applier は同一 workspace の seq が一致すると再構築を省くため、local の working store には接続しない。
+- 根拠: `local_sync_store.test.ts` で clone、journal の再生、再 clone、outbox の復元、重複排除、入れ替え失敗時の保全を検証した。Neo4j の挙動は `beta/src/node/record_store/engine.ts` の起動時の判定を読んだ。
+- 扱い: working store と outbox は実装で解消。Neo4j の切り替え、宣言された依存と再送窓の期限切れ、再 clone 時の結果再照合は未対応。歴史を作り直すときは `record_store_cli --create … --from-snapshot … --new-history` で履歴 ID を発行し、epoch を増やせる。
+
+### 2026-11-23 単一 Command が既存の push の受付上限を超える場合
+
+- 種類: 問題
+- 書いた agent: local モード実装
+- 対象: `beta/src/node/sync/http.ts`、[同期の要件](sync-requirements.md) K10
+- 中身: local は Command ごとに送る。push のリクエストには既存の 8,000,000 byte の上限があり、単一 Command がそれを超えると確定できず outbox に残る。
+- 根拠: push の HTTP body 上限と local の送信処理を照合した。上限超過の実送信は未確認。
+- 扱い: 未対応
+
+
 ### 2026-11-23 Mac mini の remote は、mini 上の process からの loopback 接続で login を偽れる
 
 - 種類: 問題
@@ -559,7 +578,7 @@
 - 対象: DB 仕様書 2 節、ADR 014 の Decision 1
 - 中身: ADR 014 では、journal は workspace × 書き手の端末ごとの追記専用の列で、書くのはその端末だけとする。実装は workspace ごとに journal が一つで、一つのサーバだけが書く。端末をまたぐ同期（Mac mini での集約、他の端末の journal の取り込み）を作るときに、ファイルの単位と通し番号の振り方を変える必要がある。
 - 根拠: `beta/src/node/record_store/store.ts` の冒頭の説明と、ファイルの置き方を読んだ。
-- 扱い: 仕様へ反映（DB 仕様書 2 節を、2026-11-18 の akaghef の決定に合わせた。確定済みの journal は remote 上で workspace ごとに一本であり、今の実装はこれに合っている。欠けているのは local outbox である）。local outbox の実装は未対応
+- 扱い: 仕様へ反映（DB 仕様書 2 節を、2026-11-18 の akaghef の決定に合わせた。確定済みの journal は remote 上で workspace ごとに一本であり、今の実装はこれに合っている。欠けているのは local outbox である）。local outbox は実装で解消（local モードのオフライン編集と手動同期）
 
 ### 2026-11-19 圧縮すると、どの確定がどの node に触れたかが失われ、書かれる頻度を作り直せない
 

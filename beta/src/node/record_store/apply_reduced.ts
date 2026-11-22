@@ -20,18 +20,18 @@ function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-export function applyChangesReduced(state: object, changes: readonly RecordChange[]): ApplyResult {
+export function applyChangesReduced(state: object, changes: readonly RecordChange[], allowAfter = false): ApplyResult {
   const source = state as Dict;
   const nodes = source.nodes;
-  if (!isDict(nodes) || !Array.isArray(changes)) return applyChanges(state, changes);
+  if (!isDict(nodes) || !Array.isArray(changes)) return applyChanges(state, changes, allowAfter);
 
   const ids = new Set<string>();
   const parents = new Set<string>();
   for (const change of changes) {
-    if (!change || typeof change !== "object" || !Array.isArray(change.key)) return applyChanges(state, changes);
+    if (!change || typeof change !== "object" || !Array.isArray(change.key)) return applyChanges(state, changes, allowAfter);
     if (change.kind === "map-field") {
       // Presence of the node table itself: needs every node.
-      if (change.key[0] === "nodes") return applyChanges(state, changes);
+      if (change.key[0] === "nodes") return applyChanges(state, changes, allowAfter);
     } else if (change.kind === "node") {
       ids.add(change.key[0] ?? "");
     } else if (change.kind === "edge") {
@@ -57,12 +57,12 @@ export function applyChangesReduced(state: object, changes: readonly RecordChang
   for (const id of ids) {
     if (hasOwn(nodes, id)) reducedNodes[id] = nodes[id];
   }
-  const result = applyChanges({ ...source, nodes: reducedNodes }, changes);
+  const result = applyChanges({ ...source, nodes: reducedNodes }, changes, allowAfter);
   if (!result.ok) return result;
   const applied = result.state as Dict;
   const appliedNodes = applied.nodes;
   if (appliedNodes === reducedNodes) return { ok: true, state: { ...applied, nodes } };
-  if (!isDict(appliedNodes)) return applyChanges(state, changes);
+  if (!isDict(appliedNodes)) return applyChanges(state, changes, allowAfter);
 
   const merged: Dict = { ...nodes };
   for (const id of ids) {

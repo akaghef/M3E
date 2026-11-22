@@ -13,8 +13,9 @@ import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand } from "./map_commit";
-import { activeRecordStore, closeActiveRecordStoreOnSignal } from "./record_store/active";
+import { activeRecordStore, closeActiveRecordStoreOnSignal, localModeStore, startLocalMode } from "./record_store/active";
 import { handleRecordSyncHttp } from "./sync/http";
+import { handleLocalSyncHttp } from "./sync/local_http";
 import { accountForConnection } from "./sync/issuer";
 import { enforceMinSeq } from "./sync/min_seq";
 import { allowedLogin, movedToRemote, viewerListenOptions } from "./remote_access";
@@ -417,9 +418,9 @@ function addMapWatchClient(mapId: string, res: http.ServerResponse): void {
   });
 }
 
-function broadcastMapUpdate(mapId: string, savedAt: string, sourceTabId: string | null): void {
+function broadcastMapUpdate(mapId: string, savedAt: string, sourceTabId: string | null, synchronized = false): void {
   mcpService.notifyMapChanged(mapId);
-  const payload = JSON.stringify({ mapId, savedAt, sourceTabId });
+  const payload = JSON.stringify({ mapId, savedAt, sourceTabId, ...(synchronized ? { synchronized } : {}) });
   const frame = `event: map_updated\ndata: ${payload}\n\n`;
   for (let i = mapWatchClients.length - 1; i >= 0; i--) {
     if (mapWatchClients[i].mapId === mapId) {
@@ -3705,7 +3706,7 @@ async function handleSyncApi(
   const syncConfig = loadCloudSyncConfig();
   const transport = syncConfig.transport;
 
-  if (!syncConfig.enabled || !transport) {
+  if (localModeStore() || !syncConfig.enabled || !transport) {
     if (route.action === "status") {
       // Status endpoint: return 200 with enabled:false so browser can update UI
       sendJson(res, 200, {
@@ -4052,10 +4053,11 @@ function mapSourceOfTruth(): "records" | "sqlite" {
 function startServer(): void {
   // Record store (M3E_STORE_DIR): open it before anything else, so a refusal stops the start.
   if (activeRecordStore()) closeActiveRecordStoreOnSignal();
-  ensureMap(currentSqliteDbPath(), ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
-  ensureMap(currentSqliteDbPath(), SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
-  // Initialize audit log file for the default map
-  initAuditFile(currentDataDir(), ACTIVE_MAP_ID);
+  if (!localModeStore()) {
+    ensureMap(currentSqliteDbPath(), ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
+    ensureMap(currentSqliteDbPath(), SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
+    initAuditFile(currentDataDir(), ACTIVE_MAP_ID);
+  }
 
   const server = createAppServer();
 
@@ -4070,7 +4072,9 @@ function startServer(): void {
       }
     }
     const query = `?${params.toString()}`;
-    const url = `http://localhost:${PORT}/${DEFAULT_PAGE}${query}`;
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : PORT;
+    const url = `http://localhost:${port}/${DEFAULT_PAGE}${query}`;
     console.log(`Viewer ready: ${url}`);
     openBrowser(url);
     if (isFirstRun) {
@@ -4087,7 +4091,7 @@ function startServer(): void {
       startAutoBackup(currentSqliteDbPath(), BACKUP_DIR);
     }
     // Auto sync setup
-    if (cloudSyncConfig.autoSync && cloudTransport) {
+    if (!localModeStore() && cloudSyncConfig.autoSync && cloudTransport) {
       autoSyncHandle = startAutoSync(cloudTransport, cloudSyncConfig.autoSyncIntervalMs, {
         getLocalState: async () => {
           try {
@@ -4343,6 +4347,10 @@ export function createAppServer(): http.Server {
       return;
     }
     if (await handleMcpApi(req, res, tailscaleGateEnabled)) return;
+    if (await handleLocalSyncHttp(req, res, (mapIds) => {
+      const maps = new Map(activeRecordStore()?.listMaps().map((map) => [map.id, map.savedAt]));
+      for (const mapId of mapIds) broadcastMapUpdate(mapId, maps.get(mapId) ?? "", null, true);
+    })) return;
     if (await handleRecordSyncHttp(req, res)) return;
     if (orreryApi.handle(req, res)) return;
     if (await handleOpenLocalPathApi(req, res)) {
@@ -4587,6 +4595,13 @@ if (require.main === module) {
     console.error(`[M3E] This workspace lives on a remote M3E now: ${remote}. Not starting on the local copy in ${currentDataDir()}.`);
     process.exit(1);
   }
-  if (process.env.M3E_SKIP_SAMPLE_GENERATION !== "1") runSampleGeneration();
-  startServer();
+  if (process.env.M3E_SYNC_REMOTE?.trim()) {
+    void startLocalMode().then(startServer).catch((error) => {
+      console.error("[M3E] Local mode startup failed:", error);
+      process.exitCode = 1;
+    });
+  } else {
+    if (process.env.M3E_SKIP_SAMPLE_GENERATION !== "1") runSampleGeneration();
+    startServer();
+  }
 }

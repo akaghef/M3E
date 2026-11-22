@@ -14,7 +14,8 @@
  *   x-m3e-actor-instance: <Actor Instance id>  (mcp only)
  */
 import type http from "http";
-import { activeRecordStore, recordStoreDir } from "../record_store/active";
+import { activeRecordStore, localModeStore, recordStoreDir } from "../record_store/active";
+import { sameSyncIdentity, type SyncIdentity } from "../record_store/sync_types";
 import type { ConnectionIdentity } from "./issuer";
 import { pullSince } from "./journal_read";
 import { issuerForConnection, pushCommands } from "./push";
@@ -31,7 +32,7 @@ export function connectionFromRequest(req: http.IncomingMessage): ConnectionIden
   return { kind: "viewer" };
 }
 
-function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+export function sendSyncJson(res: http.ServerResponse, status: number, body: unknown): void {
   if (res.writableEnded) return;
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -57,65 +58,84 @@ function readBody(req: http.IncomingMessage, limit: number): Promise<string> {
 }
 
 function noStore(res: http.ServerResponse): void {
-  sendJson(res, 503, { ok: false, code: "NOT_FOUND", error: "Sync runs on the record store." });
+  sendSyncJson(res, 503, { ok: false, code: "NOT_FOUND", error: "Sync runs on the record store." });
 }
 
 export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname !== "/api/sync/push" && url.pathname !== "/api/sync/pull" && url.pathname !== "/api/sync/clone") return false;
   try {
+    if (localModeStore()) {
+      sendSyncJson(res, 409, { ok: false, code: "LOCAL_MODE", error: "Only the remote confirms Commands." });
+      return true;
+    }
     const store = activeRecordStore();
     const storeDir = recordStoreDir();
     if (!store || !storeDir) {
       noStore(res);
       return true;
     }
+    const identity = store.syncIdentity();
+    const fence = (provided: Partial<SyncIdentity>): boolean | undefined => {
+      const scoped = Object.keys(identity).some((key) => Object.prototype.hasOwnProperty.call(provided, key));
+      if (!scoped || sameSyncIdentity(identity, provided)) return scoped;
+      sendSyncJson(res, 409, { ...identity, ok: false, code: "FENCED", error: "Workspace or history does not match." });
+      return undefined;
+    };
     if (url.pathname === "/api/sync/push") {
       if (req.method !== "POST") {
-        sendJson(res, 405, { ok: false, error: "Method not allowed." });
+        sendSyncJson(res, 405, { ok: false, error: "Method not allowed." });
         return true;
       }
       if (!(req.headers["content-type"] || "").startsWith("application/json")) {
-        sendJson(res, 415, { ok: false, code: "INVALID_COMMAND", error: "Use application/json." });
+        sendSyncJson(res, 415, { ok: false, code: "INVALID_COMMAND", error: "Use application/json." });
         return true;
       }
-      const body = JSON.parse(await readBody(req, 8_000_000)) as { commands?: unknown };
+      const body = JSON.parse(await readBody(req, 8_000_000)) as ({ commands?: unknown } & Partial<SyncIdentity>) | null;
+      const fenced = fence(body ?? {});
+      if (fenced === undefined) return true;
       const issuer = issuerForConnection(connectionFromRequest(req), store);
-      sendJson(res, 200, pushCommands(store, storeDir, body?.commands, issuer));
+      sendSyncJson(res, 200, { ...identity, ...pushCommands(store, storeDir, body?.commands, issuer, fenced) });
       return true;
     }
+    const params = url.searchParams;
+    const provided: Partial<SyncIdentity> = {};
+    if (params.has("workspaceId")) provided.workspaceId = params.get("workspaceId")!;
+    if (params.has("historyId")) provided.historyId = params.get("historyId")!;
+    if (params.has("epoch")) provided.epoch = Number(params.get("epoch"));
+    if (fence(provided) === undefined) return true;
     if (url.pathname === "/api/sync/clone") {
       if (req.method !== "GET") {
-        sendJson(res, 405, { ok: false, error: "Method not allowed." });
+        sendSyncJson(res, 405, { ok: false, error: "Method not allowed." });
         return true;
       }
       const records = store.records();
       const headerRecord = records.find((record) => record.kind === "snapshot");
       const snapshotSeq = headerRecord && headerRecord.kind === "snapshot" ? headerRecord.seq : store.seq();
-      sendJson(res, 200, { snapshotSeq, records });
+      sendSyncJson(res, 200, { ...identity, snapshotSeq, records, ...(url.searchParams.has("index") ? { index: store.snapshotIndex(records) } : {}) });
       return true;
     }
     if (req.method !== "GET") {
-      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      sendSyncJson(res, 405, { ok: false, error: "Method not allowed." });
       return true;
     }
-    const afterRaw = url.searchParams.get("after");
+    const afterRaw = params.get("after");
     if (afterRaw === null || !/^\d+$/.test(afterRaw)) {
-      sendJson(res, 400, { ok: false, code: "INVALID_COMMAND", error: "after must be a non-negative integer." });
+      sendSyncJson(res, 400, { ok: false, code: "INVALID_COMMAND", error: "after must be a non-negative integer." });
       return true;
     }
     const after = Number(afterRaw);
     if (!Number.isSafeInteger(after)) {
-      sendJson(res, 400, { ok: false, code: "INVALID_COMMAND", error: "after must be a non-negative integer." });
+      sendSyncJson(res, 400, { ok: false, code: "INVALID_COMMAND", error: "after must be a non-negative integer." });
       return true;
     }
     const scope = url.searchParams.get("scope") ?? undefined;
     // `scope` selects nothing yet: disclosure rights are not modelled.
-    sendJson(res, 200, pullSince(storeDir, after, store.seq(), scope));
+    sendSyncJson(res, 200, { ...identity, ...pullSince(storeDir, after, store.seq(), scope) });
   } catch (error) {
     if (!res.headersSent) {
       const message = error instanceof SyntaxError ? "Invalid JSON body." : (error as Error).message || "Sync request failed.";
-      sendJson(res, 400, { ok: false, code: "INVALID_COMMAND", error: message });
+      sendSyncJson(res, 400, { ok: false, code: "INVALID_COMMAND", error: message });
     } else {
       res.end();
     }

@@ -12,7 +12,22 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { LocalSync } from "../sync/local";
 import { RecordWorkspaceStore, type OpenOptions } from "./store";
+
+let local: LocalSync | null = null;
+
+export async function startLocalMode(): Promise<void> {
+  const remote = process.env.M3E_SYNC_REMOTE?.trim();
+  if (!remote) return;
+  const dataDir = process.env.M3E_DATA_DIR?.trim();
+  if (!dataDir) throw new Error("Local mode requires M3E_DATA_DIR.");
+  local = await LocalSync.open(dataDir, remote);
+}
+
+export function localModeStore(): LocalSync | null {
+  return local;
+}
 
 let active: RecordWorkspaceStore | null = null;
 let activeDir: string | null = null;
@@ -25,6 +40,7 @@ let shutdownRegistered = false;
  * launcher can open its frozen SQLite file for writing by leaving M3E_STORE_DIR out.
  */
 export function recordStoreDir(): string | null {
+  if (local) return local.storeDir();
   const dir = process.env.M3E_STORE_DIR?.trim();
   if (dir) return path.resolve(dir);
   const dataDir = process.env.M3E_DATA_DIR?.trim();
@@ -43,6 +59,7 @@ function assertNotLiveM3e(dir: string): void {
 
 /** The one store of `recordStoreDir()`, opened on first use; null when that is null (no M3E_STORE_DIR and no migrated store in M3E_DATA_DIR). */
 export function activeRecordStore(): RecordWorkspaceStore | null {
+  if (local) return local.store();
   const dir = recordStoreDir();
   if (dir === null) return null;
   if (active !== null && activeDir === dir) return active;
@@ -69,6 +86,10 @@ export async function closeActiveRecordStore(): Promise<void> {
   active = null;
   activeDir = null;
   if (store) await store.close();
+  if (local) {
+    await local.close();
+    local = null;
+  }
 }
 
 /**

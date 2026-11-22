@@ -46,6 +46,27 @@ describe("record store CLI", () => {
     expect(parseSnapshot(fs.readFileSync(outPath, "utf8"))[0]).toMatchObject({ kind: "snapshot", seq: 1 });
   });
 
+  it("can create a replacement remote with a new history and an increased epoch", async () => {
+    const work = tempDir("cli-new-history");
+    const records = snapshotOf([{ id: "map_a", state: richState() }]);
+    const header = records[0];
+    if (header.kind !== "snapshot") throw new Error("Expected a snapshot header.");
+    header.historyId = "previous-history";
+    header.epoch = 7;
+    const snapshot = path.join(work, "in.jsonl");
+    fs.writeFileSync(snapshot, serializeSnapshot(records));
+    const dir = path.join(work, "replacement");
+    expect(await main(["--create", dir, "--from-snapshot", snapshot, "--new-history"], io())).toBe(0);
+    const restored = RecordWorkspaceStore.open(dir);
+    try {
+      expect(restored.syncIdentity()).toMatchObject({ epoch: 8, workspaceId: header.workspaceId });
+      expect(restored.syncIdentity().historyId).not.toBe(header.historyId);
+      expect(restored.seq()).toBe(header.seq);
+    } finally {
+      await restored.close();
+    }
+  });
+
   it("reports invariant problems with exit code 1 and bad usage with 2", async () => {
     const work = tempDir("cli-bad");
     const records = snapshotOf([{ id: "map_a", state: richState() }]).filter((record) => !(record.kind === "node" && record.id === "inner"));

@@ -12,6 +12,8 @@ export interface SnapshotHeader {
   /** 1 is read and migrated once on open. 2 is the format this store writes. */
   format: 1 | 2;
   workspaceId: string;
+  historyId?: string;
+  epoch?: number;
   seq: number;
 }
 

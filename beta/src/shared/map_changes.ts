@@ -361,7 +361,7 @@ function conflictsFor(change: RecordChange, current: Bag | null, fields: string[
   return fields.map((field) => ({ kind: change.kind, key: change.key, field }));
 }
 
-function fieldConflicts(change: RecordChange, current: Bag | null): FieldConflict[] {
+function fieldConflicts(change: RecordChange, current: Bag | null, allowAfter: boolean): FieldConflict[] {
   const before = change.before ?? {};
   const after = change.after ?? {};
   const fields = touched(change.before, change.after);
@@ -370,6 +370,7 @@ function fieldConflicts(change: RecordChange, current: Bag | null): FieldConflic
   const mismatched = fields.filter((field) => {
     const inBefore = has(before, field);
     const inCurrent = has(current, field);
+    if (allowAfter && change.op === "update" && matchesField(current, after, field)) return false;
     if (!inBefore) return inCurrent;
     return !inCurrent || !sameValue(current[field], before[field]);
   });
@@ -585,30 +586,45 @@ function presenceConflict(state: Bag, changes: readonly RecordChange[], change: 
   return residual.map((key) => ({ kind: change.kind, key: change.key, field: key }));
 }
 
-export function applyChanges(state: object, changes: readonly RecordChange[]): ApplyResult {
+function matchesField(current: Bag, expected: Bag, field: string): boolean {
+  return has(current, field) === has(expected, field) && sameValue(current[field], expected[field]);
+}
+
+function alreadyApplied(change: RecordChange, current: Bag | null): boolean {
+  if (change.op === "delete") return current === null;
+  if (change.op === "create") return sameValue(current, change.after ?? null);
+  return current !== null && touched(change.before, change.after)
+    .every((field) => matchesField(current, change.after ?? {}, field));
+}
+
+export function applyChanges(state: object, changes: readonly RecordChange[], allowAfter = false): ApplyResult {
   const source = state as Bag;
   const conflicts: FieldConflict[] = [];
+  const pending: RecordChange[] = [];
   for (const change of changes) {
+    const current = locate(source, change);
     if (change.kind === "map-field" && (change.before?.present === true || change.after?.present === true)) {
+      if (allowAfter && alreadyApplied(change, current)) continue;
       conflicts.push(...presenceConflict(source, changes, change));
+      pending.push(change);
       continue;
     }
-    const current = locate(source, change);
-    if (change.kind === "graph-link" || change.kind === "surface" || change.kind === "node") {
-      const shell = current
-        ? change.kind === "node"
-          ? nodeBody(current)
-          : shellPayload(current, change.kind === "surface" ? new Set(["nodeViews"]) : new Set(["attributes"]), change.kind === "surface" ? "nodeViews" : "attributes")
-        : null;
-      conflicts.push(...fieldConflicts(change, change.op === "create" ? (current ? shell : null) : shell));
-      if (change.op === "delete" && current) conflicts.push(...residualEntries(source, changes, change));
-    } else conflicts.push(...fieldConflicts(change, current));
+    const shellKind = change.kind === "graph-link" || change.kind === "surface" || change.kind === "node";
+    const value = shellKind && current
+      ? change.kind === "node"
+        ? nodeBody(current)
+        : shellPayload(current, change.kind === "surface" ? new Set(["nodeViews"]) : new Set(["attributes"]), change.kind === "surface" ? "nodeViews" : "attributes")
+      : current;
+    if (allowAfter && alreadyApplied(change, value)) continue;
+    conflicts.push(...fieldConflicts(change, value, allowAfter));
+    if (shellKind && change.op === "delete" && current) conflicts.push(...residualEntries(source, changes, change));
+    pending.push(change);
   }
   if (conflicts.length) return { ok: false, conflicts };
 
   const draft = new Draft(source);
   const deferred: RecordChange[] = [];
-  for (const change of changes) {
+  for (const change of pending) {
     if (change.kind === "edge" || change.kind === "annotation") continue;
     if (change.kind === "map-field" && change.key[0] === "annotations" && (has(change.before ?? {}, "shape") || has(change.after ?? {}, "shape"))) continue;
     if (change.kind === "map-field" && change.op === "delete" && change.before?.present === true) {
@@ -617,8 +633,8 @@ export function applyChanges(state: object, changes: readonly RecordChange[]): A
     }
     applyOne(draft, change);
   }
-  applyEdges(draft, changes);
-  applyAnnotations(draft, changes);
+  applyEdges(draft, pending);
+  applyAnnotations(draft, pending);
   for (const change of deferred) applyMapField(draft, change);
   return { ok: true, state: draft.state };
 }

@@ -5,19 +5,20 @@
  *
  * Success is the store's result, which returns after the journal fsync.
  * The same commandId returns the first result. The store remembers a committed
- * Command. A deterministic rejection is remembered beside the store
- * (`sync-rejections.jsonl`), because the store does not keep refusals.
+ * Command. A deterministic rejection or a no-op is remembered beside the store
+ * (`sync-rejections.jsonl`), because neither produces a journal commit.
  * `baseSeq` is accepted and not used: an old-base move is still CAS, not LWW.
  */
 import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import type { MapCommand } from "../../shared/map_changes";
-import type { RecordWorkspaceStore } from "../record_store/store";
-import { fsyncDir } from "../record_store/journal_archive";
+import { syncHash, type RecordWorkspaceStore } from "../record_store/store";
+import type { SyncCommand, SyncMapOperation } from "../record_store/sync_types";
+import { appendJsonLine, readDurableLines } from "./outbox";
 import { accountForConnection, type ConnectionIdentity } from "./issuer";
 
-export type PushStatus = "committed" | "rejected" | "duplicate";
+export type PushStatus = "committed" | "rejected" | "duplicate" | "no-op" | "conflict";
 
 export interface PushResultItem {
   commandId: string;
@@ -33,9 +34,7 @@ export interface PushResponse {
 
 interface PushItem {
   commandId: string;
-  mapId: string;
-  baseSeq: number;
-  command: MapCommand;
+  payload: SyncCommand;
 }
 
 interface Remembered {
@@ -74,15 +73,10 @@ function rejections(storeDir: string): Map<string, Remembered> {
   known = new Map();
   const file = rejectionFile(storeDir);
   if (fs.existsSync(file)) {
-    for (const line of fs.readFileSync(file, "utf8").split("\n")) {
-      if (line.trim() === "") continue;
-      try {
-        const row = JSON.parse(line) as Remembered;
-        if (row && typeof row.commandId === "string" && typeof row.hash === "string" && row.result) known.set(row.commandId, row);
-      } catch {
-        // A torn last line is ignored. The fsync'd lines before it stand.
-      }
-    }
+    for (const row of readDurableLines<Remembered>(file, (item) => {
+      const row = item as Partial<Remembered> | null;
+      return !!row && typeof row.commandId === "string" && typeof row.hash === "string" && !!row.result;
+    }, true)) known.set(row.commandId, row);
   }
   memory.set(storeDir, known);
   return known;
@@ -91,16 +85,8 @@ function rejections(storeDir: string): Map<string, Remembered> {
 function remember(storeDir: string, row: Remembered): void {
   const known = rejections(storeDir);
   if (known.has(row.commandId)) return;
+  appendJsonLine(rejectionFile(storeDir), row);
   known.set(row.commandId, row);
-  const file = rejectionFile(storeDir);
-  const fd = fs.openSync(file, "a");
-  try {
-    fs.writeSync(fd, `${JSON.stringify(row)}\n`);
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
-  }
-  fsyncDir(storeDir);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -117,27 +103,56 @@ function parseItem(value: unknown): PushItem | PushResultItem {
   if (!isRecord(value.command)) return fail("command must be an object.");
   const command = value.command as unknown as MapCommand;
   if (command.commandId !== commandId) return fail("command.commandId must match commandId.");
-  return { commandId, mapId: value.mapId, baseSeq: value.baseSeq, command };
+  const core = { mapId: value.mapId, command };
+  const mapOp = value.mapOp;
+  let operation: SyncMapOperation | { mapOp?: undefined } = {};
+  if (mapOp !== undefined && mapOp !== "create" && command.changes?.length !== 0) return fail("Map operations require empty changes.");
+  switch (mapOp) {
+    case undefined: break;
+    case "create": operation = { mapOp }; break;
+    case "delete":
+      if (value.before !== undefined && typeof value.before !== "string") return fail("Invalid map deletion precondition.");
+      operation = { mapOp, before: value.before };
+      break;
+    case "rename":
+      if (typeof value.newMapId !== "string" || !value.newMapId.trim()) return fail("newMapId is required.");
+      operation = { mapOp, newMapId: value.newMapId };
+      break;
+    case "columns":
+      if (!isRecord(value.columns) || (value.before !== undefined && !isRecord(value.before))) return fail("Invalid map columns.");
+      if (Object.keys(value.columns).some((field) => !["tags", "archived", "pinned", "source"].includes(field))) {
+        return fail("Unknown map column.");
+      }
+      if (Object.keys(value.before ?? {}).some((field) => !Object.prototype.hasOwnProperty.call(value.columns, field))) {
+        return fail("Column preconditions must address updated columns.");
+      }
+      operation = { mapOp, columns: value.columns, before: value.before };
+      break;
+    default: return fail("Unknown map operation.");
+  }
+  return { commandId, payload: { ...core, ...operation } };
 }
 
 function isItem(value: PushItem | PushResultItem): value is PushItem {
-  return "command" in value;
+  return "payload" in value;
 }
 
 const REMEMBERED = new Set(["CONFLICT", "INVALID_STATE", "INVALID_COMMAND", "SAME_ID_DIFFERENT_CONTENT"]);
 
-function fromStore(commandId: string, result: { ok: true; seq: number; replayed: boolean } | { ok: false; code: string; message?: string }): PushResultItem {
+function fromStore(commandId: string, result: { ok: true; seq: number; replayed: boolean; noOp?: true } | { ok: false; code: string; message?: string }, fenced: boolean): PushResultItem {
   if (result.ok) {
+    if (result.noOp) return { commandId, status: "no-op", seq: result.seq };
     return result.replayed
       ? { commandId, status: "duplicate", seq: result.seq }
       : { commandId, status: "committed", seq: result.seq };
   }
-  const item: PushResultItem = { commandId, status: "rejected", code: result.code };
+  const item: PushResultItem = { commandId, status: fenced && result.code === "CONFLICT" ? "conflict" : "rejected", code: result.code };
+  if (item.status === "conflict") item.message = "The current value differs from both the expected and proposed values.";
   if (result.message !== undefined) item.message = result.message;
   return item;
 }
 
-export function pushCommands(store: RecordWorkspaceStore, storeDir: string, commands: unknown, issuer: string): PushResponse {
+export function pushCommands(store: RecordWorkspaceStore, storeDir: string, commands: unknown, issuer: string, fenced = false): PushResponse {
   if (!Array.isArray(commands)) {
     return { results: [{ commandId: "", status: "rejected", code: "INVALID_COMMAND", message: "commands must be a list." }] };
   }
@@ -148,7 +163,9 @@ export function pushCommands(store: RecordWorkspaceStore, storeDir: string, comm
       results.push(parsed);
       continue;
     }
-    const hash = contentHash(parsed.command.changes);
+    const { payload } = parsed;
+    const sync = fenced || payload.mapOp !== undefined;
+    const hash = sync ? syncHash(payload) : contentHash(payload.command.changes);
     const prior = rejections(storeDir).get(parsed.commandId);
     if (prior) {
       results.push(prior.hash === hash ? prior.result : {
@@ -159,9 +176,11 @@ export function pushCommands(store: RecordWorkspaceStore, storeDir: string, comm
       });
       continue;
     }
-    const committed = store.commitMapCommand(parsed.mapId, parsed.command, issuer);
-    const item = fromStore(parsed.commandId, committed);
-    if (!committed.ok && REMEMBERED.has(committed.code)) remember(storeDir, { commandId: parsed.commandId, hash, result: item });
+    const committed = sync
+      ? store.commitSyncCommand(payload, issuer)
+      : store.commitMapCommand(payload.mapId, payload.command, issuer);
+    const item = fromStore(parsed.commandId, committed, sync);
+    if (item.status === "no-op" || (!committed.ok && REMEMBERED.has(committed.code))) remember(storeDir, { commandId: parsed.commandId, hash, result: item });
     results.push(item);
   }
   return { results };

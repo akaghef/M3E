@@ -1,3 +1,4 @@
+import { addLocalSyncToolbar } from "./local_sync_toolbar";
 import { connectFlashGeneration } from "./flash_generation";
 import { toggleDropdown, closeOnOutsideClick } from "./viewer-filter-menu";
 import { viewerFilter } from "./viewer-filter-controller";
@@ -13348,7 +13349,7 @@ function initDocWatch(): void {
 
   mapWatchEs.addEventListener("map_updated", (ev: MessageEvent) => {
     try {
-      const data = JSON.parse(ev.data) as { mapId: string; savedAt: string; sourceTabId: string | null };
+      const data = JSON.parse(ev.data) as { mapId: string; savedAt: string; sourceTabId: string | null; synchronized?: boolean };
       // Ignore our own saves
       if (data.sourceTabId === TAB_ID) return;
       // Advance the conflict-detection baseline even if we skip state overwrite,
@@ -13357,13 +13358,13 @@ function initDocWatch(): void {
         lastServerSavedAt = data.savedAt;
       }
       // Ignore duplicate events
-      if (data.savedAt === lastAppliedSavedAt) return;
+      if (!data.synchronized && data.savedAt === lastAppliedSavedAt) return;
       // If user has unsaved edits, notify instead of overwriting
       if (autosaveTimer !== null) {
         setStatus("External update available — save your edits first.", false);
         return;
       }
-      void applyExternalUpdate(data.savedAt);
+      void applyExternalUpdate(data.savedAt, data.synchronized);
     } catch {
       // ignore malformed events
     }
@@ -13404,13 +13405,21 @@ function initVisibilityManagedLiveStreams(): void {
   syncLiveStreamsForVisibility();
 }
 
-async function applyExternalUpdate(savedAt: string): Promise<void> {
+async function applyExternalUpdate(savedAt: string, synchronized = false): Promise<void> {
   try {
+    const revision = localSaveRevision;
     const result = await fetchLocalMapPayload();
-    if (!result.ok) return;
+    if (synchronized && (localSaveRevision !== revision || autosaveTimer !== null || grabSession)) {
+      setStatus("External update available — save your edits first.", false);
+      return;
+    }
+    if (!result.ok) {
+      if (synchronized && result.reason === "not-found") showFatalLoadError("Map not found", "The map was removed during synchronization.");
+      return;
+    }
     const newDoc = ensureDocShape(result.payload);
     // Only apply if actually newer
-    if (map && newDoc.savedAt <= (map.savedAt || "")) return;
+    if (!synchronized && map && newDoc.savedAt <= (map.savedAt || "")) return;
     if (!scopeView.adopt(result.payload)) return;
     finishGrab(false);
     lastAppliedSavedAt = savedAt;
@@ -17404,6 +17413,15 @@ loadLocalFsPrefs();
 syncVaultUi();
 syncAccessModeUi();
 updateCloudSyncUi();
+
+if (toolbarEl && !LOCAL_FS_VIEW_MODE) {
+  void addLocalSyncToolbar(toolbarEl, async () => {
+    if (autosaveTimer === null) return true;
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+    return saveDocToLocalDb();
+  });
+}
 
 void initializeDocument().then(() => {
   startupSequenceDone = true;
