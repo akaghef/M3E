@@ -49,6 +49,24 @@
 
 ## 記録
 
+### 2026-11-23 local モードを実機（MacBook・Mac mini、Tailscale 越し）で通した結果
+
+- 種類: 事実
+- 書いた agent: local モードの検収（orchestrator）
+- 対象: [local モードの設計](local-mode-design.md) 7〜8 節、[同期の要件](sync-requirements.md) R1.1、R6.1
+- 中身: 試験用の remote を mini に置き（tailscale serve の後ろ、login の照合つき）、MacBook と mini に local を一台ずつ置いて、両方向の push と pull、同じ node の競合、remote 停止中の編集と復帰後の push を通した。すべて合格。その過程で三点を直した。(1) tailscale serve は止まった remote の代わりに 502 を返し、local はそれを「拒否」と表示していた。gateway の 502・503・504 は「届かない」とした（631d53f）。(2) 同期の表示は使われていない古い toolbar に付いていて画面に出ていなかった。workbench の header の差し込み口へ移した（384a80f）。(3) clone を持つデータディレクトリを M3E_SYNC_REMOTE なしで起動すると remote として動き、編集が outbox を通らなかった。`sync/remote.json` があれば local として起動するようにした（4cca321）。
+- 根拠: 判定 `beta/tests/acceptance/local_mode_judge.mjs`（remote 1・local 2、16/16 合格）と、実機での手順の結果。
+- 扱い: 解消。Windows の local は、Windows の `npm ci` が ENOTEMPTY で失敗し、未確認（依存の入れ直し中）。
+
+### 2026-11-23 通常の Beta workspace は mini の remote と MacBook の local になった
+
+- 種類: 事実
+- 書いた agent: local モードの検収（orchestrator）
+- 対象: [local モードの設計](local-mode-design.md) 2 節
+- 中身: ws_REMH の remote は mini（`https://swingbymac-mini.tail6206ae.ts.net`、LaunchAgent `com.m3e.remote-beta`）。MacBook の Beta（4173）はその local で、`~/Library/Application Support/M3E/workspaces/ws_REMH…` は clone（`sync/remote.json` を持つ）。移す前のディレクトリは `~/Backups/M3E/261123-0833-pre-local/` に退避した。MacBook の M3E plugin は local（127.0.0.1:4173）を指す。mini の AI agent は remote の URL を使う（mini の loopback は login の照合で 403）。local の clone が remote の off-host の写しを兼ねるので、remote の clone を MacBook へ定期保存する LaunchAgent は入れていない。
+- 根拠: clone 後の local の状態（確定番号 14 が remote と一致、map 42）。
+- 扱い: 記録のみ。push と pull は手動（R6.1）。
+
 ### 2026-11-23 local モードの v1 で共有する状態と今後の境界
 
 - 種類: 気づき
