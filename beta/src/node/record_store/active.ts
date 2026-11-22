@@ -1,13 +1,15 @@
 // The record store the server runs on, when it is switched on.
 //
-// Opt-in: with the environment variable M3E_STORE_DIR set, every map read and write of the server
-// goes to ONE `RecordWorkspaceStore` opened on that directory (see ./legacy_api.ts for how the
-// existing persistence calls are answered). Without it, `activeRecordStore()` is null and the
-// server uses SQLite exactly as before. With M3E_NEO4J_BOLT set as well, every commit is mirrored
+// With the environment variable M3E_STORE_DIR set, or with a migrated store in the workspace's data
+// directory (`<M3E_DATA_DIR>/store/snapshot.jsonl`), every map read and write of the server goes to
+// ONE `RecordWorkspaceStore` opened on that directory (see ./legacy_api.ts for how the existing
+// persistence calls are answered). Without either, `activeRecordStore()` is null and the server
+// uses SQLite exactly as before. With M3E_NEO4J_BOLT set as well, every commit is mirrored
 // to that Neo4j server (credentials: M3E_NEO4J_USER / M3E_NEO4J_PASSWORD, as in record_store_cli).
 // While Neo4j cannot be reached commits go on (the journal is the source of truth) and the applier
 // retries; they are refused only when Neo4j is M3E_ENGINE_BACKLOG_LIMIT commits behind (default 10,000).
 
+import fs from "fs";
 import os from "os";
 import path from "path";
 import { RecordWorkspaceStore, type OpenOptions } from "./store";
@@ -16,10 +18,19 @@ let active: RecordWorkspaceStore | null = null;
 let activeDir: string | null = null;
 let shutdownRegistered = false;
 
-/** The directory of M3E_STORE_DIR, or null when store mode is off. */
+/**
+ * The directory of the record store, or null when store mode is off.
+ * M3E_STORE_DIR wins when set. Otherwise a workspace whose data directory (M3E_DATA_DIR) holds a
+ * migrated store, `store/snapshot.jsonl`, runs on that store: once a workspace is migrated, no
+ * launcher can open its frozen SQLite file for writing by leaving M3E_STORE_DIR out.
+ */
 export function recordStoreDir(): string | null {
   const dir = process.env.M3E_STORE_DIR?.trim();
-  return dir ? path.resolve(dir) : null;
+  if (dir) return path.resolve(dir);
+  const dataDir = process.env.M3E_DATA_DIR?.trim();
+  if (!dataDir) return null;
+  const migrated = path.resolve(dataDir, "store");
+  return fs.existsSync(path.join(migrated, "snapshot.jsonl")) ? migrated : null;
 }
 
 function assertNotLiveM3e(dir: string): void {
