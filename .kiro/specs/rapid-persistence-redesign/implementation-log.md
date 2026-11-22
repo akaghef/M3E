@@ -49,6 +49,33 @@
 
 ## 記録
 
+### 2026-11-23 Mac mini の remote は、mini 上の process からの loopback 接続で login を偽れる
+
+- 種類: 問題
+- 書いた agent: 3 端末同期の段階 1（Mac mini の remote への移設）を進める session
+- 対象: `beta/src/node/remote_access.ts` の `allowedLogin`、`scripts/remote/README.md` のアクセス境界
+- 中身: Mac mini の M3E は 127.0.0.1 だけで待ち受け、`tailscale serve` を通った要求の `Tailscale-User-Login` を許可リストと照合する。tailnet の外から来る偽の header は serve が本物の login で上書きする。一方、mini 上で動く process（Swingby の docker 群など）は 127.0.0.1:4173 に直接つなぎ、この header を自分で付けられる。そうすると workspace 全体を読み書きできる。
+- 根拠: リハーサルで、header の無い loopback 接続が 403、serve 経由の偽 header が本物の login に置き換わることを確かめた。header を付けた loopback 接続は確かめていないが、照合が header だけを見ることはコードから分かる。
+- 扱い: akaghef の判断待ち（mini 上の process を信頼するか、unix socket や共有の秘密で serve との間を閉じるか）
+
+### 2026-11-23 remote の journal の issuer に、接続した人の login が入らない
+
+- 種類: 気づき
+- 書いた agent: 3 端末同期の段階 1 を進める session
+- 対象: `beta/src/node/sync/http.ts` の `connectionFromRequest`、`beta/src/node/sync/issuer.ts`
+- 中身: remote では、照合を通った login（`Tailscale-User-Login`）が分かっているが、viewer からの確定の issuer は接続の種類（viewer）の account のままで、誰が書いたかが journal に残らない。login を issuer に渡す接続点は `connectionFromRequest` である。
+- 根拠: コードを読んだ。
+- 扱い: 未対応
+
+### 2026-11-23 remote の map の読み込みを圧縮しない
+
+- 種類: 気づき
+- 書いた agent: 3 端末同期の段階 1 を進める session
+- 対象: `beta/src/node/start_viewer.ts` の map 読み込みの応答
+- 中身: 20,150 node の map（約 8 MB の JSON）を Tailscale 越しに読むと 1.2〜1.7 秒かかる。同じ map を手元の server から読むと 0.1 秒である。`Accept-Encoding: gzip` を送っても、圧縮しない応答が返る。自宅 LAN の外から DERP 経由でつなぐと、さらに遅くなりうる。
+- 根拠: リハーサルの remote と手元の server に curl で計測した。
+- 扱い: 未対応
+
 ### 2026-11-22 削除した node の本文が commit-index.json に上限なく積もる
 
 - 種類: 問題

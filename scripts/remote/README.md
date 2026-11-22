@@ -26,8 +26,8 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
   job=$(mktemp)
   trap 'unlink "$job"' EXIT
   cp scripts/remote/com.m3e.remote-beta.plist.template "$job"
-  plutil -replace ProgramArguments.0 -string "$node_bin" "$job"
-  plutil -replace ProgramArguments.1 -string "$checkout/beta/dist/node/start_viewer.js" "$job"
+  # plutil -replace ProgramArguments.<n> inserts before index n instead of replacing; set the whole array.
+  plutil -replace ProgramArguments -json "[\"$node_bin\",\"$checkout/beta/dist/node/start_viewer.js\"]" "$job"
   plutil -replace WorkingDirectory -string "$checkout/beta" "$job"
   plutil -replace EnvironmentVariables.M3E_DATA_DIR -string "$data_dir" "$job"
   plutil -replace EnvironmentVariables.M3E_STORE_DIR -string "$data_dir/store" "$job"
@@ -100,10 +100,7 @@ workspace を remote へ移したら、移す前の端末の workspace データ
   mkdir -p "$HOME/Library/LaunchAgents"
   job="$HOME/Library/LaunchAgents/com.m3e.remote-backup.plist"
   cp scripts/remote/com.m3e.remote-backup.plist.template "$job"
-  plutil -replace ProgramArguments.0 -string "$node_bin" "$job"
-  plutil -replace ProgramArguments.1 -string "$cli" "$job"
-  plutil -replace ProgramArguments.2 -string "$remote_url" "$job"
-  plutil -replace ProgramArguments.3 -string "$backup_dir" "$job"
+  plutil -replace ProgramArguments -json "[\"$node_bin\",\"$cli\",\"$remote_url\",\"$backup_dir\"]" "$job"
   plutil -replace StandardOutPath -string "$log_dir/remote-backup.log" "$job"
   plutil -replace StandardErrorPath -string "$log_dir/remote-backup.err.log" "$job"
   plutil -lint "$job"
