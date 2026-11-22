@@ -81,6 +81,12 @@ const TILE_PIXELS = 512;
 const GUTTER = 2;
 const INDEX_CELL = 1024;
 const CACHE_LIMIT = 64;
+/**
+ * Rasterising a tile (Canvas 2D paint plus a texture upload) costs milliseconds.
+ * A frame spends at most this long on tiles that an already cached tile of another
+ * scale can stand in for; the rest follow on the next frames.
+ */
+const RASTER_BUDGET_MS = 6;
 
 export function intersects(a: PaintBounds, b: PaintBounds): boolean {
   return a.x <= b.x + b.width && a.x + a.width >= b.x &&
@@ -347,9 +353,14 @@ function paint(context: CanvasRenderingContext2D, command: PaintCommand, path?: 
   context.restore();
 }
 
-interface Tile { texture: WebGLTexture; x: number; y: number; size: number; used: number }
+interface Tile { texture: WebGLTexture; x: number; y: number; size: number; scale: number; used: number }
 
-/** Bounded GPU texture cache. New visible tiles are complete before presentation. */
+/**
+ * Bounded GPU texture cache. Every visible area shows complete content: a tile not yet
+ * rasterised at the current scale is either rasterised in this frame, or, when a cached
+ * tile of another scale covers it and the frame's raster budget is spent, drawn from
+ * that tile (scaled) until a later frame replaces it.
+ */
 export class WebGLSceneTiles {
   private scene: PaintScene = { commands: [] };
   private index = new PaintIndex([]);
@@ -362,6 +373,9 @@ export class WebGLSceneTiles {
   private nodeSlots = new Map<string, number[]>();
   textureUploads = 0;
   visibleTextCount = 0;
+  /** True when the last draw left current-scale tiles to a later frame. */
+  pending = false;
+  private now: () => number = () => performance.now();
   constructor(private gl: WebGL2RenderingContext) {
     this.scratch.width = this.scratch.height = TILE_PIXELS + GUTTER*2;
   }
@@ -393,7 +407,7 @@ export class WebGLSceneTiles {
     // A stacking-order change can alter overlaps even when geometry is identical.
     if (reordered) retained.forEach(command => dirty.push(command.bounds));
     this.tiles.forEach((tile, key) => {
-      const gutter = GUTTER / this.scale;
+      const gutter = GUTTER / tile.scale;
       if (!dirty.some(box => intersects(box, { x: tile.x-gutter, y: tile.y-gutter, width: tile.size+gutter*2, height: tile.size+gutter*2 }))) return;
       this.gl.deleteTexture(tile.texture); this.tiles.delete(key);
     });
@@ -425,7 +439,7 @@ export class WebGLSceneTiles {
   }
   private invalidateBounds(dirty: PaintBounds[]): void {
     this.tiles.forEach((tile,key) => {
-      const gutter = GUTTER / this.scale;
+      const gutter = GUTTER / tile.scale;
       if (!dirty.some(box => intersects(box, {x:tile.x-gutter,y:tile.y-gutter,width:tile.size+gutter*2,height:tile.size+gutter*2}))) return;
       this.gl.deleteTexture(tile.texture); this.tiles.delete(key);
     });
@@ -456,22 +470,63 @@ export class WebGLSceneTiles {
     const dirty = Array.from(slots, slot => this.scene.commands[slot]!).filter(command => command.editorBody !== false).map(command => command.bounds);
     this.editingNodeId = id;
     this.tiles.forEach((tile,key) => {
-      const gutter = GUTTER/this.scale;
+      const gutter = GUTTER/tile.scale;
       if (!dirty.some((box) => intersects(box,{x:tile.x-gutter,y:tile.y-gutter,width:tile.size+gutter*2,height:tile.size+gutter*2}))) return;
       this.gl.deleteTexture(tile.texture); this.tiles.delete(key);
     });
   }
   refine(camera: TileCamera, dpr: number): void {
     const next = Math.pow(2, Math.ceil(Math.log2(Math.max(0.015625, camera.zoom*dpr))));
-    if (next !== this.scale) { this.clear(); this.scale = next; }
+    // Tiles of the previous scale stay cached: they stand in until this scale's tiles exist.
+    this.scale = next;
   }
   clear(): void {
     this.tiles.forEach((tile) => this.gl.deleteTexture(tile.texture));
     this.tiles.clear();
   }
   get cacheSize(): number { return this.tiles.size; }
+  /** Cached tiles of other scales that together cover `bounds`, or null when part of it is uncovered. */
+  private standInsFor(bounds: PaintBounds): Array<[string, Tile]> | null {
+    const found: Array<[string, Tile]> = [];
+    for (const [key, tile] of this.tiles) {
+      if (tile.scale === this.scale) continue;
+      if (tile.x < bounds.x + bounds.width && tile.x + tile.size > bounds.x && tile.y < bounds.y + bounds.height && tile.y + tile.size > bounds.y) found.push([key, tile]);
+    }
+    if (!found.length) return null;
+    // Coarser tiles first, so a finer one drawn after it wins where both exist.
+    found.sort((left, right) => left[1].scale - right[1].scale);
+    const covered = (px: number, py: number) => found.some(([, t]) => px >= t.x && px <= t.x + t.size && py >= t.y && py <= t.y + t.size);
+    const step = bounds.width / 4;
+    for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) if (!covered(bounds.x + i * step, bounds.y + j * step)) return null;
+    return found;
+  }
+  private rasterise(bounds: PaintBounds): Tile {
+    const size = bounds.width;
+    const gutter = GUTTER/this.scale;
+    const indices = this.index.query({x:bounds.x-gutter,y:bounds.y-gutter,width:size+gutter*2,height:size+gutter*2});
+    const context = this.scratch.getContext("2d")!;
+    context.setTransform(1,0,0,1,0,0);
+    context.clearRect(0,0,this.scratch.width,this.scratch.height);
+    context.setTransform(this.scale,0,0,this.scale,GUTTER-bounds.x*this.scale,GUTTER-bounds.y*this.scale);
+    indices.forEach((index) => {
+      const command = this.scene.commands[index]!;
+      if (command.nodeId === this.editingNodeId && command.editorBody !== false) return;
+      paint(context, command, this.paths[index]);
+    });
+    const texture = this.gl.createTexture();
+    if (!texture) throw new Error("Unable to allocate a visible map tile");
+    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+    this.gl.texParameteri(this.gl.TEXTURE_2D,this.gl.TEXTURE_MIN_FILTER,this.gl.LINEAR);
+    this.gl.texParameteri(this.gl.TEXTURE_2D,this.gl.TEXTURE_MAG_FILTER,this.gl.LINEAR);
+    this.gl.texParameteri(this.gl.TEXTURE_2D,this.gl.TEXTURE_WRAP_S,this.gl.CLAMP_TO_EDGE);
+    this.gl.texParameteri(this.gl.TEXTURE_2D,this.gl.TEXTURE_WRAP_T,this.gl.CLAMP_TO_EDGE);
+    this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,true);
+    this.gl.texImage2D(this.gl.TEXTURE_2D,0,this.gl.RGBA,this.gl.RGBA,this.gl.UNSIGNED_BYTE,this.scratch);
+    this.textureUploads++;
+    return { texture, x:bounds.x, y:bounds.y, size, scale:this.scale, used:++this.clock };
+  }
   draw(camera: TileCamera, width: number, height: number, dpr: number,
-    render: (tile: Tile, gutterUv: number) => void): number {
+    render: (tile: Tile, gutterUv: number, clip?: PaintBounds) => void): number {
     if (!this.scale) this.refine(camera, dpr);
     const viewport = cameraBounds(camera, width, height);
     this.visibleTextCount = this.index.query(viewport).filter((i) => this.scene.commands[i]!.kind === "text" && this.scene.commands[i]!.nodeId !== this.editingNodeId).length;
@@ -480,40 +535,36 @@ export class WebGLSceneTiles {
     if (this.scale / (camera.zoom*dpr) > 4 || this.scale / (camera.zoom*dpr) < 0.25) this.refine(camera, dpr);
     const needed = tileCoordinates(cameraBounds(camera, width, height, 128), this.scale);
     const size = TILE_PIXELS/this.scale;
+    const gutterUv = GUTTER/(TILE_PIXELS+GUTTER*2);
+    const started = this.now();
     const active = new Set<string>();
+    const standIns = new Set<string>();
     let calls = 0;
+    let rasterised = 0;
+    this.pending = false;
     for (const {x,y} of needed) {
-      const key = `${x}:${y}`; active.add(key);
+      const key = `${this.scale}:${x}:${y}`; active.add(key);
+      const bounds = { x: x*size, y: y*size, width: size, height: size };
       let tile = this.tiles.get(key);
       if (!tile) {
-        const bounds = { x: x*size, y: y*size, width: size, height: size };
-        const gutter = GUTTER/this.scale;
-        const indices = this.index.query({x:bounds.x-gutter,y:bounds.y-gutter,width:size+gutter*2,height:size+gutter*2});
-        const context = this.scratch.getContext("2d")!;
-        context.setTransform(1,0,0,1,0,0);
-        context.clearRect(0,0,this.scratch.width,this.scratch.height);
-        context.setTransform(this.scale,0,0,this.scale,GUTTER-bounds.x*this.scale,GUTTER-bounds.y*this.scale);
-        indices.forEach((index) => {
-          const command = this.scene.commands[index]!;
-          if (command.nodeId === this.editingNodeId && command.editorBody !== false) return;
-          paint(context, command, this.paths[index]);
-        });
-        const texture = this.gl.createTexture();
-        if (!texture) throw new Error("Unable to allocate a visible map tile");
-        this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-        this.gl.texParameteri(this.gl.TEXTURE_2D,this.gl.TEXTURE_MIN_FILTER,this.gl.LINEAR);
-        this.gl.texParameteri(this.gl.TEXTURE_2D,this.gl.TEXTURE_MAG_FILTER,this.gl.LINEAR);
-        this.gl.texParameteri(this.gl.TEXTURE_2D,this.gl.TEXTURE_WRAP_S,this.gl.CLAMP_TO_EDGE);
-        this.gl.texParameteri(this.gl.TEXTURE_2D,this.gl.TEXTURE_WRAP_T,this.gl.CLAMP_TO_EDGE);
-        this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,true);
-        this.gl.texImage2D(this.gl.TEXTURE_2D,0,this.gl.RGBA,this.gl.RGBA,this.gl.UNSIGNED_BYTE,this.scratch);
-        this.textureUploads++;
-        tile = { texture, x:bounds.x, y:bounds.y, size, used:++this.clock };
-        this.tiles.set(key,tile);
+        // At least one tile per frame, so a slow tile cannot stall progress.
+        const cover = rasterised > 0 && this.now() - started >= RASTER_BUDGET_MS ? this.standInsFor(bounds) : null;
+        if (cover) {
+          this.pending = true;
+          for (const [standInKey, standIn] of cover) {
+            standIn.used = ++this.clock; standIns.add(standInKey);
+            if (intersects(bounds, viewport)) { render(standIn, gutterUv, bounds); calls++; }
+          }
+          continue;
+        }
+        tile = this.rasterise(bounds);
+        rasterised++;
+        this.tiles.set(key, tile);
       }
       tile.used = ++this.clock;
-      if (intersects({x:tile.x,y:tile.y,width:size,height:size},viewport)) { render(tile,GUTTER/(TILE_PIXELS+GUTTER*2)); calls++; }
+      if (intersects(bounds,viewport)) { render(tile,gutterUv); calls++; }
     }
+    standIns.forEach((key) => active.add(key));
     // Never evict this frame's working set, even on a large/high-DPR display.
     const old = [...this.tiles.entries()].filter(([key]) => !active.has(key)).sort((a,b) => a[1].used-b[1].used);
     for (const [key,tile] of old) {

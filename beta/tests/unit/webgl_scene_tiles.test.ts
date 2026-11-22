@@ -159,6 +159,34 @@ describe("retained WebGL scene tiles", () => {
     expect(context.fillText).toHaveBeenCalledWith('日本語ラベル 0',20,30);
     expect(tiles.visibleTextCount).toBe(1);
   });
+  it("after a scale change, spreads rasterising over frames and fills the gaps from the previous scale's tiles", () => {
+    const {tiles,gl} = harness();
+    tiles.setScene({commands:Array.from({length:40},(_,i)=>label(i))});
+    const camera = {x:0,y:0,zoom:0.5};
+    tiles.draw(camera,1600,1000,1,()=>{});
+    expect(tiles.pending).toBe(false);
+    // The clock jumps past the frame budget after the first tile of the new scale.
+    let clock = 0;
+    (tiles as any).now = () => (clock += 10);
+    tiles.refine({x:0,y:0,zoom:1},1);
+    const uploads = gl.texImage2D.mock.calls.length;
+    const clipped: unknown[] = [];
+    tiles.draw({x:0,y:0,zoom:1},1600,1000,1,(_tile,_g,clip)=>{ if (clip) clipped.push(clip); });
+    expect(gl.texImage2D.mock.calls.length - uploads).toBe(1);
+    expect(tiles.pending).toBe(true);
+    expect(clipped.length).toBeGreaterThan(0);
+    for (let frame = 0; frame < 40 && tiles.pending; frame++) tiles.draw({x:0,y:0,zoom:1},1600,1000,1,()=>{});
+    expect(tiles.pending).toBe(false);
+  });
+  it("rasterises a tile in the same frame when no cached tile can stand in for it", () => {
+    const {tiles,gl} = harness();
+    let clock = 0;
+    (tiles as any).now = () => (clock += 10);
+    tiles.setScene({commands:Array.from({length:40},(_,i)=>label(i))});
+    tiles.draw({x:0,y:0,zoom:1},1600,1000,1,()=>{});
+    expect(tiles.pending).toBe(false);
+    expect(gl.texImage2D.mock.calls.length).toBeGreaterThan(1);
+  });
   it("bounds the cache without discarding visible text when moving across a large map", () => {
     const {tiles} = harness();
     tiles.setScene({commands:Array.from({length:2000},(_,i)=>label(i))});

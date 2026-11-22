@@ -683,13 +683,26 @@ export class WebGLRenderingProjection implements RenderingProjection {
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         const tileUniform = gl.getUniformLocation(program, "u_tile");
         const gutterUniform = gl.getUniformLocation(program, "u_gutter");
-        this.drawCalls += this.sceneTiles.draw(this.camera, this.cssWidth, this.cssHeight, this.canvas.width / this.cssWidth, (tile, g) => {
+        const dpr = this.canvas.width / this.cssWidth;
+        this.drawCalls += this.sceneTiles.draw(this.camera, this.cssWidth, this.cssHeight, dpr, (tile, g, clip) => {
+          if (clip) {
+            // A stand-in tile of another scale fills only the tile area it stands in for.
+            const left = Math.floor((clip.x * this.camera.zoom + this.camera.x) * dpr);
+            const top = Math.floor((clip.y * this.camera.zoom + this.camera.y) * dpr);
+            const right = Math.ceil(((clip.x + clip.width) * this.camera.zoom + this.camera.x) * dpr);
+            const bottom = Math.ceil(((clip.y + clip.height) * this.camera.zoom + this.camera.y) * dpr);
+            gl.enable(gl.SCISSOR_TEST);
+            gl.scissor(left, this.canvas.height - bottom, Math.max(0, right - left), Math.max(0, bottom - top));
+          }
           gl.bindTexture(gl.TEXTURE_2D, tile.texture);
           gl.uniform4f(tileUniform, tile.x, tile.y, tile.size, tile.size);
           gl.uniform1f(gutterUniform, g);
           gl.drawArrays(gl.TRIANGLES, 0, 6);
+          if (clip) gl.disable(gl.SCISSOR_TEST);
         });
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        // Tiles left to later frames are rasterised there, a budget's worth per frame.
+        if (this.sceneTiles.pending) this.frame.invalidate();
       }
       if (this.overlayBuffer) this.drawColorBuffer(this.overlayBuffer, this.overlayVertexCount);
     } finally {
