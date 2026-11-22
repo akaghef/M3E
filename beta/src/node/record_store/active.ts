@@ -41,7 +41,7 @@ function assertNotLiveM3e(dir: string): void {
   }
 }
 
-/** The one store of M3E_STORE_DIR, opened on first use; null when M3E_STORE_DIR is not set. */
+/** The one store of `recordStoreDir()`, opened on first use; null when that is null (no M3E_STORE_DIR and no migrated store in M3E_DATA_DIR). */
 export function activeRecordStore(): RecordWorkspaceStore | null {
   const dir = recordStoreDir();
   if (dir === null) return null;
