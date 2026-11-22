@@ -1206,3 +1206,10 @@ body.wb-object-size-off .object-size-label {
 .viewer-filter-menu button { width: 100%; text-align: left; border: 0; }
 .viewer-filter-menu button:hover, .viewer-filter-menu button:focus-visible { background: #4262ff18; }
 .viewer-filter-count { position: absolute; left: 76px; bottom: 64px; padding: 9px 12px; border-radius: 8px; background: #14141cd9; color: #fff; font-size: 12px; pointer-events: auto; }
+
+.wb-local-sync {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}

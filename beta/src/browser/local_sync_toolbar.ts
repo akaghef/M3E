@@ -5,7 +5,8 @@ interface LocalSyncStatus {
   conflicts: number;
 }
 
-const connectionText = { ok: "Remote connected", unreachable: "Remote unreachable", refused: "Sync refused" };
+const connectionText = { ok: "Online", unreachable: "Remote unreachable", refused: "Sync refused" };
+// One line on the header: connection state, then the unsent and conflict counts (sync-requirements R1.1).
 
 export async function addLocalSyncToolbar(toolbar: HTMLElement, prepare: () => Promise<boolean>): Promise<void> {
   const statusUrl = "/api/sync/local/status";
@@ -29,8 +30,14 @@ export async function addLocalSyncToolbar(toolbar: HTMLElement, prepare: () => P
   push.type = pull.type = "button";
   push.textContent = "Push";
   pull.textContent = "Pull";
-  group.append(state, " ", push, " ", pull);
-  toolbar.append(group);
+  group.className = "wb-local-sync";
+  state.className = "wb-status-chip";
+  push.className = pull.className = "wb-pill";
+  group.append(state, push, pull);
+  // The workbench header has a slot for it (as for the NETWORK control); the legacy toolbar otherwise.
+  const mount = (): void => { (document.getElementById("local-sync-control-slot") ?? toolbar).append(group); };
+  window.addEventListener("m3e:orrery-control-slot-ready", mount);
+  mount();
 
   let busy = false;
   let refreshing = false;

@@ -434,6 +434,7 @@ function TopBar({
       </div>
       <div className="wb-top-actions">
         <span id="orrery-network-control-slot" />
+        <span id="local-sync-control-slot" />
         <div className="wb-status-chip" title={snapshot.status}>
           <Cloud size={14} />
           <span>{snapshot.cloud.replace("Cloud: ", "")}</span>
