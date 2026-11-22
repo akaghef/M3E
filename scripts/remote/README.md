@@ -63,6 +63,22 @@ M3E_API_URL=https://mini.example-tailnet.ts.net \
   /absolute/path/to/node /absolute/path/to/M3E/beta/dist/node/start_mcp.js
 ```
 
+M3E の Claude Code plugin（`m3e`）を remote に向けるときは、plugin の接続先の設定（`mcp-client.json`）を書き換える。新しい session から remote につながる。
+
+```sh
+node scripts/mcp/configure-plugin.mjs --api-url https://<mini>.ts.net
+```
+
+## 移設した workspace の印
+
+workspace を remote へ移したら、移す前の端末の workspace データディレクトリに `moved-to-remote.json` を置く。
+
+```json
+{"url": "https://<mini>.ts.net"}
+```
+
+この印があると、その端末の `start_viewer.js` は起動を拒否し、remote の URL を表示して終了する。移す前の SQLite と store の複製を誤って開き、remote と食い違う編集をすることを防ぐ。
+
 ## MacBook のバックアップ
 
 更新済みの checkout と `npm --prefix beta run build:node` の出力を使う。`checkout`、`remote_url`、`backup_dir` を実環境に合わせる。MacBook は許可リストにあるログインで Tailscale に接続する。最初に手動で clone を取得し、成功したら同じコマンドを LaunchAgent に登録する。登録時と以降 3600 秒ごとに実行し、既定で直近 48 世代を保持する。世代数を変える場合は CLI または plist の `ProgramArguments` の末尾に正の整数を指定する。

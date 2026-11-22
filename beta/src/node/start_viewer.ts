@@ -17,7 +17,7 @@ import { activeRecordStore, closeActiveRecordStoreOnSignal } from "./record_stor
 import { handleRecordSyncHttp } from "./sync/http";
 import { accountForConnection } from "./sync/issuer";
 import { enforceMinSeq } from "./sync/min_seq";
-import { allowedLogin, viewerListenOptions } from "./remote_access";
+import { allowedLogin, movedToRemote, viewerListenOptions } from "./remote_access";
 import type { MapCommand } from "../shared/map_changes";
 import { extractScopeView, ScopeViewError, SCOPE_VIEW_HEADER, type ScopeViewInfo } from "../shared/scope_view";
 import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
@@ -4582,6 +4582,11 @@ export function createAppServer(): http.Server {
 }
 
 if (require.main === module) {
+  const remote = movedToRemote(currentDataDir());
+  if (remote) {
+    console.error(`[M3E] This workspace lives on a remote M3E now: ${remote}. Not starting on the local copy in ${currentDataDir()}.`);
+    process.exit(1);
+  }
   if (process.env.M3E_SKIP_SAMPLE_GENERATION !== "1") runSampleGeneration();
   startServer();
 }

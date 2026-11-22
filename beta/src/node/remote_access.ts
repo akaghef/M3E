@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import type { ListenOptions } from "node:net";
+import path from "node:path";
 
 export function viewerListenOptions(port: number, host = process.env.M3E_HOST): ListenOptions {
   return host ? { port, host } : { port };
@@ -32,4 +34,20 @@ export function validateM3eApiUrl(value: string): string {
     throw new Error(error);
   }
   return url.origin;
+}
+
+/**
+ * A workspace moved to a remote M3E leaves `moved-to-remote.json` ({"url": ...}) in its local data
+ * directory. The local server then refuses to start on the frozen local copy. Returns the remote URL,
+ * or null when the workspace was not moved.
+ */
+export function movedToRemote(dataDir: string): string | null {
+  const marker = path.join(dataDir, "moved-to-remote.json");
+  if (!fs.existsSync(marker)) return null;
+  try {
+    const url = (JSON.parse(fs.readFileSync(marker, "utf8")) as { url?: unknown }).url;
+    return typeof url === "string" && url.trim() ? url.trim() : "(remote URL not recorded)";
+  } catch {
+    return "(remote URL not readable)";
+  }
 }

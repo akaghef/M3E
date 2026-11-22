@@ -18,8 +18,11 @@ export async function runtimeConfig(env = process.env) {
   try { saved = JSON.parse(await fs.readFile(path.join(dataDirectory(env), 'mcp-client.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw new Error('M3E mcp-client.json cannot be read. Run the M3E plugin configuration helper.'); }
   const apiUrl = new URL(env.M3E_API_URL || saved.apiUrl || 'http://127.0.0.1:4173');
-  if (!['http:', 'https:'].includes(apiUrl.protocol) || apiUrl.username || apiUrl.password || !['localhost', '127.0.0.1', '[::1]'].includes(apiUrl.hostname)) {
-    throw new Error('M3E_API_URL must be a loopback HTTP URL without credentials.');
+  const loopback = ['http:', 'https:'].includes(apiUrl.protocol) && ['localhost', '127.0.0.1', '[::1]'].includes(apiUrl.hostname);
+  // A remote M3E is reached only through Tailscale Serve (HTTPS on a MagicDNS *.ts.net name).
+  const tailnet = apiUrl.protocol === 'https:' && apiUrl.hostname.endsWith('.ts.net');
+  if (!(loopback || tailnet) || apiUrl.username || apiUrl.password) {
+    throw new Error('M3E_API_URL must be a loopback HTTP(S) URL or an HTTPS *.ts.net URL, without credentials.');
   }
   apiUrl.pathname = apiUrl.pathname.replace(/\/$/, '');
   apiUrl.search = '';

@@ -8,7 +8,7 @@ const options = {};
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i];
   if (!['--m3e-home', '--repo-root', '--api-url', '--node'].includes(key) || !process.argv[i + 1]) {
-    process.stderr.write('Usage: node scripts/mcp/configure-plugin.mjs [--m3e-home <M3E-home>] [--repo-root <M3E>] [--api-url <loopback-url>] [--node <node-executable>]\n');
+    process.stderr.write('Usage: node scripts/mcp/configure-plugin.mjs [--m3e-home <M3E-home>] [--repo-root <M3E>] [--api-url <loopback-url | https://<host>.ts.net>] [--node <node-executable>]\n');
     process.exit(2);
   }
   options[key] = process.argv[i + 1];
