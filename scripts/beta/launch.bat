@@ -21,7 +21,8 @@ if "%M3E_DB_FILE%"=="" set "M3E_DB_FILE=data.sqlite"
 if not exist "%M3E_HOME%\seeds" mkdir "%M3E_HOME%\seeds" >nul 2>&1
 if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
 if not exist "%M3E_SEED_DB_PATH%" if exist "%CD%\install\assets\seeds\core-seed.sqlite" copy /Y "%CD%\install\assets\seeds\core-seed.sqlite" "%M3E_SEED_DB_PATH%" >nul
-if not exist "%M3E_DATA_DIR%\%M3E_DB_FILE%" if exist "%M3E_SEED_DB_PATH%" copy /Y "%M3E_SEED_DB_PATH%" "%M3E_DATA_DIR%\%M3E_DB_FILE%" >nul
+REM A local (a clone of a remote) has no SQLite file of its own: do not seed one.
+if "%M3E_SYNC_REMOTE%"=="" if not exist "%M3E_DATA_DIR%\sync\remote.json" if not exist "%M3E_DATA_DIR%\%M3E_DB_FILE%" if exist "%M3E_SEED_DB_PATH%" copy /Y "%M3E_SEED_DB_PATH%" "%M3E_DATA_DIR%\%M3E_DB_FILE%" >nul
 
 echo [launch] M3E_DATA_DIR=%M3E_DATA_DIR%
 echo [launch] M3E_DB_FILE=%M3E_DB_FILE%
