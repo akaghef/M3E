@@ -84,7 +84,7 @@ workspace > map > scope > node
 |---|---|---|
 | `snapshot` | （1 行目） | `format`（schemaVersion）、`workspaceId`、`seq`（この snapshot が含む最後の通し番号） |
 | `map` | `id` | `rootNodeId`、`tags`、`archived`、`pinned`、`source`、linear-text の表示設定、`extra`、`rev` |
-| `node` | `id` | `mapId`、`nodeType`、`text`（ラベル）、`collapsed`、`attributes`、`alias`、`valid`（任意。`from`・`to`。12.7）、`extra`、`rev` |
+| `node` | `id` | `mapId`、`nodeType`、`text`（ラベル）、`collapsed`、`attributes`、`alias`、`valid`（任意。`from`・`to`。12.7）、`certainty`（必須。3.2）、`extra`、`rev` |
 | `details` | `nodeId` | `mapId`、`v`（形の版）、`body`（Markdown の本文）、`note`、`link`、`rev` |
 | `connection`（edge） | `id` | `mapId`、`type`、`source`、`target`、`label`、`rev`。種類ごとの欄は 3.4 |
 | `scope` | `id` | `mapId`、`rootNodeId`、`label`、`primarySurfaceId`、`band`（`rapid` / `deep`。12.6）、`projection`（射影で作った面だけが持つ。`mode`・`from`・`range`・`baseSeq`・`dissolved`。12.3）、`retention`（任意。下）、`rev` |
@@ -138,6 +138,12 @@ workspace > map > scope > node
   - 許可した human がその scope を編集できなくなったら、許可は効かない。確定のときに判定する。
   - unlock の Command の `actor` が AI agent のとき、remote は、その scope の有効な許可を確かめる。`issuer` が `grantedBy` と一致することは求めない。
 - 保存の形: レコードの種類 `grant`。key は `id`、欄は `scopeId`、`principal`（`{account: accountRef}`。種類を足せる形）、`capability`（string）、`grantedBy`（accountRef）、`expiresAt?`（time。期限は確定の `committedAt` で判定する）、`rev`。scope の権限の仕組み（同期の要件 Q7）が決まったら、同じ種類のレコードに権限を足す。
+- 【決定】（akaghef、2026-11-23）node は確度 `certainty` を必ず持つ。命題や事象が成り立つ確からしさで、数学の命題にも日常の事象にも同じ規則で使う。
+  - 値は整数。`0`〜`100` は百分率で、確率は値 ÷ 100 である。`-1` は未設定である。範囲は int8 に収まる。
+  - 既定値と同じでも省かずに保存する（上の「既定値と同じなら保存しない」の例外）。欄が無い node、範囲の外の値、整数でない値を書く確定は拒否する（不変条件 11）。
+  - 値を指定せずに node を作る Command では、server が `-1` を書く。
+  - 証明の有無や検証の方法（AI の証明、人の証明、Lean など）に、固定の値や専用の区分を割り当てない。それらは確度を決める材料である。`100` は確率 1 を表し、証明があることを表さない。
+  - 【未実装】
 - `nodeType` の値【実装済み】は `text`、`alias`、`image` と、移行で運んだそれ以外の値である。種別の扱いは 10 節で改める（【決定】）。【決定】format 2 では `nodeType` を残し、描画器の選択子として使う。`extensions` との統合は、次の format の bump で行う。
 
 ### 3.3 attribute
@@ -230,6 +236,7 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 8. details、linear-text、Surface View の保存設定、配置値、注釈は、指している node または scope が実在する。
 9. 同じ親の下で、parent edge の `ord` は一意である。
 10. `extensions` にある拡張は、定義の required の欄がそろい、欄の型が合う（10.4）。定義が無い拡張は検査しない。検査器は `beta/src/shared/record_model/extensions.ts`。
+11. 【決定】【未実装】node は `certainty` を持ち、その値は `-1` から `100` までの整数である（3.2）。
 
 - 【決定】検査は、触った周辺だけで行い、map 全体は走査しない。【実装済み】のものは、確定のたびに map 全体を検査している。
 - 【決定】一つの Command の中に複数の付け替えがあるときは、全部を当てた後の状態で循環を検査する。
@@ -353,6 +360,7 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - format 1 の workspace を開くと、一度だけ移行する（`beta/src/node/record_store/store.ts` の `migrateToFormat2`）。format 1 の portable snapshot と journal を、`f1` の名前で `archive/` へ移し、今の通し番号で format 2 の base snapshot を書く。以後の確定は format 2 で書く。
   - format が 3 以上の snapshot は、開かずに拒否する。
 - 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}` は、snapshot に状態として持つ（9 節）。
+- 【決定】【未実装】（akaghef、2026-11-23）node に必須の欄 `certainty`（3.2）を足すので、format を 3 に上げる。format 2 の workspace を開くと一度だけ移行し、すべての node に `certainty: -1` を書いて、format 3 の base snapshot を書く。format 2 の portable snapshot と journal は `f2` の名前で `archive/` へ移す。
 - 値の無い欄と null は書かない。
 - 並びは `kind`、次に key の文字列順。行の順序に意味は無いが、差分を安定させるために揃える。
 - 現行データからの変換規則と、逆変換で許す差は snapshot-format 3〜4 節に従う。
@@ -874,6 +882,9 @@ JA1 と JA2 の組み合わせが、操作の集まりになる。
 
 - 面の中を扱う木のエンジンを置くか（12.5）。計測してから決める。
 - facet と 12.1 の「一つの側面」の語の組（12.6 の KB5）。Glossary の側で決める。
+- alias の確度（3.2）: alias が出現ごとに自分の値を持つか、常に `-1` を持ち読むときに参照先の値を返すか。
+- Flash ingest が attribute `m3e:confidence` に書いている 0〜1 の値を、format 3 への移行で `certainty` に移すか。relation edge の attribute `confidence`（実現段階）は意味が違うので対象にしない。
+- 「確度」を Glossary に足す。
 
 ## 14. 決めた値と規則
 
