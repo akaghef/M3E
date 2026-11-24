@@ -361,6 +361,22 @@ function conflictsFor(change: RecordChange, current: Bag | null, fields: string[
   return fields.map((field) => ({ kind: change.kind, key: change.key, field }));
 }
 
+/**
+ * An empty attributes or nodeViews container is not a value: its entries are records
+ * of their own, and the record store keeps no row for an empty one, so a state read
+ * back from it lacks the field where the viewer holds {}. Absent and {} compare equal.
+ */
+function emptyShell(bag: Bag, field: string): boolean {
+  if (!SHELL_FIELDS.has(field)) return false;
+  const value = bag[field];
+  return !has(bag, field) || (isBag(value) && Object.keys(value).length === 0);
+}
+
+function sameField(left: Bag, right: Bag, field: string): boolean {
+  if (emptyShell(left, field) && emptyShell(right, field)) return true;
+  return has(left, field) === has(right, field) && sameValue(left[field], right[field]);
+}
+
 function fieldConflicts(change: RecordChange, current: Bag | null, allowAfter: boolean): FieldConflict[] {
   const before = change.before ?? {};
   const after = change.after ?? {};
@@ -368,15 +384,12 @@ function fieldConflicts(change: RecordChange, current: Bag | null, allowAfter: b
   if (change.op === "create") return current ? conflictsFor(change, current, fields.length ? fields : ["*"]) : [];
   if (!current) return conflictsFor(change, current, fields.length ? fields : ["*"]);
   const mismatched = fields.filter((field) => {
-    const inBefore = has(before, field);
-    const inCurrent = has(current, field);
     if (allowAfter && change.op === "update" && matchesField(current, after, field)) return false;
-    if (!inBefore) return inCurrent;
-    return !inCurrent || !sameValue(current[field], before[field]);
+    return !sameField(current, before, field);
   });
   if (change.op === "delete") {
     for (const field of Object.keys(current)) {
-      if (!has(before, field)) mismatched.push(field);
+      if (!has(before, field) && !emptyShell(current, field)) mismatched.push(field);
     }
   }
   return conflictsFor(change, current, mismatched);
@@ -587,7 +600,7 @@ function presenceConflict(state: Bag, changes: readonly RecordChange[], change: 
 }
 
 function matchesField(current: Bag, expected: Bag, field: string): boolean {
-  return has(current, field) === has(expected, field) && sameValue(current[field], expected[field]);
+  return sameField(current, expected, field);
 }
 
 function alreadyApplied(change: RecordChange, current: Bag | null): boolean {

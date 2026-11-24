@@ -173,3 +173,50 @@ test("random edits stay proportional to the touched node", () => {
   expect(applied.ok).toBe(true);
   if (applied.ok) expect(applied.state).toEqual(edited);
 });
+
+describe("empty shell containers are not compared", () => {
+  // The record store keeps no row for an empty nodeViews or attributes container,
+  // so a surface read back from it has no nodeViews where the viewer holds {}.
+  const node = (id: string, parentId: string | null, children: string[]) => ({
+    id, parentId, children, nodeType: "text", text: id, collapsed: false, details: "", note: "", attributes: {}, link: "",
+  });
+  const surface = { id: "surface:a:tree", scopeId: "scope:a", kind: "tree", layout: "tree", surfaceView: { direction: "right", space: "normal" } };
+  const scoped = (withViews: boolean) => ({
+    rootId: "r",
+    nodes: { r: node("r", null, ["a"]), a: { ...node("a", "r", []), nodeType: "folder" } },
+    scopes: { "scope:a": { id: "scope:a", label: "a", rootNodeIds: ["a"], relationIds: [], primarySurfaceId: "surface:a:tree" } },
+    surfaces: { "surface:a:tree": withViews ? { ...surface, nodeViews: {} } : { ...surface } },
+  });
+
+  test("unscopen from a viewer holding nodeViews {} applies to a store state without it", () => {
+    const viewer = scoped(true);
+    const unscoped = clone(viewer) as Record<string, any>;
+    unscoped.nodes.a.nodeType = undefined;
+    delete unscoped.scopes["scope:a"];
+    delete unscoped.surfaces["surface:a:tree"];
+    const changes = diffState(viewer, JSON.parse(JSON.stringify(unscoped)));
+    const applied = applyChanges(scoped(false), changes);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      expect((applied.state as any).surfaces?.["surface:a:tree"]).toBeUndefined();
+      expect((applied.state as any).nodes.a.nodeType).toBeUndefined();
+    }
+  });
+
+  test("a surface update from a viewer holding nodeViews {} applies to a store state without it", () => {
+    const viewer = scoped(true);
+    const next = clone(viewer) as Record<string, any>;
+    next.surfaces["surface:a:tree"].layout = "lane";
+    const applied = applyChanges(scoped(false), diffState(viewer, next));
+    expect(applied.ok).toBe(true);
+  });
+
+  test("a non-empty nodeViews still blocks a surface deletion that does not remove its views", () => {
+    const current = scoped(true) as Record<string, any>;
+    current.surfaces["surface:a:tree"].nodeViews = { a: { x: 1, y: 2 } };
+    const viewer = scoped(true);
+    const unscoped = clone(viewer) as Record<string, any>;
+    delete unscoped.surfaces["surface:a:tree"];
+    expect(applyChanges(current, diffState(viewer, unscoped)).ok).toBe(false);
+  });
+});
