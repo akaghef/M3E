@@ -220,3 +220,24 @@ describe("empty shell containers are not compared", () => {
     expect(applyChanges(current, diffState(viewer, unscoped)).ok).toBe(false);
   });
 });
+
+describe("an absent nodeType is a text node", () => {
+  // The record store reads a node without nodeType back as "text"; the viewer
+  // removes nodeType on unscopen, so its next scopen carries before {}.
+  const node = (nodeType?: string) => ({
+    id: "a", parentId: "r", children: [], text: "a", collapsed: false, details: "", note: "", attributes: {}, link: "",
+    ...(nodeType === undefined ? {} : { nodeType }),
+  });
+  const state = (nodeType?: string) => ({ rootId: "r", nodes: { r: { ...node("text"), id: "r", parentId: null, children: ["a"] }, a: node(nodeType) } });
+
+  test("scopen after unscopen applies to a store state that reads nodeType back as text", () => {
+    const changes = diffState(state(undefined), state("folder"));
+    const applied = applyChanges(state("text"), changes);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) expect((applied.state as any).nodes.a.nodeType).toBe("folder");
+  });
+
+  test("a different nodeType still conflicts", () => {
+    expect(applyChanges(state("leaf"), diffState(state(undefined), state("folder"))).ok).toBe(false);
+  });
+});

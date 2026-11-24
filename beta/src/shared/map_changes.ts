@@ -372,8 +372,14 @@ function emptyShell(bag: Bag, field: string): boolean {
   return !has(bag, field) || (isBag(value) && Object.keys(value).length === 0);
 }
 
-function sameField(left: Bag, right: Bag, field: string): boolean {
+/** A node without nodeType is a text node: the record store reads an absent one back as "text". */
+function nodeTypeOf(bag: Bag): unknown {
+  return has(bag, "nodeType") && bag.nodeType !== undefined ? bag.nodeType : "text";
+}
+
+function sameField(left: Bag, right: Bag, field: string, kind?: RecordChange["kind"]): boolean {
   if (emptyShell(left, field) && emptyShell(right, field)) return true;
+  if (kind === "node" && field === "nodeType") return nodeTypeOf(left) === nodeTypeOf(right);
   return has(left, field) === has(right, field) && sameValue(left[field], right[field]);
 }
 
@@ -384,12 +390,12 @@ function fieldConflicts(change: RecordChange, current: Bag | null, allowAfter: b
   if (change.op === "create") return current ? conflictsFor(change, current, fields.length ? fields : ["*"]) : [];
   if (!current) return conflictsFor(change, current, fields.length ? fields : ["*"]);
   const mismatched = fields.filter((field) => {
-    if (allowAfter && change.op === "update" && matchesField(current, after, field)) return false;
-    return !sameField(current, before, field);
+    if (allowAfter && change.op === "update" && matchesField(current, after, field, change.kind)) return false;
+    return !sameField(current, before, field, change.kind);
   });
   if (change.op === "delete") {
     for (const field of Object.keys(current)) {
-      if (!has(before, field) && !emptyShell(current, field)) mismatched.push(field);
+      if (!has(before, field) && !sameField(current, before, field, change.kind)) mismatched.push(field);
     }
   }
   return conflictsFor(change, current, mismatched);
@@ -599,15 +605,15 @@ function presenceConflict(state: Bag, changes: readonly RecordChange[], change: 
   return residual.map((key) => ({ kind: change.kind, key: change.key, field: key }));
 }
 
-function matchesField(current: Bag, expected: Bag, field: string): boolean {
-  return sameField(current, expected, field);
+function matchesField(current: Bag, expected: Bag, field: string, kind?: RecordChange["kind"]): boolean {
+  return sameField(current, expected, field, kind);
 }
 
 function alreadyApplied(change: RecordChange, current: Bag | null): boolean {
   if (change.op === "delete") return current === null;
   if (change.op === "create") return sameValue(current, change.after ?? null);
   return current !== null && touched(change.before, change.after)
-    .every((field) => matchesField(current, change.after ?? {}, field));
+    .every((field) => matchesField(current, change.after ?? {}, field, change.kind));
 }
 
 export function applyChanges(state: object, changes: readonly RecordChange[], allowAfter = false): ApplyResult {
