@@ -382,3 +382,21 @@ test("a start resumes the working store without rebuilding it, and rebases what 
   expect(activeDirectory(working)).toBe(directory);
   expect(entries("resume")).toHaveLength(0);
 });
+
+test("a start resumes past a pending Command that left no commit because it was a no-op", async () => {
+  const device = await client("noop");
+  const working = path.join(temp, "noop", "store");
+  const directory = activeDirectory(working);
+  // An empty update, as a viewer can send: it reaches the outbox and commits nothing.
+  DeviceOutbox.open(path.join(temp, "noop", "sync/outbox.jsonl")).append({
+    commandId: "noop-1", mapId: "map", baseSeq: remote().seq(),
+    command: { commandId: "noop-1", intent: "assert", actor: { kind: "human", id: "test" }, changes: [{ kind: "node", key: ["root"], op: "update", before: {}, after: {} }] },
+  });
+  change(device.store(), "After the no-op");
+  await device.close();
+  devices.splice(devices.indexOf(device), 1);
+  const again = await client("noop");
+  expect(activeDirectory(working)).toBe(directory);
+  expect(mapText(again.store())).toBe("After the no-op");
+  expect(entries("noop").map((entry) => entry.commandId)).toContain("noop-1");
+});

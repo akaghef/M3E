@@ -58,6 +58,15 @@
 - 根拠: `push()` と `rebuild()` を読んだ。push と journal のどちらにも、まとめる処理はない。
 - 扱い: akaghef の判断待ち（remote の journal に何を記録するかが変わるため）
 
+### 2026-11-25 何も変えない Command が outbox に入り、remote へも送られる
+
+- 種類: 問題
+- 書いた agent: Δ 比例の原則を入れた Claude Code の session
+- 対象: MacBook の Beta workspace の outbox（2026-11-25 時点の 52 件目）、`beta/src/shared/map_changes.ts` の `diffState`
+- 中身: intent が `rename` で、変更が 1 件だけの Command が outbox にあった。その 1 件は node の update で、`before` も `after` も `{}` だった。working store で commit し直すと no-op になり、journal に行を残さない。push すれば remote でも no-op になるが、outbox の 1 件、push の 1 件、当て直しの 1 回を無駄に使う。どの経路が空の update を作ったかは確かめていない（viewer の改名の保存と思われる）。local 側は、この no-op を飛ばして再開できるように直した（このログと同じ commit）。
+- 根拠: `sync/outbox.jsonl` と working store の journal を突き合わせた。
+- 扱い: 未対応（空の update を作る経路を特定し、Command に入れないようにする）
+
 ### 2026-11-25 書き込み・同期・表示更新の経路に、まだ全体に比例する処理がある
 
 - 種類: 問題

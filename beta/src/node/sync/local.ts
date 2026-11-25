@@ -357,7 +357,9 @@ export class LocalSync {
     const pending = this.pending();
     let base: number;
     try {
-      base = this.working.resetRecords(rks, (rk) => this.confirmed.record(rk), this.committedSinceBase);
+      // A no-op leaves no line, so every pending Command is forgotten, not only those with a commit.
+      const forget = [...this.committedSinceBase, ...pending.map((entry) => ({ mapId: entry.mapId, commandId: entry.commandId, newMapId: entry.mapOp === "rename" ? entry.newMapId : undefined }))];
+      base = this.working.resetRecords(rks, (rk) => this.confirmed.record(rk), forget);
       this.track(this.working);
       this.replay(this.working, pending);
     } catch (error) {
@@ -387,8 +389,17 @@ export class LocalSync {
       const lines = store.seq() >= base.workingSeq ? store.journalLinesAfter(base.workingSeq) : null;
       const delta = this.confirmed.journalLinesAfter(base.confirmedSeq);
       const expected = this.pending();
-      if (!lines || !delta || !sameSyncIdentity(store.syncIdentity(), this.confirmed.syncIdentity())
-          || lines.length > expected.length || lines.some((line, i) => line.commandId === undefined || line.commandId !== expected[i]!.commandId)) {
+      // Each line is the commit of a pending Command, in outbox order. A pending Command that was a
+      // no-op left no line, so the lines are matched as a subsequence of the pending Commands.
+      let next = 0;
+      const matched = !!lines && lines.every((line) => {
+        if (line.commandId === undefined) return false;
+        while (next < expected.length && expected[next]!.commandId !== line.commandId) next += 1;
+        if (next === expected.length) return false;
+        next += 1;
+        return true;
+      });
+      if (!lines || !delta || !matched || !sameSyncIdentity(store.syncIdentity(), this.confirmed.syncIdentity())) {
         void store.close();
         return false;
       }
@@ -401,7 +412,7 @@ export class LocalSync {
         this.committedSinceBase.push({ mapId: line.mapId, commandId: line.commandId!, newMapId: line.newMapId });
       }
       // A Command written to the outbox before a stop that came before its local commit.
-      this.replay(store, expected.slice(lines.length));
+      this.replay(store, expected.slice(next));
       this.captureInto(store);
       if (delta.length > 0 || this.pendingChanged) this.rebase(delta);
       return true;
