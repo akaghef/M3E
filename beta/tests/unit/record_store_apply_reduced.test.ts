@@ -54,6 +54,39 @@ describe("applyChangesReduced", () => {
     expect(result.bg0001).not.toBe(nodes.bg0001);
   });
 
+  it("builds edge positions once per application instead of searching siblings per edge", () => {
+    const state = bigState(1, 40);
+    const after = clone(state);
+    const afterNodes = after.nodes as Record<string, Loose>;
+    const children = afterNodes.bg0000.children as string[];
+    children.push(children.shift()!);
+    const changes = diffState(state, after);
+    const nodes = state.nodes as Record<string, Loose>;
+    let reads = 0;
+    nodes.bg0000.children = new Proxy(nodes.bg0000.children as string[], {
+      get(target, key, receiver) {
+        if (typeof key === "string" && /^\d+$/.test(key)) reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    expect(applyChangesReduced(state, changes)).toEqual({ ok: true, state: after });
+    expect(reads).toBeLessThanOrEqual(40 * 4);
+  });
+
+  it("does not copy unchanged siblings when adding a child", () => {
+    const state = bigState(1, 10);
+    const after = clone(state);
+    const next = after.nodes as Record<string, Loose>;
+    next.fresh = node("fresh", "bg0000");
+    (next.bg0000.children as string[]).push("fresh");
+    const result = applyChangesReduced(state, diffState(state, after));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const nodes = (result.state as Loose).nodes as Record<string, Loose>;
+    expect(nodes.bg0000n0000).toBe((state.nodes as Record<string, Loose>).bg0000n0000);
+    expect(result.state).toEqual(after);
+  });
+
   it("hands the node table back untouched when no change names a node", () => {
     const state = richState();
     const after = clone(state);

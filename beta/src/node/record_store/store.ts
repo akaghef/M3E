@@ -27,7 +27,7 @@ import { NeighbourhoodIndex, subjectOfProblemKey } from "../../shared/record_mod
 import { MapProjector, recordRk, sameJson, type ProjectionResult } from "../../shared/record_model/steady";
 import { compareStrings, type CommitRecord, type DecayRecord, type ExtensionDefRecord, type IdMapRecord, type JsonValue, type MapRecord, type ScopeRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
 import type { AppState, TreeNode } from "../../shared/types";
-import { applyChangesReduced } from "./apply_reduced";
+import { appendedLeaves, applyChangesReduced } from "./apply_reduced";
 import {
   planDeleteNamedSnapshot,
   planLink,
@@ -71,7 +71,7 @@ import {
   type PruneResult,
   type TouchedRecord,
 } from "./journal_archive";
-import { commitTimeRefusal } from "./operations";
+import { CommitGuardIndex, commitTimeRefusal } from "./operations";
 import { normalizeProvenance, type Provenance } from "./provenance";
 import { commitValidationErrorCount, validationUnaffected } from "./validate";
 import {
@@ -483,6 +483,7 @@ export class RecordWorkspaceStore {
   private committed: ((line: JournalLine) => void) | undefined;
   private readonly dir: string;
   private readonly now: () => string;
+  private readonly guardIndexes = new Map<string, CommitGuardIndex>();
   /** Every record of the workspace but the snapshot header, keyed by rk. */
   private readonly all = new Map<string, SnapshotRecord>();
   /** Workspace extensionDef records. They are not owned by a map. */
@@ -1919,9 +1920,13 @@ export class RecordWorkspaceStore {
     // and projection; the projector installs those nodes with a rollback after validation.
     const contentOnly = warm !== undefined && validationUnaffected(changes)
       && warm.projector.canProjectContent(entry!.records);
+    let appendPlan: ReturnType<typeof appendedLeaves>;
     // 2. Compare-and-set on the `before` values.
     let applied: ReturnType<typeof applyChanges>;
     try {
+      appendPlan = warm && warm.validationErrors === 0 && warm.problems.size === 0
+        && warm.projector.canProjectContent(entry!.records) ? appendedLeaves(warm.state, changes) : undefined;
+      if (appendPlan && [...appendPlan.parents.values()].some((ids) => ids.some((id) => entry?.graph?.hasAliasesTo(id)))) appendPlan = undefined;
       let input: object = warm ? warm.state : {};
       if (contentOnly) {
         const nodes: Dict = {};
@@ -1931,7 +1936,8 @@ export class RecordWorkspaceStore {
         }
         input = { ...warm!.state, nodes };
       }
-      applied = applyChangesReduced(input, changes, meta.syncHash !== undefined);
+      applied = appendPlan ? { ok: true, state: { ...input, nodes: appendPlan.nodes } }
+        : applyChangesReduced(input, changes, meta.syncHash !== undefined);
     } catch (error) {
       return this.failure("INVALID_COMMAND", current(), (error as Error).message);
     }
@@ -1940,7 +1946,7 @@ export class RecordWorkspaceStore {
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
     // A Command that only edits node content cannot change what validation reports.
-    const validationErrors = warm && validationUnaffected(changes)
+    const validationErrors = warm && (appendPlan !== undefined || validationUnaffected(changes))
       ? warm.validationErrors
       : commitValidationErrorCount(applied.state);
     const allowedErrors = warm ? warm.validationErrors : 0;
@@ -1956,7 +1962,9 @@ export class RecordWorkspaceStore {
     try {
       // An existing map is projected in place: its record table becomes the new one, and
       // `revert` puts it back when the commit is refused further down.
-      result = contentOnly
+      result = appendPlan
+        ? projector.projectAppendedLeaves(mapId, warm!.state, appendPlan.nodes, appendPlan.parents, entry!.records)
+        : contentOnly
         ? projector.projectContent(mapId, warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
         : projector.project(row, previous, { inPlace: entry !== undefined });
     } catch (error) {
@@ -2041,6 +2049,7 @@ export class RecordWorkspaceStore {
       ops,
       before: (rk) => this.all.get(rk),
       preimage: this.all.values(),
+      index: this.guardIndex(mapId),
     });
     if (refusal) return refuse(refusal);
     const reuse = this.reuseRefusal(ops);
@@ -2374,10 +2383,24 @@ export class RecordWorkspaceStore {
     }
   }
 
+  /** Lazy pre-commit index; successful appends maintain it, refused commits leave it alone. */
+  private guardIndex(mapId: string): CommitGuardIndex {
+    let index = this.guardIndexes.get(mapId);
+    if (!index) {
+      index = new CommitGuardIndex(this.all.values(), mapId);
+      this.guardIndexes.set(mapId, index);
+    }
+    return index;
+  }
+
   /** Applies a committed journal line to the record set in memory. */
   private applyLine(line: JournalLine): void {
     for (const op of line.ops) {
       const before = this.all.get(op.rk);
+      const after = op.op === "put" ? op.record as SnapshotRecord : undefined;
+      const mapIds = new Set<string>();
+      for (const record of [before, after]) if (record && "mapId" in record && typeof record.mapId === "string") mapIds.add(record.mapId);
+      for (const id of mapIds) this.guardIndexes.get(id)?.update(before, after);
       if (before !== undefined && SHARED_ID_KINDS.has(before.kind)) {
         const id = (before as { id: string }).id;
         if (this.idIndex.get(id) === op.rk) this.idIndex.delete(id);

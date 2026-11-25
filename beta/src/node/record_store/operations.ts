@@ -311,6 +311,7 @@ export interface CommitGuardInput {
   ops: readonly RecordOp[];
   before: (rk: string) => SnapshotRecord | undefined;
   preimage: Iterable<SnapshotRecord>;
+  index?: CommitGuardIndex;
 }
 
 function aliasRecord(node: NodeRecord): boolean {
@@ -321,20 +322,66 @@ function filled(value: string | undefined): boolean {
   return typeof value === "string" && value !== "";
 }
 
+/** Pre-commit lookup tables, maintained only after the journal append succeeds. */
+export class CommitGuardIndex {
+  readonly locks = new Map<string, LockRecord>();
+  readonly grants = new Map<string, GrantRecord>();
+  readonly nodes = new Map<string, NodeRecord>();
+  readonly edgeByTarget = new Map<string, EdgeConnectionRecord>();
+  readonly scopes = new Map<string, ScopeRecord>();
+  private readonly incoming = new Map<string, Map<string, EdgeConnectionRecord>>();
+
+  constructor(records: Iterable<SnapshotRecord> = [], readonly mapId: string) {
+    for (const record of records) this.update(undefined, record);
+  }
+
+  update(before: SnapshotRecord | undefined, after: SnapshotRecord | undefined): void {
+    const belongs = (record: SnapshotRecord | undefined): boolean =>
+      record !== undefined && "mapId" in record && record.mapId === this.mapId;
+    if (!belongs(before)) before = undefined;
+    if (!belongs(after)) after = undefined;
+    const slot = (record: SnapshotRecord): [Map<string, any>, string] | undefined => {
+      if (record.kind === "node") return [this.nodes, record.id];
+      if (record.kind === "scope") return [this.scopes, record.id];
+      if (record.kind === "lock") return [this.locks, recordRk(record)];
+      if (record.kind === "grant") return [this.grants, recordRk(record)];
+      return undefined;
+    };
+    const left = before && slot(before);
+    const right = after && slot(after);
+    if (left && (!right || left[0] !== right[0] || left[1] !== right[1])) left[0].delete(left[1]);
+    if (right) right[0].set(right[1], after);
+    const oldEdge = before?.kind === "connection" && before.type === "edge" ? before : undefined;
+    const newEdge = after?.kind === "connection" && after.type === "edge" ? after : undefined;
+    const targets = new Set<string>();
+    if (oldEdge) {
+      targets.add(oldEdge.target);
+      if (!newEdge || oldEdge.target !== newEdge.target || recordRk(oldEdge) !== recordRk(newEdge)) {
+        this.incoming.get(oldEdge.target)?.delete(recordRk(oldEdge));
+      }
+    }
+    if (newEdge) {
+      targets.add(newEdge.target);
+      let edges = this.incoming.get(newEdge.target);
+      if (!edges) this.incoming.set(newEdge.target, edges = new Map());
+      edges.set(recordRk(newEdge), newEdge);
+    }
+    for (const target of targets) {
+      const edges = this.incoming.get(target);
+      let last: EdgeConnectionRecord | undefined;
+      for (const edge of edges?.values() ?? []) last = edge;
+      if (last) this.edgeByTarget.set(target, last);
+      else { this.incoming.delete(target); this.edgeByTarget.delete(target); }
+    }
+  }
+}
+
 /** Why this commit is refused, or null when the locks, grants and operation shape allow it. */
 export function commitTimeRefusal(input: CommitGuardInput): string | null {
-  const locks: LockRecord[] = [];
-  const grants = new Map<string, GrantRecord>();
-  const nodes = new Map<string, NodeRecord>();
-  const edgeByTarget = new Map<string, EdgeConnectionRecord>();
-  const scopes = new Map<string, ScopeRecord>();
-  for (const record of input.preimage) {
-    if (record.kind === "lock" && record.mapId === input.mapId) locks.push(record);
-    else if (record.kind === "grant" && record.mapId === input.mapId) grants.set(recordRk(record), record);
-    else if (record.kind === "node" && record.mapId === input.mapId) nodes.set(record.id, record);
-    else if (record.kind === "connection" && record.type === "edge" && record.mapId === input.mapId) edgeByTarget.set(record.target, record);
-    else if (record.kind === "scope" && record.mapId === input.mapId) scopes.set(record.id, record);
-  }
+  const index = input.index ?? new CommitGuardIndex(input.preimage, input.mapId);
+  const { nodes, edgeByTarget, scopes } = index;
+  const locks = index.locks.values();
+  const grants = new Map(index.grants);
   for (const op of input.ops) {
     if (op.op === "delete") grants.delete(op.rk);
     else if (op.record?.kind === "grant" && op.record.mapId === input.mapId) grants.set(op.rk, op.record);
@@ -394,19 +441,21 @@ export function commitTimeRefusal(input: CommitGuardInput): string | null {
   }
 
   const scopeAfter = new Map(scopes);
-  const edgeAfter = new Map(edgeByTarget);
+  // Only changed targets need an overlay; copying every parent edge is map-sized work.
+  const edgeChanges = new Map<string, EdgeConnectionRecord | undefined>();
+  const edgeAfter = { get: (id: string) => edgeChanges.has(id) ? edgeChanges.get(id) : edgeByTarget.get(id) };
   for (const op of input.ops) {
     if (op.op === "delete") {
       const prior = input.before(op.rk);
       if (prior?.kind === "scope") scopeAfter.delete(prior.id);
-      if (prior?.kind === "connection" && prior.type === "edge") edgeAfter.delete(prior.target);
+      if (prior?.kind === "connection" && prior.type === "edge") edgeChanges.set(prior.target, undefined);
       if (prior?.kind === "namedSnapshot" && (input.intent !== "delete-named-snapshot" || input.confirm !== true)) {
         return "Deleting a namedSnapshot removes its archive mark and needs an explicit confirmed Command.";
       }
     } else if (op.record?.kind === "scope" && op.record.mapId === input.mapId) {
       scopeAfter.set(op.record.id, op.record);
     } else if (op.record?.kind === "connection" && op.record.type === "edge" && op.record.mapId === input.mapId) {
-      edgeAfter.set(op.record.target, op.record);
+      edgeChanges.set(op.record.target, op.record);
     }
   }
   const observeIds = new Set<string>();

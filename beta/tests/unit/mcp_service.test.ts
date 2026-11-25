@@ -48,6 +48,26 @@ describe("M3E MCP semantic service", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test("change notifications read only watched maps and share one read across participants", () => {
+    const read = vi.spyOn(RapidMvpModel, "loadSavedMapFromSqlite");
+    service.notifyMapChanged(mapId);
+    expect(read).not.toHaveBeenCalled();
+    const first = enter();
+    const second = enter();
+    read.mockClear();
+    service.notifyMapChanged("unwatched");
+    expect(read).not.toHaveBeenCalled();
+    const other = loaded();
+    other.state.nodes[other.state.rootId].text = "changed outside";
+    other.saveToSqlite(dbPath, mapId);
+    read.mockClear();
+    service.notifyMapChanged(mapId);
+    expect(read).toHaveBeenCalledTimes(1);
+    for (const context of [first, second]) {
+      expect(service.events(context.context_id).events.some((event: { type: string }) => event.type === "map_changed")).toBe(true);
+    }
+  });
+
   test("the MCP endpoint accepts loopback requests with a local Host", () => {
     for (const [remoteAddress, host] of [["127.0.0.1", "localhost:4173"], ["::1", "[::1]:4173"]]) {
       const request = { socket: { remoteAddress }, headers: { host, origin: `http://${host}` } } as Parameters<typeof mcpRequestAllowed>[0];
