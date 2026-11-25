@@ -46,6 +46,8 @@ An implementer does more than carry out the instruction. When the work turns up 
 - a verified fact that corrects or completes a spec goes into that spec;
 - anything that needs a decision, or is not fixed in the task, goes into the work area's log.
 
+When code is wasteful by its structure, fix it at once; measuring first is not required. Examples: one round trip per item where the interface takes a list, a full copy or full replay where only a delta changed, work repeated whose result is already known. Measure to choose between plausible designs or to back a claim about speed. A fix that changes stored data or its meaning (what a journal records, for example) is still a decision for akaghef. A fix whose correct form needs design goes into the work area's log with the waste named.
+
 Decided content is changed only by akaghef. For storage and database work the log is [the implementation log](.kiro/specs/rapid-persistence-redesign/implementation-log.md); read its open entries before starting there and update an entry's status when the work resolves it.
 
 ## Environment Structure
