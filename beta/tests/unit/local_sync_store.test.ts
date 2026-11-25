@@ -183,7 +183,7 @@ test("no-op and rejected commands settle independently and a conflict retains th
   expect((await client("b")).conflictList()).toMatchObject([{ entry: loser }]);
 });
 
-test("invalid suffix and interrupted directory publication keep the working store intact; replay failures remain inspectable", async () => {
+test("an invalid suffix keeps the working store intact, an interrupted rebase recovers by a rebuild, and replay failures remain inspectable", async () => {
   const a = await client();
   const working = path.join(temp, "local/store");
   const target = activeDirectory(working);
@@ -200,14 +200,14 @@ test("invalid suffix and interrupted directory publication keep the working stor
   expect(activeDirectory(working)).toBe(target);
   transform = (_url, body) => body;
 
-  const rename = fs.renameSync;
-  const fail = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-    if (to === (process.platform === "win32" ? path.join(working, "CURRENT") : working)) throw new Error("Publication interrupted");
-    rename(from, to);
+  // A rebase interrupted after its reset: the next pull rebuilds the working store from the confirmed one.
+  const commit = RecordWorkspaceStore.prototype.commitSyncCommand;
+  const fail = vi.spyOn(RecordWorkspaceStore.prototype, "commitSyncCommand").mockImplementation(function (this: RecordWorkspaceStore, ...args) {
+    if (this === a.store()) throw new Error("Rebase interrupted");
+    return commit.apply(this, args);
   });
-  await expect(a.pull(() => {})).rejects.toThrow("Publication interrupted");
-  expect(activeDirectory(working)).toBe(target);
-  expect(mapText(a.store())).toBe("Pending");
+  await expect(a.pull(() => {})).rejects.toThrow("Rebase interrupted");
+  expect(entries("local")).toHaveLength(1);
   fail.mockRestore();
   await a.pull(() => {});
   expect(activeDirectory(working)).not.toBe(target);
@@ -330,4 +330,55 @@ test("a failed outbox fsync cannot publish a successful working commit", async (
   change(a.store(), "Retry succeeded");
   expect(entries("local")).toHaveLength(1);
   expect(mapText(a.store())).toBe("Retry succeeded");
+});
+
+test("a pull rebases in proportion to the delta and the pending Commands, not to the size of the workspace", async () => {
+  // The same delta (one remote edit, one pending edit) against workspaces of two sizes.
+  function grow(count: number): void {
+    const state = appState("Big");
+    for (let i = 0; i < count; i += 1) {
+      const id = `n${i}`;
+      state.nodes[id] = { id, parentId: "root", children: [], collapsed: false, nodeType: "text", text: `Node ${i}` };
+      state.nodes.root.children.push(id);
+    }
+    expect(remote().saveWholeMap("big", state, "remote")).toMatchObject({ ok: true });
+  }
+  async function rebaseOps(name: string): Promise<number> {
+    const device = await client(name);
+    const working = path.join(temp, name, "store");
+    const directory = activeDirectory(working);
+    change(device.store(), `Pending ${name}`);
+    change(remote(), `Remote ${name}`);
+    expect(await device.pull(() => {})).toMatchObject({ pulled: 1 });
+    expect(activeDirectory(working)).toBe(directory);
+    expect(device.conflictList()).toMatchObject([{ code: "CONFLICT" }]);
+    expect(mapText(device.store())).toBe(`Remote ${name}`);
+    const lines = fs.readFileSync(path.join(directory, "journal.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const rebases = lines.filter((line) => line.intent === "local-rebase");
+    expect(rebases).toHaveLength(1);
+    return rebases[0].ops.length;
+  }
+  grow(10);
+  const small = await rebaseOps("small");
+  grow(5000);
+  const large = await rebaseOps("large");
+  expect(small).toBeGreaterThan(0);
+  expect(large).toBe(small);
+});
+
+test("a start resumes the working store without rebuilding it, and rebases what arrived while it was stopped", async () => {
+  const device = await client("resume");
+  const working = path.join(temp, "resume", "store");
+  const directory = activeDirectory(working);
+  change(device.store(), "Pending before stop");
+  await device.close();
+  devices.splice(devices.indexOf(device), 1);
+  const again = await client("resume");
+  expect(activeDirectory(working)).toBe(directory);
+  expect(mapText(again.store())).toBe("Pending before stop");
+  expect(entries("resume")).toHaveLength(1);
+  await again.push(() => {});
+  expect(mapText(remote())).toBe("Pending before stop");
+  expect(activeDirectory(working)).toBe(directory);
+  expect(entries("resume")).toHaveLength(0);
 });

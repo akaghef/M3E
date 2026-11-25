@@ -18,7 +18,7 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
 
 | パス | 中身 |
 |---|---|
-| `sync/remote.json` | remote の origin、`workspaceId`、`historyId`、`epoch`、`confirmedSeq` |
+| `sync/remote.json` | remote の origin、`workspaceId`、`historyId`、`epoch`、`confirmedSeq`、working store の基点（`working`：working store のどの通し番号が confirmed のどの通し番号と同じ中身か） |
 | `sync/confirmed/` | remote の確定系列の複製（record store。seq は remote の seq） |
 | `sync/outbox.jsonl` | 未送信・結果不明の Command（fsync 後に local commit 完了） |
 | `sync/conflicts.jsonl` | remote が conflict・reject を返した Command（消さずに保全） |
@@ -51,9 +51,11 @@ remote 側の追加：map 単位の操作（作成・削除・改名・列）を
 
 1. `GET /api/sync/pull?after=<confirmedSeq>` に `workspaceId`・`historyId`・`epoch` を付けて要求する。応答も同じ三つを返し、local は食い違えば取り込まない。
 2. 返った journal の行を seq の連続を確かめてから `sync/confirmed/` に追記・適用する（R5.4：確定時の変更をそのまま再生し、merge 規則で再判定しない）。
-3. working store を作り直す：confirmed の状態に outbox の entry を順に載せ直す。載らない entry（前提が崩れたもの）は conflicts に移す。作り直しは新しいディレクトリに作って、完成後に入れ替える（途中で落ちても前の working store が残る）。
+3. working store をその場で rebase する（[同期の思想](sync-principles.md)の「手間は変化分に比例させる」）。基点より後に pending が変えた record と、届いた行が変えた record だけを confirmed の値に戻し（1 行の `local-rebase` として working store の journal に書く）、pending を順に commit し直す。載らない pending（前提が崩れたもの）は conflicts に移す。手間は届いた行と pending に比例し、workspace の大きさに依らない。届いた行が無く、pending も変わっていなければ何もしない。途中で失敗したら基点を消し、次の pull か起動で全体を作り直す。
 4. viewer に map の更新を通知する（既存の watch / SSE）。
-5. remote が `reclone` を返した場合（保持期間切れ）：outbox と conflicts を保ったまま clone し直し、3 と同じく outbox を載せ直す。
+5. remote が `reclone` を返した場合（保持期間切れ）：outbox と conflicts を保ったまま clone し直し、working store を新しいディレクトリに全体から作り直して入れ替える（Δ が全体なので全体に比例してよい）。
+
+起動時は、基点が working store の journal と outbox に合っていれば、working store をそのまま開き、止まっている間に届いた行だけを 3 と同じく rebase する。合わなければ（初回、作り直しの途中で止まった、など）全体から作り直す。
 
 ## 6. workspace と世代の照合（fencing）
 

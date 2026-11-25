@@ -253,6 +253,17 @@ function isPlain(value: unknown): value is Dict {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** JSON with object keys in sorted order: equal values give equal text. */
+function canonicalStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalStringify(item === undefined ? null : item)).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    const source = value as Record<string, unknown>;
+    return `{${Object.keys(source).sort().filter((key) => source[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalStringify(source[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
 function jsonClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -359,6 +370,9 @@ function activityNodeIds(ops: readonly RecordOp[], before: (rk: string) => Snaps
   return [...ids];
 }
 
+/** Intent of the journal line a local working store writes when it is rebased onto the confirmed state. */
+export const LOCAL_REBASE_INTENT = "local-rebase";
+
 function commandKey(mapId: string, commandId: string): string {
   return `${mapId}\u0000${commandId}`;
 }
@@ -461,6 +475,7 @@ export class RecordWorkspaceStore {
   private readonly epoch: number;
 
   private capture: ((command: SyncCommand, issuer: string, at: string, mapName: string) => void) | undefined;
+  private committed: ((line: JournalLine) => void) | undefined;
   private readonly dir: string;
   private readonly now: () => string;
   /** Every record of the workspace but the snapshot header, keyed by rk. */
@@ -787,7 +802,97 @@ export class RecordWorkspaceStore {
         !op || typeof op.rk !== "string" || (op.op !== "delete"
           && (op.op !== "put" || !op.record || recordRk(op.record as SnapshotRecord) !== op.rk)))
     )) throw new Error("The remote journal is not a contiguous suffix.");
-    for (const line of lines) this.append(line, true);
+    for (const line of lines) this.appendTracked(line);
+  }
+
+  /** Called with every journal line this store appends, after it is durable and applied. */
+  setCommitListener(listener: ((line: JournalLine) => void) | undefined): void {
+    this.committed = listener;
+  }
+
+  /** One record by rk, as a copy; undefined when the store has none. */
+  record(rk: string): SnapshotRecord | undefined {
+    const record = this.all.get(rk);
+    return record === undefined ? undefined : jsonClone(record);
+  }
+
+  /** Journal lines after `seq`, from the journal and the archive; null when they no longer reach back that far. */
+  journalLinesAfter(seq: number): JournalLine[] | null {
+    this.assertOpen();
+    return this.linesAfter(seq);
+  }
+
+  /**
+   * Local mode: give the records `rks` the values `target` holds, as one journal line, and forget
+   * the Commands `forget` so they can be committed again. The work is proportional to `rks`.
+   * Returns the line's sequence number.
+   */
+  resetRecords(rks: Iterable<string>, target: (rk: string) => SnapshotRecord | undefined, forget: ReadonlyArray<{ mapId: string; commandId: string; newMapId?: string }>): number {
+    this.assertOpen();
+    const ops: RecordOp[] = [];
+    for (const rk of new Set(rks)) {
+      if (rk.startsWith("commit|") || rk.startsWith("snapshot|")) continue;
+      const current = this.all.get(rk);
+      const wanted = target(rk);
+      if (wanted === undefined) {
+        if (current !== undefined) ops.push({ op: "delete", rk });
+      } else if (current === undefined || canonicalStringify(current) !== canonicalStringify(wanted)) {
+        if (wanted.kind === "node") this.retired.delete(wanted.id);
+        ops.push({ op: "put", rk, record: wanted });
+      }
+    }
+    for (const item of forget) {
+      this.commands.delete(commandKey(item.mapId, item.commandId));
+      this.commands.delete(commandKey("", item.commandId));
+      if (item.newMapId !== undefined) this.commands.delete(commandKey(item.newMapId, item.commandId));
+    }
+    const line: JournalLine = { seq: this.currentSeq + 1, issuer: "system", committedAt: this.now(), mapId: "", intent: LOCAL_REBASE_INTENT, ops };
+    this.appendTracked(line);
+    return line.seq;
+  }
+
+  /** Appends a line that did not come through a commit, and brings the map caches up to date for its records. */
+  private appendTracked(line: JournalLine): void {
+    const changed = line.ops.map((op) => ({ rk: op.rk, before: this.all.get(op.rk), after: op.op === "put" ? op.record as SnapshotRecord : undefined }));
+    this.append(line, true);
+    this.reindexMaps(changed, line.seq);
+  }
+
+  /** Map caches after records changed outside a commit: the tables follow the records, derived caches are dropped. */
+  private reindexMaps(changed: ReadonlyArray<{ rk: string; before: SnapshotRecord | undefined; after: SnapshotRecord | undefined }>, seq: number): void {
+    const mapOf = (record: SnapshotRecord | undefined): string | undefined => {
+      if (record === undefined || record.kind === "extensionDef" || record.kind === "decay" || record.kind === "commit" || record.kind === "snapshot") return undefined;
+      const mapId = record.kind === "map" ? record.id : (record as { mapId?: unknown }).mapId;
+      return typeof mapId === "string" ? mapId : undefined;
+    };
+    const touched = new Set<string>();
+    for (const { before, after } of changed) {
+      if (before?.kind === "map" && after === undefined) this.maps.delete(before.id);
+      if (after?.kind === "map" && !this.maps.has(after.id)) this.maps.set(after.id, { id: after.id, records: new Map(), idMaps: new Map() });
+    }
+    for (const { rk, before, after } of changed) {
+      const from = mapOf(before);
+      const to = mapOf(after);
+      const fromEntry = from === undefined ? undefined : this.maps.get(from);
+      if (fromEntry) {
+        (before!.kind === "idMap" ? fromEntry.idMaps : fromEntry.records).delete(rk);
+        touched.add(from!);
+      }
+      const toEntry = to === undefined ? undefined : this.maps.get(to);
+      if (toEntry) {
+        (after!.kind === "idMap" ? toEntry.idMaps : toEntry.records).set(rk, after!);
+        touched.add(to!);
+      }
+    }
+    for (const mapId of touched) {
+      const entry = this.maps.get(mapId);
+      if (!entry) continue;
+      entry.warm = undefined;
+      entry.graph = undefined;
+      entry.counts = undefined;
+      entry.aliases = undefined;
+      this.mapSeq.set(mapId, seq);
+    }
   }
 
   /** The current full record set in canonical order. The records are copies. */
@@ -1979,7 +2084,7 @@ export class RecordWorkspaceStore {
       validationErrors,
       problems: problemKeys,
     };
-    this.noteNamedSnapshots(result.replaced);
+    this.noteNamedSnapshots(result.replaced, line.ops);
     return { ok: true, savedAt: committedAt, seq, replayed: false };
   }
 
@@ -2126,6 +2231,7 @@ export class RecordWorkspaceStore {
     this.journalSize += buffer.length;
     this.journalLines += 1;
     this.applyLine(line);
+    this.committed?.(line);
     this.engine?.enqueue(this.engineCommit(line));
     // The commit has happened; compaction must not turn it into a failure.
     if (this.compactAfterLines > 0 && this.journalLines >= this.compactAfterLines) this.maintain();
@@ -2170,6 +2276,7 @@ export class RecordWorkspaceStore {
 
   /** Bookkeeping a journal line carries besides its record operations. */
   private indexLine(line: JournalLine): void {
+    if (line.intent === LOCAL_REBASE_INTENT) return;
     if (line.mapOp === "delete") {
       this.mapSeq.delete(line.mapId);
     } else if (line.mapOp === "rename" && line.newMapId !== undefined) {
@@ -2394,7 +2501,9 @@ export class RecordWorkspaceStore {
    * A namedSnapshot at this commit keeps a portable snapshot in the archive.
    * Deleting the last record of a seq clears the keep-mark. The file stays until a later prune.
    */
-  private noteNamedSnapshots(replaced: ReadonlyMap<string, SnapshotRecord>): void {
+  private noteNamedSnapshots(replaced: ReadonlyMap<string, SnapshotRecord>, ops: readonly RecordOp[]): void {
+    // Only a commit that writes or deletes a namedSnapshot record changes what the archive keeps.
+    if (!ops.some((op) => op.rk.startsWith("namedSnapshot|"))) return;
     const kept = new Set<number>();
     for (const record of this.all.values()) {
       if (record.kind !== "namedSnapshot") continue;

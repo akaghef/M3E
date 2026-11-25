@@ -58,6 +58,20 @@
 - 根拠: `push()` と `rebuild()` を読んだ。push と journal のどちらにも、まとめる処理はない。
 - 扱い: akaghef の判断待ち（remote の journal に何を記録するかが変わるため）
 
+### 2026-11-25 書き込み・同期・表示更新の経路に、まだ全体に比例する処理がある
+
+- 種類: 問題
+- 書いた agent: Δ 比例の原則を入れた Claude Code の session
+- 対象: [同期の思想](sync-principles.md)「手間は変化分に比例させる」、`beta/src/node/record_store/store.ts`、`beta/src/shared/map_changes.ts`、`beta/src/browser/viewer.ts`
+- 中身: 原則（2026-11-25、絶対）に反する処理を、読んだ範囲で挙げる。
+  - remote の `/api/sync/pull`: `linesAfter` が journal ファイル全体を読んで解析し、要求された範囲だけを返す（`store.ts` の `linesAfter`）。手間は journal の長さに比例し、届ける行数に依らない。
+  - `committedCommand`: Command の結果を 1 件引くたびに journal ファイル全体を読む（`store.ts` の `committedCommand`）。
+  - commit: `commitPlanned` が map の状態全体を複製し、全体の差分を取る（`jsonClone(warm.state)` と `diffState`）。`applyChanges` の `Draft` は、触った欄（`nodes` など）の辞書を丸ごと複製する（`map_changes.ts` の `own`）。どちらも 1 回の commit が map の大きさに比例する。
+  - viewer の保存: 自動保存のたびに、map 全体について `diffState(base, state)` を取る（`viewer.ts` の `saveDocToLocalDb` と `save_command.ts`）。
+  - local の rebase: 触った map の投影（warm）と近傍の索引を捨てるので、次に読むときに map 全体を投影し直す。commit の側も map 全体を複製しているので、今は同じ桁にとどまる。
+- 根拠: コードを読んだ。所要時間は測っていない（原則により、構造で判断する）。
+- 扱い: 未対応。remote の journal を通し番号で引けるようにする（行の位置の索引）、commit と保存の差分を変えた record に限る、の二つに設計が要る。名前付き snapshot の記録を確かめるため commit のたびに全 record を走査していた件は、このログと同じ commit で解消した（名前付き snapshot の record に触れない commit では何もしない）。
+
 ### 2026-11-25 push と pull のたびに、working store を confirmed 全体の複製から作り直している
 
 - 種類: 問題
@@ -65,7 +79,7 @@
 - 対象: `beta/src/node/sync/local.ts` の `rebuild()`
 - 中身: `rebuild()` は、変わった範囲に関係なく毎回、confirmed の record を全部書き出して新しい working store を作る。そのうえで、pending をすべて当て直す。push の最後にも pull が走るので、同期 1 回ごとに「workspace 全体＋outbox 全体」に比例した処理になる。2026-11-25 の MacBook では、confirmed が 29MB、outbox が 113 件（664KB）だった。また、confirmed は `compactAfterLines: 0` で開いているので、その journal は、remote から snapshot ごと取り直さない限り短くならない。作り直しは単純には省けない。pull で戻ってきたのが自分の Command だけでも、remote は確定のときに兄弟順キーを作り直すことがある（sync-principles）。そのため「自分の Command しか戻らなかったから working store はそのままでよい」とは言えない。差分で当てる方法か、複製を安くする方法（APFS の clone など）を設計する必要がある。
 - 根拠: `rebuild()` と `pullNow()` を読んだ。大きさは MacBook の Beta workspace を `du` と `wc` で測った。所要時間は測っていない。
-- 扱い: 未対応（直し方に設計が要る）
+- 扱い: 実装で解消（このログと同じ commit）。pull では working store をその場で rebase する。基点より後に pending が変えた record と、届いた行が変えた record だけを confirmed の値に戻し（1 行の `local-rebase`）、pending を commit し直す。手間は届いた行と pending に比例する。起動時は、基点（`sync/remote.json` の `working`）が working store の journal と outbox に合えば、そのまま開いて止まっていた間の行だけを rebase する。confirmed は、追記に失敗したときだけ開き直す。全体の作り直しは、clone、reclone、基点が合わないとき、rebase が途中で失敗したときだけになった。試験（`beta/tests/unit/local_sync_store.test.ts`）では、同じ Δ を 10 node と 5,010 node の workspace に当て、rebase が書く record の数が同じであることを確かめる。直す前の実装ではこの試験は失敗する。設計は [local mode の設計](local-mode-design.md) 5 節。
 
 ### 2026-11-25 push を、同じ issuer が続けて書いた Command ごとに 1 リクエストで送るようにした
 

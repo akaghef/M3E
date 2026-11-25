@@ -360,7 +360,7 @@ describe("local sync with isolated viewer processes", () => {
     expect(journal.lines[0].commandId).toBe(pending[0].commandId);
   });
 
-  test("rejects a broken suffix before appending, then swaps a rebuilt store and preserves failed replay", async () => {
+  test("rejects a broken suffix before appending, then rebases the working store in place and preserves failed replay", async () => {
     const remote = await viewer(seed("remote"));
     const a = (await viewer(path.join(temp, "a"), remote.origin)).origin;
     let corrupt = false;
@@ -387,7 +387,8 @@ describe("local sync with isolated viewer processes", () => {
     expect(await mapText(b)).toBe("Conflicting draft");
     corrupt = false;
     expect(await pull(b)).toMatchObject({ confirmedSeq: before + 2, pulled: 2 });
-    expect(activeDirectory(path.join(dir, "store"))).not.toBe(active);
+    // Rebased in place: the pull touched the delta and the pending Commands, not a copy of the workspace.
+    expect(activeDirectory(path.join(dir, "store"))).toBe(active);
     expect(await mapText(b)).toBe("Authoritative again");
     expect(await mapText(b, "main-child")).toBe("Independent draft");
     expect(await status(b)).toMatchObject({ unsent: 1, conflicts: 1 });

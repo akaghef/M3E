@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import type { SnapshotRecord } from "../../shared/record_model/types";
 import { fsyncDir } from "../record_store/journal_archive";
-import { assertNotLiveM3e, RecordWorkspaceStore, writeFileDurably, type JournalLine } from "../record_store/store";
+import { assertNotLiveM3e, LOCAL_REBASE_INTENT, RecordWorkspaceStore, writeFileDurably, type JournalLine } from "../record_store/store";
 import { sameSyncIdentity, type SyncIdentity } from "../record_store/sync_types";
 import { accountForConnection, LOCAL_HUMAN_ACCOUNT_ID } from "./issuer";
 import { appendJsonLine, DeviceOutbox, pushEnvelope, readDurableLines, settlePushResults, type OutboxEntry, type OutboxRejection } from "./outbox";
@@ -13,6 +13,11 @@ interface RemoteMetadata extends SyncIdentity {
   confirmedSeq: number;
   lastPushAt: string | null;
   lastPullAt: string | null;
+  /**
+   * The working store at `workingSeq` holds what the confirmed store holds at `confirmedSeq`;
+   * every working commit after it is a pending Command, in outbox order.
+   */
+  working?: { confirmedSeq: number; workingSeq: number };
 }
 
 interface Clone extends SyncIdentity {
@@ -141,6 +146,14 @@ export class LocalSync {
   private remoteState: RemoteState = "unreachable";
   private fenced: LocalSyncError | undefined;
   private queue: Promise<unknown> = Promise.resolve();
+  /** Records the working store changed after its base: what a rebase resets to the confirmed values. */
+  private dirty = new Set<string>();
+  /** Maps those commits addressed. */
+  private dirtyMaps = new Set<string>();
+  /** Commands committed in the working store after its base, forgotten so a rebase can commit them again. */
+  private committedSinceBase: Array<{ mapId: string; commandId: string; newMapId?: string }> = [];
+  /** A push or a refusal changed the pending set since the base. */
+  private pendingChanged = false;
 
   private constructor(dataDir: string, private readonly origin: string) {
     this.syncDir = path.join(dataDir, "sync");
@@ -185,7 +198,7 @@ export class LocalSync {
         local.remoteState = "ok";
       }
       local.persistMetadata();
-      local.rebuild();
+      if (!recorded || !local.resume()) local.rebuild();
       return local;
     } catch (error) {
       await local.close();
@@ -245,6 +258,7 @@ export class LocalSync {
       const row = { ...rejected, at: new Date().toISOString() };
       appendJsonLine(this.conflictsFile, row);
       this.conflicts.set(id, row);
+      this.pendingChanged = true;
     }
   }
 
@@ -255,7 +269,52 @@ export class LocalSync {
     }));
   }
 
-  /** Reapply pending Command preconditions on a separate store, then publish it. */
+  /** Watch the working store's commits: their records and Commands are what the next rebase undoes. */
+  private track(store: RecordWorkspaceStore): void {
+    this.dirty = new Set();
+    this.dirtyMaps = new Set();
+    this.committedSinceBase = [];
+    store.setCommitListener((line) => {
+      if (line.intent === LOCAL_REBASE_INTENT) return;
+      for (const op of line.ops) this.dirty.add(op.rk);
+      if (line.mapId) this.dirtyMaps.add(line.mapId);
+      if (line.newMapId) this.dirtyMaps.add(line.newMapId);
+      if (line.commandId !== undefined) this.committedSinceBase.push({ mapId: line.mapId, commandId: line.commandId, newMapId: line.newMapId });
+    });
+  }
+
+  private captureInto(store: RecordWorkspaceStore): void {
+    store.setCapture((payload, issuer, at, mapName) => {
+      this.outbox.append({ ...payload, commandId: payload.command.commandId, baseSeq: this.metadata.confirmedSeq, createdAt: at, issuer, mapName });
+    });
+  }
+
+  /** Commit pending Commands on the working store in order; a refused one becomes a conflict. */
+  private replay(store: RecordWorkspaceStore, entries: OutboxEntry[]): void {
+    const failed: OutboxRejection[] = [];
+    for (const entry of entries) {
+      const result = store.commitSyncCommand(pushEnvelopePayload(entry), outboxIssuer(entry));
+      if (!result.ok) failed.push({ entry, code: result.code, message: result.message });
+    }
+    this.preserve(failed);
+    this.outbox.remove(new Set(this.conflicts.keys()));
+  }
+
+  private pending(): OutboxEntry[] {
+    return this.outbox.list().filter((entry) => !this.conflicts.has(entry.commandId));
+  }
+
+  private setBase(workingSeq: number): void {
+    this.metadata.working = { confirmedSeq: this.confirmed.seq(), workingSeq };
+    this.pendingChanged = false;
+    this.persistMetadata();
+  }
+
+  /**
+   * Full rebuild: a new working store from every confirmed record, then the pending Commands.
+   * Proportional to the workspace; used only for a clone, a reclone, or a working store that
+   * cannot be resumed.
+   */
   private rebuild(): string[] {
     const records = this.confirmed.records();
     const dir = fs.mkdtempSync(path.join(path.dirname(this.workingLink), ".store-"));
@@ -264,28 +323,94 @@ export class LocalSync {
     try {
       RecordWorkspaceStore.create(dir, records, this.confirmed.snapshotIndex(records));
       next = RecordWorkspaceStore.open(dir, { warm: false });
-      const failed: OutboxRejection[] = [];
-      for (const entry of this.outbox.list()) {
-        if (this.conflicts.has(entry.commandId)) continue;
-        const result = next.commitSyncCommand(pushEnvelopePayload(entry), outboxIssuer(entry));
-        if (!result.ok) failed.push({ entry, code: result.code, message: result.message });
-      }
-      this.preserve(failed);
+      const base = next.seq();
+      this.track(next);
+      this.replay(next, this.pending());
       for (const map of next.listMaps()) changed.add(map.id);
-      next.setCapture((payload, issuer, at, mapName) => {
-        this.outbox.append({ ...payload, commandId: payload.command.commandId, baseSeq: this.metadata.confirmedSeq, createdAt: at, issuer, mapName });
-      });
+      this.captureInto(next);
       const previous = this.working;
       activateDirectory(this.workingLink, dir);
       this.working = next;
       void previous?.close();
+      this.setBase(base);
     } catch (error) {
       void next?.close();
       fs.rmSync(dir, { recursive: true, force: true });
       throw error;
     }
-    this.outbox.remove(new Set(this.conflicts.keys()));
     return [...changed];
+  }
+
+  /**
+   * Rebase the working store onto the confirmed store after `delta` arrived: reset the records the
+   * pending Commands or the delta touched to their confirmed values, then commit the pending
+   * Commands again. Proportional to the delta and the pending Commands, never to the workspace.
+   */
+  private rebase(delta: JournalLine[]): string[] {
+    const rks = new Set(this.dirty);
+    const changed = new Set(this.dirtyMaps);
+    for (const line of delta) {
+      for (const op of line.ops) rks.add(op.rk);
+      if (line.mapId) changed.add(line.mapId);
+      if (line.newMapId) changed.add(line.newMapId);
+    }
+    const pending = this.pending();
+    let base: number;
+    try {
+      base = this.working.resetRecords(rks, (rk) => this.confirmed.record(rk), this.committedSinceBase);
+      this.track(this.working);
+      this.replay(this.working, pending);
+    } catch (error) {
+      // The working store is half rebased: forget its base, so the next pull or start rebuilds it.
+      this.metadata.working = undefined;
+      this.persistMetadata();
+      throw error;
+    }
+    for (const entry of pending) {
+      changed.add(entry.mapId);
+      if (entry.mapOp === "rename") changed.add(entry.newMapId);
+    }
+    this.setBase(base);
+    return [...changed];
+  }
+
+  /**
+   * Open the working store as it was left, when its base still describes it: no full rebuild at
+   * start. False when the store cannot be resumed; the caller rebuilds it.
+   */
+  private resume(): boolean {
+    const base = this.metadata.working;
+    if (!base || currentTarget(this.workingLink) === undefined) return false;
+    let store: RecordWorkspaceStore | undefined;
+    try {
+      store = RecordWorkspaceStore.open(currentTarget(this.workingLink)!, { warm: false });
+      const lines = store.seq() >= base.workingSeq ? store.journalLinesAfter(base.workingSeq) : null;
+      const delta = this.confirmed.journalLinesAfter(base.confirmedSeq);
+      const expected = this.pending();
+      if (!lines || !delta || !sameSyncIdentity(store.syncIdentity(), this.confirmed.syncIdentity())
+          || lines.length > expected.length || lines.some((line, i) => line.commandId === undefined || line.commandId !== expected[i]!.commandId)) {
+        void store.close();
+        return false;
+      }
+      this.working = store;
+      this.track(store);
+      for (const line of lines) {
+        for (const op of line.ops) this.dirty.add(op.rk);
+        if (line.mapId) this.dirtyMaps.add(line.mapId);
+        if (line.newMapId) this.dirtyMaps.add(line.newMapId);
+        this.committedSinceBase.push({ mapId: line.mapId, commandId: line.commandId!, newMapId: line.newMapId });
+      }
+      // A Command written to the outbox before a stop that came before its local commit.
+      this.replay(store, expected.slice(lines.length));
+      this.captureInto(store);
+      if (delta.length > 0 || this.pendingChanged) this.rebase(delta);
+      return true;
+    } catch (error) {
+      // A working store that cannot be opened is rebuilt; a failure after it was adopted is not hidden.
+      if (this.working === store && store !== undefined) throw error;
+      void store?.close();
+      return false;
+    }
   }
 
   private ordered<T>(operation: () => Promise<T>): Promise<T> {
@@ -350,6 +475,7 @@ export class LocalSync {
       { reclone: true; snapshotSeq: number } | { reclone?: false; lines: JournalLine[]; throughSeq: number }
     )>(this.fencedUrl("/api/sync/pull", { after: String(before) }));
     let pulled = 0;
+    let delta: JournalLine[] = [];
     if (response.reclone) {
       const clone = await this.remote<Clone>(this.fencedUrl("/api/sync/clone", { index: "1" }));
       if (clone.snapshotSeq < Math.max(before, response.snapshotSeq)) this.refuseRollback();
@@ -367,14 +493,18 @@ export class LocalSync {
       try {
         this.confirmed.appendConfirmed(response.lines, response.throughSeq);
         pulled = response.lines.length;
-      } finally {
-        // Refresh map indexes and recover the valid prefix if an append failed midway.
+        delta = response.lines;
+      } catch (error) {
+        // Recover the valid prefix of an append that failed midway; the next start rebases from it.
         void this.confirmed.close();
         this.confirmed = this.openConfirmed();
         this.persistMetadata();
+        throw error;
       }
+      this.persistMetadata();
     }
-    const changed = this.rebuild();
+    const changed = response.reclone || !this.metadata.working ? this.rebuild()
+      : delta.length > 0 || this.pendingChanged ? this.rebase(delta) : [];
     this.metadata.origin = this.origin;
     this.metadata.lastPullAt = new Date().toISOString();
     this.persistMetadata();
@@ -424,6 +554,7 @@ export class LocalSync {
       } finally {
         // Re-read on removal so a local commit made during an HTTP request is retained.
         this.outbox.remove(done);
+        if (done.size > 0) this.pendingChanged = true;
       }
       this.metadata.lastPushAt = new Date().toISOString();
       this.persistMetadata();
