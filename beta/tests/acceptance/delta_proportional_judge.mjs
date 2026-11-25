@@ -15,6 +15,7 @@ const SERVER = path.join(BETA, "dist/node/start_viewer.js");
 const require = createRequire(import.meta.url);
 const { toSnapshot } = require(path.join(BETA, "dist/shared/record_model/to_snapshot.js"));
 const { RecordWorkspaceStore } = require(path.join(BETA, "dist/node/record_store/store.js"));
+const { diffState } = require(path.join(BETA, "dist/shared/map_changes.js"));
 const WS = "ws_delta_judge";
 const RATIO = 3;
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-delta-judge-"));
@@ -179,9 +180,52 @@ async function commitCheck() {
   judge("DJ3", "one-node commit on a 50 / 20,000 node map", small, large);
 }
 
+// DJ4: adding one child, and DJ5: moving one node to another parent, cost the same whatever the
+// size of the map. The Command is the viewer's: the difference of two states, built before timing.
+async function structureChecks() {
+  const measure = async (name, count, mutate) => {
+    const dir = createStore(name, [["m", count]]);
+    const s = await start(dir);
+    try {
+      let state = mapState(count);
+      const samples = [];
+      for (let i = 0; i < 18; i += 1) {
+        const next = JSON.parse(JSON.stringify(state));
+        mutate(next, i);
+        commandNo += 1;
+        const command = { commandId: `cmd_delta_${commandNo}`, intent: "assert", actor: { kind: "human", id: "delta-judge" }, changes: diffState(state, next) };
+        const t0 = process.hrtime.bigint();
+        const body = await post(s.base, "/api/maps/m/commands", command);
+        const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+        if (body.ok !== true) throw new Error(`${name} returned ${JSON.stringify(body).slice(0, 200)}`);
+        state = next;
+        if (i >= 3) samples.push(ms);
+      }
+      samples.sort((a, b) => a - b);
+      return samples[Math.floor(samples.length / 2)];
+    } finally {
+      await stop(s);
+    }
+  };
+  const add = (state, i) => {
+    const id = `added${i}`;
+    state.nodes[id] = node(id, "root", [], `Added ${i}`);
+    state.nodes.root.children.push(id);
+  };
+  const move = (state, i) => {
+    const id = `n${i + 2}`;
+    state.nodes.root.children = state.nodes.root.children.filter((child) => child !== id);
+    state.nodes.n0.children.push(id);
+    state.nodes[id].parentId = "n0";
+  };
+  judge("DJ4", "add one child on a 50 / 20,000 node map", await measure("add-small", 50, add), await measure("add-large", 20000, add));
+  judge("DJ5", "move one node to another parent on a 50 / 20,000 node map", await measure("move-small", 50, move), await measure("move-large", 20000, move));
+}
+
 try {
   await journalChecks();
   await commitCheck();
+  await structureChecks();
 } catch (error) {
   console.error(`ERROR ${error.stack ?? error}`);
   results.push({ id: "run", pass: false });
