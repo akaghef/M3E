@@ -49,6 +49,42 @@
 
 ## 記録
 
+### 2026-11-25 push の前に outbox の Command をまとめていない（作ってすぐ消した node も remote に残る）
+
+- 種類: 問題
+- 書いた agent: unscopen の競合パネルを直した Claude Code の session
+- 対象: `beta/src/node/sync/local.ts` の `push()`、sync-requirements R8.1
+- 中身: outbox の Command は、記録した順にそのまま remote へ送られる。push の前に node を作って消すと、作成と削除の 2 件がそれぞれ remote で確定し、journal に載る。続けて行った更新も 1 件ずつ確定する。打ち消されるのは、remote の journal が snapshot に畳み込まれるときだけになる。消した node の本文は一度 remote の journal に載り、畳み込み後も archive に 90 日残る。まとめ方の案は次のとおり。まだ一度も送っていない同じ issuer の連続した Command について、record ごとに作成と削除の組は両方とも落とし、連続する更新は最初の `before` と最後の `after` の 1 件にまとめる。まとめた Command には新しい `commandId` を振る（送信済みの ID で中身を変えると `SAME_ID_DIFFERENT_CONTENT` で拒否されるため）。map の作成・削除・改名をまたいではまとめない。
+- 根拠: `push()` と `rebuild()` を読んだ。push と journal のどちらにも、まとめる処理はない。
+- 扱い: akaghef の判断待ち（remote の journal に何を記録するかが変わるため）
+
+### 2026-11-25 push と pull のたびに、作業用の store を全体の複製から作り直している
+
+- 種類: 問題
+- 書いた agent: unscopen の競合パネルを直した Claude Code の session
+- 対象: `beta/src/node/sync/local.ts` の `rebuild()`
+- 中身: `rebuild()` は、変わった範囲に関係なく毎回、確定済み store の record を全部書き出して新しい store を作る。そのうえで、outbox の Command をすべて当て直す。push の最後にも pull が走るので、同期 1 回ごとに「workspace 全体＋outbox 全体」に比例した処理になる。2026-11-25 の MacBook では、確定済み store が 29MB、outbox が 113 件（664KB）だった。また、確定済み store は `compactAfterLines: 0` で開いているので、local 側の journal は、remote から snapshot ごと取り直さない限り短くならない。作り直しは単純には省けない。pull で戻ってきたのが自分の Command だけでも、remote は確定のときに兄弟順キーを作り直すことがある（sync-principles）。そのため「自分の Command しか戻らなかったから作業用の store はそのままでよい」とは言えない。差分で当てる方法か、複製を安くする方法（APFS の clone など）を設計する必要がある。
+- 根拠: `rebuild()` と `pullNow()` を読んだ。大きさは MacBook の Beta workspace を `du` と `wc` で測った。所要時間は測っていない。
+- 扱い: 未対応（直し方に設計が要る）
+
+### 2026-11-25 push を、同じ issuer が続けて書いた Command ごとに 1 リクエストで送るようにした
+
+- 種類: 気づき
+- 書いた agent: unscopen の競合パネルを直した Claude Code の session
+- 対象: `beta/src/node/sync/local.ts` の `push()`
+- 中身: これまでの push は、Command 1 件ごとに 1 リクエストを送っていた。remote の `/api/sync/push` はリストを受け取り、順番に確定させて 1 件ずつ結果を返す。それでも 1 件ずつ送っていたのは、remote が issuer をリクエストのヘッダーから決めるためで、人と MCP の Command を同じリクエストに混ぜられないからだった。今は、ヘッダーが同じ間は Command をまとめ、issuer が変わる所とリクエスト本文が 4,000,000 バイトに達する所でリクエストを分ける。結果が返らない Command があれば、そこで push を止め、その Command は outbox に残る。
+- 根拠: `beta/tests/unit/local_sync.test.ts` に試験を 2 つ足した。同じ issuer の 3 件が 1 リクエストになること（直す前は 3 リクエストで失敗する）と、issuer が変わる所でリクエストが分かれること。
+- 扱い: 実装で解消（このログと同じ commit）
+
+### 2026-11-25 空の attributes・nodeViews と、nodeType が無い node は、record store を通ると形が変わる
+
+- 種類: 気づき
+- 書いた agent: unscopen の競合パネルを直した Claude Code の session
+- 対象: `beta/src/shared/map_changes.ts` の `fieldConflicts`、`beta/src/shared/record_model/from_snapshot.ts:143` と `:244`
+- 中身: record store には、空の `nodeViews` / `attributes` の入れ物を表す record がない。そのため、読み戻すと欄そのものが無くなる。`nodeType` が無い node は `"text"` として読み戻される。viewer は `nodeViews: {}` を持ち、unscopen では `nodeType` を消す。そのため、Command の `before` と今の値の照合（compare-and-set）が食い違い、local モードの unscopen と、その後の scopen が毎回 409 `DOC_NODE_CONFLICT_Q` になっていた。照合では、空の入れ物と欄が無いことを同じとみなし、node の `nodeType` が無いことと `"text"` を同じとみなす。適用する側の `assignFields` は、もともと空の入れ物を値として扱っていなかった。
+- 根拠: 使い捨ての remote と local を実際のブラウザで動かし、409 を再現した。直した後は保存も push も通り、通常の Beta でも 200 で通ることを確かめた。回帰試験は `beta/tests/unit/map_changes.test.ts`。
+- 扱い: 実装で解消（26e93e9: unscopen で競合パネルが出ないようにした。8b5f69d: unscopen の後の scopen で出ないようにした）
+
 ### 2026-11-23 local モードを実機（MacBook・Mac mini、Tailscale 越し）で通した結果
 
 - 種類: 事実

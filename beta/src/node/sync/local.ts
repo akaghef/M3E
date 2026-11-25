@@ -110,6 +110,18 @@ async function request<T>(url: URL, options?: RequestInit): Promise<T> {
   return body;
 }
 
+/** Request body size for one push, below the remote's 8,000,000-byte limit. */
+const PUSH_BATCH_BYTES = 4_000_000;
+
+function pushHeaders(entry: OutboxEntry): Record<string, string> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (outboxIssuer(entry) !== LOCAL_HUMAN_ACCOUNT_ID) {
+    headers["x-m3e-connection"] = "mcp";
+    headers["x-m3e-actor-instance"] = entry.command.actor.id;
+  }
+  return headers;
+}
+
 function outboxIssuer(entry: OutboxEntry): string {
   const mcp = accountForConnection({ kind: "mcp", instanceId: entry.command.actor.id }).accountId;
   return entry.issuer === mcp ? mcp : LOCAL_HUMAN_ACCOUNT_ID;
@@ -381,23 +393,33 @@ export class LocalSync {
       const identity = identityOf(this.metadata);
       const done = new Set<string>();
       try {
-        for (const entry of pending) {
-          const headers: Record<string, string> = { "content-type": "application/json" };
-          if (outboxIssuer(entry) !== LOCAL_HUMAN_ACCOUNT_ID) {
-            headers["x-m3e-connection"] = "mcp";
-            headers["x-m3e-actor-instance"] = entry.command.actor.id;
+        // One request carries a run of Commands from one issuer: the remote takes a list,
+        // commits it in order and answers each Command, and the issuer is read from the headers.
+        for (let start = 0; start < pending.length;) {
+          const headers = pushHeaders(pending[start]!);
+          const key = JSON.stringify(headers);
+          const batch: OutboxEntry[] = [];
+          let bytes = 0;
+          for (let i = start; i < pending.length; i += 1) {
+            const entry = pending[i]!;
+            const size = Buffer.byteLength(JSON.stringify(pushEnvelope(entry)), "utf8");
+            if (batch.length > 0 && (JSON.stringify(pushHeaders(entry)) !== key || bytes + size > PUSH_BATCH_BYTES)) break;
+            batch.push(entry);
+            bytes += size;
           }
           const response = await this.remote<SyncIdentity & { results: PushResultItem[] }>(new URL("/api/sync/push", this.origin), {
-            method: "POST", headers, body: JSON.stringify({ ...identity, commands: [pushEnvelope(entry)] }),
+            method: "POST", headers, body: JSON.stringify({ ...identity, commands: batch.map(pushEnvelope) }),
           });
-          const result = settlePushResults([entry], Array.isArray(response.results) ? response.results : []);
+          const result = settlePushResults(batch, Array.isArray(response.results) ? response.results : []);
           this.preserve(result.rejected);
           for (const id of result.done) done.add(id);
-          sent += 1;
+          sent += batch.length;
           committed += result.committed;
           noOp += result.noOp;
           conflicts += result.rejected.length;
-          if (result.done.size === 0) break;
+          // A Command without a result stays in the outbox and ends this push.
+          if (result.done.size < batch.length) break;
+          start += batch.length;
         }
       } finally {
         // Re-read on removal so a local commit made during an HTTP request is retained.

@@ -133,7 +133,7 @@ async function mapText(origin: string, id = "main-root"): Promise<string> {
 
 function outbox(dir: string) { return DeviceOutbox.open(path.join(dir, "sync/outbox.jsonl")).list(); }
 
-async function relay(origin: string, transform: (url: URL, body: any) => any) {
+async function relay(origin: string, transform: (url: URL, body: any, headers: http.IncomingHttpHeaders) => any) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url!, origin);
@@ -143,9 +143,12 @@ async function relay(origin: string, transform: (url: URL, body: any) => any) {
       const response = await fetch(url, {
         method: req.method,
         body: request.length ? request : undefined,
-        headers: request.length ? { "content-type": "application/json" } : undefined,
+        headers: {
+          ...(request.length ? { "content-type": "application/json" } : {}),
+          ...Object.fromEntries(Object.entries(req.headers).filter(([name]) => name.startsWith("x-m3e-")) as Array<[string, string]>),
+        },
       });
-      const body = transform(url, await response.json());
+      const body = transform(url, await response.json(), req.headers);
       res.writeHead(response.status, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
     } catch {
@@ -196,6 +199,39 @@ describe("local sync with isolated viewer processes", () => {
         expect.objectContaining({ after: expect.objectContaining({ text: "From B" }) }),
       ]) }) }),
     })]);
+  });
+
+  test("pushes a run of Commands from one issuer in one request, in order, answered per Command", async () => {
+    const remote = await viewer(seed("batch-remote"));
+    const requests: number[] = [];
+    const gateway = await relay(remote.origin, (url, body) => {
+      if (url.pathname === "/api/sync/push") requests.push(body.results.length);
+      return body;
+    });
+    const dir = path.join(temp, "batch-local");
+    const local = await viewer(dir, gateway);
+    const created = (await ok(local.origin, "/api/maps/new", "POST", { label: "Batch map" })).id;
+    await ok(local.origin, `/api/maps/${created}/tags`, "POST", { tags: ["one"] });
+    await ok(local.origin, `/api/maps/${created}/tags`, "POST", { tags: ["two"] });
+    expect(outbox(dir)).toHaveLength(3);
+    expect(await push(local.origin)).toMatchObject({ sent: 3, committed: 3, conflicts: 0 });
+    expect(requests).toEqual([3]);
+    expect((await ok(remote.origin, "/api/maps")).maps.find((map: { id: string }) => map.id === created)).toMatchObject({ tags: ["two"] });
+  });
+
+  test("splits a push where the issuer changes, so each Command keeps its issuer", async () => {
+    const remote = await viewer(seed("issuer-remote"));
+    const requests: Array<[string, number]> = [];
+    const gateway = await relay(remote.origin, (url, body, headers) => {
+      if (url.pathname === "/api/sync/push") requests.push([String(headers["x-m3e-connection"] ?? "viewer"), body.results.length]);
+      return body;
+    });
+    const local = await viewer(path.join(temp, "issuer-local"), gateway);
+    const created = (await ok(local.origin, "/api/maps/new", "POST", { label: "Issuer map" })).id;
+    await edit(local.origin, "main-root", "By an AI agent");
+    await ok(local.origin, `/api/maps/${created}/tags`, "POST", { tags: ["human"] });
+    expect(await push(local.origin)).toMatchObject({ sent: 3, committed: 3 });
+    expect(requests).toEqual([["viewer", 1], ["mcp", 1], ["viewer", 1]]);
   });
 
   test("a gateway answering 502 while the remote is down reads as unreachable, not refused", async () => {
