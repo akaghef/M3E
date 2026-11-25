@@ -79,7 +79,8 @@ import { resolveMarkdownFilePreviewTarget, type MarkdownFilePreviewTarget } from
 import { parseMmText, treeToMm } from "../shared/mm_exporter";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 import { buildTableViewModel, directTableViewChildren, renderTableViewHtml } from "./table_view";
-import { postSaveCommand } from "./save_command";
+import { postSaveCommand, SaveStateTracker, type SaveTouches } from "./save_command";
+import { sameValue } from "../shared/map_changes";
 import { childrenOnScope, edgeScopeRootOf, isWithinScope, parentScopeRootOf } from "../shared/scope_plane";
 import { scopeView } from "./scope_view_client";
 import {
@@ -560,6 +561,39 @@ let bc: BroadcastChannel | null = null;
 let clipboardBc: BroadcastChannel | null = null;
 let lastServerSavedAt: string | null = null;
 let lastServerBaseState: AppState | null = null;
+let saveStateTracker: SaveStateTracker<AppState> | null = null;
+let saveInFlight: Promise<boolean> | null = null;
+let preparedSaveState: AppState | null = null;
+let preparedSaveView = "";
+
+function saveViewKey(): string {
+  return JSON.stringify([currentScopeRootId(), viewState.surfaceViewMode, viewState.surfaceLayoutDirection, viewState.surfaceSpace]);
+}
+
+function trackSavedState(): void {
+  if (!map) return;
+  lastServerBaseState = cloneStateForSave(map.state);
+  saveStateTracker = new SaveStateTracker(lastServerBaseState!, map.state);
+  preparedSaveState = null;
+}
+
+function markSaveChanges(touches?: SaveTouches): void {
+  if (!map || !lastServerBaseState) return;
+  if (!saveStateTracker || saveStateTracker.state !== map.state || saveStateTracker.base !== lastServerBaseState) {
+    saveStateTracker = new SaveStateTracker(lastServerBaseState, map.state);
+    saveStateTracker.mark(); // Undo/import/whole-state replacement.
+  }
+  saveStateTracker.mark(touches);
+}
+
+function markSaveCollectionReplacement(field: "scopes" | "surfaces" | "linearNotesByScope", before: object | undefined, after: object | undefined): void {
+  const left = (before ?? {}) as Record<string, unknown>;
+  const right = (after ?? {}) as Record<string, unknown>;
+  const ids = [...new Set([...Object.keys(left), ...Object.keys(right)])]
+    .filter(id => !sameValue(left[id], right[id]));
+  // Even an empty replacement can change collection presence.
+  if (ids.length || Boolean(before) !== Boolean(after)) markSaveChanges({ [field]: ids });
+}
 
 interface UndoSnapshot {
   concretenessLevel?: number;
@@ -2455,7 +2489,9 @@ function syncLinearNotesToDocState(): void {
   if (!map) {
     return;
   }
+  const previous = map.state.linearNotesByScope;
   map.state.linearNotesByScope = { ...linearNotesByScope };
+  markSaveCollectionReplacement("linearNotesByScope", previous, map.state.linearNotesByScope);
 }
 
 function hasLinearNotes(notes: Record<string, string> | undefined): boolean {
@@ -2477,6 +2513,7 @@ function applyLinearTextFontScale(syncToState = true): void {
   document.documentElement.style.setProperty("--linear-text-font-size", `${px}px`);
   if (syncToState && map) {
     map.state.linearTextFontScale = clamped;
+    markSaveChanges({ $map: ["linearTextFontScale"] });
   }
 }
 
@@ -2708,11 +2745,14 @@ function syncMapModelStateFromRuntime(): void {
   if (!map) {
     return;
   }
+  const previousScopes = map.state.scopes;
+  const previousSurfaces = map.state.surfaces;
   sanitizeMapModelState(map.state);
   const scopeId = currentScopeRootId();
   const modelScopeId = inferredScopeId(scopeId);
   const scope = map.state.scopes?.[modelScopeId];
   if (!scope) {
+    markSaveChanges();
     return;
   }
   if (!map.state.surfaces) {
@@ -2756,6 +2796,8 @@ function syncMapModelStateFromRuntime(): void {
       delete surface.nodeViews![node.id];
     }
   });
+  markSaveCollectionReplacement("scopes", previousScopes, map.state.scopes);
+  markSaveCollectionReplacement("surfaces", previousSurfaces, map.state.surfaces);
 }
 
 function ensureDocShape(payload: unknown): SavedMap {
@@ -4089,12 +4131,19 @@ function makeSelectedFolder(): boolean {
   if (isFolderNode(node)) {
     node.nodeType = undefined;
     // Unscopen: inside and outside lie on one scope again (DA58).
-    for (const childId of node.children) delete map.state.nodes[childId]?.edgeOutsideScope;
-    touchDocument();
+    const changedNodeIds = [node.id];
+    for (const childId of node.children) {
+      const child = map.state.nodes[childId];
+      if (child && Object.prototype.hasOwnProperty.call(child, "edgeOutsideScope")) {
+        delete child.edgeOutsideScope;
+        changedNodeIds.push(childId);
+      }
+    }
+    touchDocument(false, { nodes: changedNodeIds });
     setStatus(`Removed scope: ${uiLabel(node)}`);
   } else {
     node.nodeType = "folder";
-    touchDocument();
+    touchDocument(false, { nodes: [node.id] });
     setStatus(`Marked as scope: ${uiLabel(node)}`);
   }
   board.focus({ preventScroll: true });
@@ -4257,19 +4306,22 @@ function uiLabel(node: TreeNode | null | undefined): string {
   return node.text ?? "Untitled";
 }
 
-function syncAliasDisplayForTarget(targetNodeId: string): void {
+function syncAliasDisplayForTarget(targetNodeId: string): string[] {
   if (!map) {
-    return;
+    return [];
   }
+  const changed: string[] = [];
   Object.values(map.state.nodes).forEach((node) => {
     if (!isAliasNode(node) || node.targetNodeId !== targetNodeId || node.aliasLabel || node.isBroken) {
       return;
     }
     const target = map!.state.nodes[targetNodeId];
-    if (target) {
+    if (target && node.text !== target.text) {
       node.text = target.text;
+      changed.push(node.id);
     }
   });
+  return changed;
 }
 
 function markAliasesBrokenInViewer(targetNodeId: string, targetLabel: string): void {
@@ -5484,6 +5536,7 @@ function captureManualLinearPanelWidth(): void {
   linearPanelCanvasWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, canvasWidth));
   if (map) {
     map.state.linearPanelWidth = linearPanelCanvasWidth;
+    markSaveChanges({ $map: ["linearPanelWidth"] });
   }
 }
 
@@ -12060,7 +12113,7 @@ function createGraphLinkBetween(sourceId: string, targetId: string): boolean {
     direction: "forward",
     style: "default",
   });
-  touchDocument();
+  touchDocument(false, { links: [linkId] });
   setStatus(`Edge added: ${uiLabel(source)} -> ${uiLabel(target)}.`);
   return true;
 }
@@ -12100,7 +12153,7 @@ function deleteScatterEdge(linkId: string): void {
   }
   pushUndoSnapshot();
   delete map.state.links[linkId];
-  touchDocument();
+  touchDocument(false, { links: [linkId] });
   setStatus("Edge deleted.");
 }
 
@@ -12113,7 +12166,7 @@ function colorizeScatterEdge(linkId: string): void {
     ...map.state.links[linkId]!,
     color: SCATTER_DEFAULT_EDGE_COLOR,
   });
-  touchDocument();
+  touchDocument(false, { links: [linkId] });
   setStatus("Edge color updated.");
 }
 
@@ -12276,8 +12329,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       latexMetricsCache.delete(target.text);
       latexHtmlCache.delete(target.text);
       target.text = next;
-      syncAliasDisplayForTarget(target.id);
-      touchDocument(true);
+      const aliases = syncAliasDisplayForTarget(target.id);
+      touchDocument(true, { nodes: [target.id, ...aliases] });
       preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
       nudgeNodeIntoView(nodeId, { animate: false });
       return true;
@@ -12288,7 +12341,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     pushUndoSnapshot();
     node.aliasLabel = next;
     node.text = next;
-    touchDocument(true);
+    touchDocument(true, { nodes: [node.id] });
     preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
     nudgeNodeIntoView(nodeId, { animate: false });
     return true;
@@ -12312,8 +12365,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     node.text = applied.text;
     node.link = applied.link;
     node.attributes = applied.attributes;
-    syncAliasDisplayForTarget(node.id);
-    touchDocument(true);
+    const aliases = syncAliasDisplayForTarget(node.id);
+    touchDocument(true, { nodes: [node.id, ...aliases] });
     preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
     nudgeNodeIntoView(nodeId, { animate: false });
     return true;
@@ -12325,8 +12378,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   latexMetricsCache.delete(node.text);
   latexHtmlCache.delete(node.text);
   node.text = next;
-  syncAliasDisplayForTarget(node.id);
-  touchDocument(true);
+  const aliases = syncAliasDisplayForTarget(node.id);
+  touchDocument(true, { nodes: [node.id, ...aliases] });
   preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
   nudgeNodeIntoView(nodeId, { animate: false });
   return true;
@@ -12469,7 +12522,7 @@ function applyIncomingEdgeLabelEdit(nodeId: string, nextRaw: string): boolean {
   } else {
     delete node.attributes["m3e:edge-label"];
   }
-  touchDocument();
+  touchDocument(false, { nodes: [node.id] });
   setStatus(next ? "Edge label updated." : "Edge label cleared.");
   return true;
 }
@@ -12831,7 +12884,7 @@ function toggleCollapse(): void {
       node.collapsed = true;
     }
   });
-  touchDocument();
+  touchDocument(false, { nodes: collapsibleIds });
 }
 
 function downloadJson(rootId?: string): void {
@@ -12917,6 +12970,14 @@ function parseCloudMapVersion(payload: { cloudMapVersion?: unknown; mapVersion?:
 }
 
 async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
+  while (saveInFlight) await saveInFlight;
+  const pending = saveDocToLocalDbOnce(showStatus, force);
+  saveInFlight = pending;
+  try { return await pending; }
+  finally { saveInFlight = null; }
+}
+
+async function saveDocToLocalDbOnce(showStatus = false, force = false): Promise<boolean> {
   if (showStatus) commitDispersePositions();
   if (grabSession) { grabSession.pendingSave = true; return false; }
   if (!map) {
@@ -12930,27 +12991,44 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
   }
 
   const revision = localSaveRevision;
+  const requestBase = lastServerBaseState;
+  const requestSavedAt = lastServerSavedAt;
   let saveConflict = false;
   let failureReason = "save error";
+  let captured: ReturnType<SaveStateTracker<AppState>["capture"]> | null = null;
   try {
     if (collabEntityId && collabToken && !force) {
       return await pushCurrentScopeToCollab(showStatus);
     }
-    const submitted = currentDocSnapshot();
-    const submittedState = cloneStateForSave(submitted.state);
+    const prepared = preparedSaveState === map.state && preparedSaveView === saveViewKey()
+      && saveStateTracker?.state === map.state && !saveStateTracker.needsFullSave;
+    const submitted = prepared
+      ? { version: 1 as const, savedAt: nowIso(), state: map.state }
+      : currentDocSnapshot();
+    if (!prepared || force) markSaveChanges();
+    if (lastServerBaseState) {
+      if (!saveStateTracker || saveStateTracker.state !== submitted.state || saveStateTracker.base !== lastServerBaseState) {
+        saveStateTracker = new SaveStateTracker(lastServerBaseState, submitted.state);
+        saveStateTracker.mark();
+      }
+      captured = saveStateTracker.capture();
+    }
+    const submittedState = captured ? submitted.state : cloneStateForSave(submitted.state);
     const wholeBody = (): string => JSON.stringify({
       ...submitted,
-      baseSavedAt: lastServerSavedAt,
-      baseState: cloneStateForSave(lastServerBaseState),
+      state: captured ? captured.materialize() : submittedState,
+      baseSavedAt: requestSavedAt,
+      baseState: cloneStateForSave(requestBase),
       force,
     });
     failureReason = "network error";
     const saveUrl = `/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`;
-    const base = force ? null : lastServerBaseState;
-    const response = scopeView.active() ? await scopeView.save(saveUrl, TAB_ID, base, submittedState, lastServerSavedAt)
+    const base = force ? null : requestBase;
+    const response = scopeView.active() ? await scopeView.save(saveUrl, TAB_ID, base, submittedState, requestSavedAt, captured?.changes)
       : base && typeof base.rootId === "string" && base.nodes && submittedState
-      ? await postSaveCommand(saveUrl, TAB_ID, base, submittedState, lastServerSavedAt, wholeBody)
+      ? await postSaveCommand(saveUrl, TAB_ID, base, submittedState, requestSavedAt, wholeBody, captured?.changes)
       : await fetch(saveUrl, { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", "X-M3E-Tab-Id": TAB_ID }, body: wholeBody() });
+    if (lastServerBaseState !== requestBase) return false;
     failureReason = response.headers?.get("X-M3E-Save-Blocked") || (response.status === 413 ? "too large" : `server error (HTTP ${response.status})`);
 
     if (response.status === 409) {
@@ -12999,13 +13077,16 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
 
     failureReason = "save error";
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
+    if (lastServerBaseState !== requestBase) return true;
     map.savedAt = String(payload.savedAt || nowIso());
     if (typeof payload.mapVersion === "number") {
       (map as SavedMap & { mapVersion?: number }).mapVersion = Number(payload.mapVersion);
     }
     lastServerSavedAt = map.savedAt;
     // A held Grab may already be previewing a new state while this save returns.
-    lastServerBaseState = submittedState;
+    if (captured) captured.accept();
+    else lastServerBaseState = submittedState;
+    captured = null;
     broadcastState();
     if (collabEntityId && collabToken) {
       void pushCurrentScopeToCollab(false);
@@ -13020,6 +13101,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     scheduleRender();
     return true;
   } catch (err) {
+    captured?.retry();
     if (!saveConflict) showLocalSaveFailure(failureReason);
     if (showStatus) {
       setStatus(`Local save failed (${(err as Error).message}).`, true);
@@ -13254,7 +13336,8 @@ async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
   }
 }
 
-function scheduleAutosave(): void {
+function scheduleAutosave(marked = false): void {
+  if (!marked) { markSaveChanges(); preparedSaveState = null; }
   if (grabSession) { grabSession.pendingSave = true; return; }
   if (!map) {
     return;
@@ -13314,7 +13397,7 @@ function initBroadcastSync(): void {
         // BcStateMessage.savedAt carries the sender's lastServerSavedAt baseline.
         lastServerSavedAt = ev.data.savedAt;
       }
-      lastServerBaseState = cloneStateForSave(map.state);
+      trackSavedState();
       scheduleRender();
     }
   };
@@ -13433,7 +13516,7 @@ async function applyExternalUpdate(savedAt: string, synchronized = false): Promi
     stopScatterAnimation(false); disperseForce.invalidate();
     map = newDoc;
     lastServerSavedAt = newDoc.savedAt || lastServerSavedAt;
-    lastServerBaseState = cloneStateForSave(newDoc.state);
+    trackSavedState();
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
     if (map.state.linearPanelWidth != null) {
@@ -13558,6 +13641,7 @@ function reviewExplain(): void {
   setStatus(details.substring(0, 200));
   viewState.collapsedIds.delete(sel);
   node.collapsed = false;
+  markSaveChanges({ nodes: [node.id] });
   render();
 }
 
@@ -13589,18 +13673,22 @@ function toggleReviewMode(): void {
   render();
 }
 
-function touchDocument(incremental = false): void {
+function touchDocument(incremental = false, touches?: SaveTouches): void {
   if (!map) {
     return;
   }
+  markSaveChanges(touches);
   if (incremental && localEditBatchDepth) {
     localEditBatchPending = true;
     return;
   }
+  syncLinearNotesToDocState();
   syncMapModelStateFromRuntime();
   map.savedAt = nowIso();
   render(incremental);
-  scheduleAutosave();
+  scheduleAutosave(true);
+  preparedSaveState = map.state;
+  preparedSaveView = saveViewKey();
   broadcastState();
 }
 
@@ -13830,7 +13918,7 @@ function loadPayload(payload: unknown, preferredSelectionId = ""): void {
     map = ensureDocShape(payload);
     concretenessView = null; concretenessFrames.clear(); viewState.concretenessLevel = 0;
     lastServerSavedAt = map.savedAt || null;
-    lastServerBaseState = cloneStateForSave(map.state);
+    trackSavedState();
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
     if (map.state.linearPanelWidth != null) {
@@ -15602,6 +15690,7 @@ function endLinearResize(event: PointerEvent): void {
   syncLinearPanelPosition();
   if (map) {
     map.state.linearPanelWidth = linearPanelCanvasWidth;
+    markSaveChanges({ $map: ["linearPanelWidth"] });
     scheduleAutosave();
   }
 }

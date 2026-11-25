@@ -11,7 +11,7 @@
  * Every save is a Command built from the edits; anything else is answered as
  * a failed save.
  */
-import { diffState } from "../shared/map_changes";
+import { diffState, type RecordChange } from "../shared/map_changes";
 import { SCOPE_VIEW_HEADER, scopeViewChanges, type ScopeViewInfo } from "../shared/scope_view";
 import type { AppState, TreeNode } from "../shared/types";
 import { commandForChanges, settleSaveCommand } from "./save_command";
@@ -236,18 +236,18 @@ export const scopeView = {
    * No base, a forced save, or a map that is only saved through the whole-map route all
    * answer as a failed save.
    */
-  async save(saveUrl: string, tabId: string, base: AppState | null, state: AppState | null, savedAt: string | null): Promise<Response> {
+  async save(saveUrl: string, tabId: string, base: AppState | null, state: AppState | null, savedAt: string | null, changes?: RecordChange[]): Promise<Response> {
     if (!info) return blocked("the scope view is not loaded");
     if (!base || !state || typeof base.rootId !== "string" || !base.nodes) {
       return blocked("a whole-map save (forced save, Use Local) is disabled");
     }
-    const mapped = scopeViewChanges(diffState(base, state), info, base, state);
+    const mapped = scopeViewChanges(changes ?? diffState(base, state), info, base, state);
     if (!mapped.ok) return blocked(mapped.reason);
-    if (mapped.changes.length === 0) {
+    const command = commandForChanges(mapped.changes, tabId);
+    if (command.changes.length === 0) {
       settleSaveCommand();
       return new Response(JSON.stringify(savedAt ? { ok: true, savedAt } : { ok: true }), { status: 200, headers: { "Content-Type": JSON_HEADERS } });
     }
-    const command = commandForChanges(mapped.changes, tabId);
     const response = await fetch(`${saveUrl}/commands`, {
       method: "POST",
       headers: { "Content-Type": JSON_HEADERS, "X-M3E-Tab-Id": tabId, [SCOPE_VIEW_HEADER]: encodeURIComponent(info.scopeRootId) },

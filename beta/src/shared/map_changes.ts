@@ -136,8 +136,10 @@ function changedFields(before: Bag, after: Bag): { before: Bag; after: Bag } | n
   const afterFields: Bag = {};
   let changed = false;
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    const inBefore = has(before, key);
-    const inAfter = has(after, key);
+    // Undefined object fields disappear on the Command wire, just like absent fields.
+    const inBefore = has(before, key) && before[key] !== undefined;
+    const inAfter = has(after, key) && after[key] !== undefined;
+    if (!inBefore && !inAfter) continue;
     if (inBefore && inAfter && sameValue(before[key], after[key])) continue;
     if (inBefore) beforeFields[key] = clone(before[key]);
     if (inAfter) afterFields[key] = clone(after[key]);
@@ -172,6 +174,7 @@ function edgesOf(state: Bag): Map<string, EdgeAssign> {
 }
 
 function diffAttributes(changes: RecordChange[], ownerKind: "node" | "graph-link", ownerId: string, before: unknown, after: unknown): void {
+  if (before === after) return;
   const left = isBag(before) ? before : {};
   const right = isBag(after) ? after : {};
   for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
@@ -188,12 +191,53 @@ function diffAttributes(changes: RecordChange[], ownerKind: "node" | "graph-link
   }
 }
 
-function diffNodes(before: Bag, after: Bag, changes: RecordChange[]): void {
+/** Optional entry keys observed by a mutable-state caller; omitted means a full diff. */
+export type DiffEntries = ReadonlyMap<string, ReadonlySet<string>>;
+
+function diffIds(left: Bag, right: Bag, field: string, entries?: DiffEntries): string[] {
+  return [...(entries ? entries.get(field) ?? [] : new Set([...Object.keys(left), ...Object.keys(right)]))].sort();
+}
+
+function diffNodes(before: Bag, after: Bag, changes: RecordChange[], entries?: DiffEntries): void {
   const left = dict(before, "nodes");
   const right = dict(after, "nodes");
-  const leftEdges = edgesOf(before);
-  const rightEdges = edgesOf(after);
-  for (const id of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
+  const ids = new Set(diffIds(left, right, "nodes", entries));
+  const edgeIds = new Set<string>();
+  if (entries) {
+    for (const id of ids) {
+      const from = bagOf(left[id]);
+      const to = bagOf(right[id]);
+      if (!from || !to || from.parentId !== to.parentId) edgeIds.add(id);
+      if (!sameValue(from?.children, to?.children)) {
+        for (const child of [...(Array.isArray(from?.children) ? from.children : []), ...(Array.isArray(to?.children) ? to.children : [])]) {
+          if (typeof child === "string") edgeIds.add(child);
+        }
+      }
+    }
+    for (const id of edgeIds) ids.add(id);
+  }
+  const selectedEdges = (nodes: Bag): Map<string, EdgeAssign> => {
+    const found = new Map<string, EdgeAssign>();
+    const parentIndices = new Map<string, Map<string, number>>();
+    for (const id of edgeIds) {
+      const node = bagOf(nodes[id]);
+      if (typeof node?.parentId !== "string") continue;
+      let indices = parentIndices.get(node.parentId);
+      if (!indices) {
+        indices = new Map();
+        const parent = bagOf(nodes[node.parentId]);
+        if (Array.isArray(parent?.children)) parent.children.forEach((child, index) => {
+          if (typeof child === "string" && !indices!.has(child)) indices!.set(child, index);
+        });
+        parentIndices.set(node.parentId, indices);
+      }
+      found.set(id, { parentId: node.parentId, index: indices.get(id) ?? -1 });
+    }
+    return found;
+  };
+  const leftEdges = entries ? selectedEdges(left) : edgesOf(before);
+  const rightEdges = entries ? selectedEdges(right) : edgesOf(after);
+  for (const id of [...ids].sort()) {
     const from = bagOf(left[id]);
     const to = bagOf(right[id]);
     if (from && !to) {
@@ -205,8 +249,10 @@ function diffNodes(before: Bag, after: Bag, changes: RecordChange[]): void {
       diffAttributes(changes, "node", id, undefined, to.attributes);
       pushPair(changes, "edge", [id], null, edgeBag(rightEdges.get(id)));
     } else if (from && to) {
-      diffAttributes(changes, "node", id, from.attributes, to.attributes);
-      pushPair(changes, "node", [id], nodeBody(from), nodeBody(to));
+      if (from !== to) {
+        diffAttributes(changes, "node", id, from.attributes, to.attributes);
+        pushPair(changes, "node", [id], nodeBody(from), nodeBody(to));
+      }
       pushPair(changes, "edge", [id], edgeBag(leftEdges.get(id)), edgeBag(rightEdges.get(id)));
     }
   }
@@ -216,10 +262,10 @@ function edgeBag(edge: EdgeAssign | undefined): Bag | null {
   return edge ? { parentId: edge.parentId, index: edge.index } : null;
 }
 
-function diffLinks(before: Bag, after: Bag, changes: RecordChange[]): void {
+function diffLinks(before: Bag, after: Bag, changes: RecordChange[], entries?: DiffEntries): void {
   const left = dict(before, "links");
   const right = dict(after, "links");
-  for (const id of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
+  for (const id of diffIds(left, right, "links", entries)) {
     const from = bagOf(left[id]);
     const to = bagOf(right[id]);
     const pair = () => pushPair(
@@ -242,12 +288,12 @@ function diffLinks(before: Bag, after: Bag, changes: RecordChange[]): void {
   }
 }
 
-function diffKeyed(kind: RecordKind, field: string, before: Bag, after: Bag, changes: RecordChange[], asValue: boolean): void {
+function diffKeyed(kind: RecordKind, field: string, before: Bag, after: Bag, changes: RecordChange[], asValue: boolean, entries?: DiffEntries): void {
   const left = dict(before, field);
   const right = dict(after, field);
   const leftPresent = has(before, field);
   const rightPresent = has(after, field);
-  for (const id of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
+  for (const id of diffIds(left, right, field, entries)) {
     const from = leftPresent && has(left, id) ? left[id] : undefined;
     const to = rightPresent && has(right, id) ? right[id] : undefined;
     if (asValue) pushPair(changes, kind, [id], from === undefined ? null : valueBag(from), to === undefined ? null : valueBag(to));
@@ -255,16 +301,16 @@ function diffKeyed(kind: RecordKind, field: string, before: Bag, after: Bag, cha
   }
 }
 
-function diffSurfaces(before: Bag, after: Bag, changes: RecordChange[]): void {
+function diffSurfaces(before: Bag, after: Bag, changes: RecordChange[], entries?: DiffEntries): void {
   const left = dict(before, "surfaces");
   const right = dict(after, "surfaces");
-  for (const id of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
+  for (const id of diffIds(left, right, "surfaces", entries)) {
     const from = bagOf(left[id]);
     const to = bagOf(right[id]);
     const fromViews = from && isBag(from.nodeViews) ? from.nodeViews : {};
     const toViews = to && isBag(to.nodeViews) ? to.nodeViews : {};
     const viewChanges: RecordChange[] = [];
-    const ids = [...new Set([...Object.keys(fromViews), ...Object.keys(toViews)])].sort();
+    const ids = fromViews === toViews ? [] : [...new Set([...Object.keys(fromViews), ...Object.keys(toViews)])].sort();
     for (const nodeId of ids) {
       pushPair(
         viewChanges,
@@ -287,12 +333,13 @@ function diffSurfaces(before: Bag, after: Bag, changes: RecordChange[]): void {
   }
 }
 
-function diffAnnotations(before: Bag, after: Bag, changes: RecordChange[]): void {
+function diffAnnotations(before: Bag, after: Bag, changes: RecordChange[], entries?: DiffEntries): void {
+  if (before.annotations === after.annotations) return;
   const leftShape = annotationShape(before.annotations);
   const rightShape = annotationShape(after.annotations);
   const left = dict(before, "annotations");
   const right = dict(after, "annotations");
-  for (const id of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
+  for (const id of diffIds(left, right, "annotations", entries)) {
     const from = leftShape === "absent" || !has(left, id) ? undefined : left[id];
     const to = rightShape === "absent" || !has(right, id) ? undefined : right[id];
     pushPair(changes, "annotation", [id], from === undefined ? null : bagOf(from) ?? valueBag(from), to === undefined ? null : bagOf(to) ?? valueBag(to));
@@ -318,13 +365,14 @@ function diffPresence(before: Bag, after: Bag, changes: RecordChange[]): void {
   }
 }
 
-function diffMapFields(before: Bag, after: Bag, changes: RecordChange[]): void {
-  for (const key of [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()) {
+function diffMapFields(before: Bag, after: Bag, changes: RecordChange[], entries?: DiffEntries): void {
+  for (const key of diffIds(before, after, "$map", entries)) {
     if (STRUCTURED.has(key)) continue;
     const leftHas = has(before, key);
     const rightHas = has(after, key);
     const left = before[key];
     const right = after[key];
+    if (leftHas && rightHas && left === right) continue;
     if (leftHas && rightHas && isBag(left) && isBag(right)) pushPair(changes, "map-field", [key], left, right);
     else if (leftHas && isBag(left) && !rightHas) pushPair(changes, "map-field", [key], left, null);
     else if (!leftHas && rightHas && isBag(right)) pushPair(changes, "map-field", [key], null, right);
@@ -338,18 +386,18 @@ function unwrapAnnotation(value: Bag | undefined): unknown {
   return clone(value);
 }
 
-export function diffState(before: object, after: object): RecordChange[] {
+export function diffState(before: object, after: object, entries?: DiffEntries): RecordChange[] {
   const from = before as Bag;
   const to = after as Bag;
   const changes: RecordChange[] = [];
   diffPresence(from, to, changes);
-  diffNodes(from, to, changes);
-  diffLinks(from, to, changes);
-  diffKeyed("linear-text", "linearNotesByScope", from, to, changes, true);
-  diffKeyed("scope-setting", "scopes", from, to, changes, false);
-  diffSurfaces(from, to, changes);
-  diffAnnotations(from, to, changes);
-  diffMapFields(from, to, changes);
+  diffNodes(from, to, changes, entries);
+  diffLinks(from, to, changes, entries);
+  diffKeyed("linear-text", "linearNotesByScope", from, to, changes, true, entries);
+  diffKeyed("scope-setting", "scopes", from, to, changes, false, entries);
+  diffSurfaces(from, to, changes, entries);
+  diffAnnotations(from, to, changes, entries);
+  diffMapFields(from, to, changes, entries);
   return changes;
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { buildSaveCommand, postSaveCommand } from "../../src/browser/save_command";
+import { buildSaveCommand, postSaveCommand, commandForChanges } from "../../src/browser/save_command";
 
 const node = (text: string) => ({ id: "root", parentId: null, children: [], nodeType: "text", text, collapsed: false, details: "", note: "", attributes: {}, link: "" });
 const state = (text: string) => ({ rootId: "root", nodes: { root: node(text) } });
@@ -55,4 +55,27 @@ test("a map without a row falls back to the whole-map save", async () => {
   expect(fetch.mock.calls.map(([url]) => url)).toEqual(["/api/maps/m/commands", "/api/maps/m"]);
   expect((fetch.mock.calls[1]![1] as RequestInit).body).toBe("whole-body");
   expect(wholeBody).toHaveBeenCalledTimes(1);
+});
+
+
+test("an edit of an absent optional field to undefined sends no change or Command", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  const before = state("A");
+  const after = state("A");
+  Object.assign(after.nodes.root, { scopeId: undefined });
+  expect(buildSaveCommand(before, after, "tab").changes).toEqual([]);
+  const response = await postSaveCommand("/api/maps/m", "tab", before, after, "t0", () => "whole");
+  expect(response.status).toBe(200);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("precomputed empty updates are removed without dropping actual edits", async () => {
+  const empty = { kind: "node" as const, key: ["root"], op: "update" as const, before: {}, after: { scopeId: undefined } };
+  const rename = { ...empty, before: { text: "A" }, after: { text: "B" } };
+  expect(commandForChanges([empty, rename], "tab").changes).toEqual([rename]);
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  await postSaveCommand("/api/maps/m", "tab", state("A"), state("A"), "t0", () => "whole", [empty]);
+  expect(fetch).not.toHaveBeenCalled();
 });
