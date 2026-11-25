@@ -2,7 +2,8 @@
 // (.kiro/specs/rapid-persistence-redesign/sync-principles.md). Owned by the orchestrator: an
 // implementer must not edit it. The real viewer, served by the real server, toggles one node's scope
 // (key f) on a 50-node map and on a 20,000-node map. The judged time is the main-thread time from the
-// autosave timer firing to the Command request leaving the page: building the save, not drawing.
+// autosave timer firing to the Command request leaving the page: building the save (DV1). DV2 judges
+// the display update: from the key press to the second animation frame after it, the edit drawn.
 // Usage: node delta_viewer_judge.mjs <beta dir>
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -111,14 +112,20 @@ async function measure(browser, name, count) {
     await page.waitForFunction(() => document.title.includes("Root"), null, { timeout: 180_000 });
     await page.waitForTimeout(1500);
     await page.keyboard.press("ArrowRight");
+    const paints = [];
     for (let i = 0; i < TOGGLES; i += 1) {
-      await page.keyboard.press("f");
+      paints.push(await page.evaluate(async () => {
+        const t = performance.now();
+        document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }));
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return performance.now() - t;
+      }));
       await page.waitForFunction((n) => window.__saveStatus.length >= n, i + 1, { timeout: 120_000 });
     }
     const { costs, status } = await page.evaluate(() => ({ costs: window.__saveCosts, status: window.__saveStatus }));
     if (status.some((code) => code !== 200)) throw new Error(`${name}: a save answered ${status.join(",")}`);
-    const sorted = [...costs].sort((a, b) => a - b);
-    return sorted[Math.floor(sorted.length / 2)];
+    const mid = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+    return { save: mid(costs), paint: mid(paints) };
   } finally {
     await page.close();
     await stop(s);
@@ -129,10 +136,15 @@ const browser = await chromium.launch();
 try {
   const small = await measure(browser, "viewer-small", 50);
   const large = await measure(browser, "viewer-large", 20000);
-  const ratio = large / small;
-  const pass = ratio < RATIO;
-  results.push(pass);
-  console.log(`${pass ? "PASS" : "FAIL"} DV1 save of a one-node scope toggle on a 50 / 20,000 node map: small ${small.toFixed(2)} ms, large ${large.toFixed(2)} ms, ratio ${ratio.toFixed(1)} (limit ${RATIO})`);
+  for (const [id, label, a, b] of [
+    ["DV1", "save of a one-node scope toggle", small.save, large.save],
+    ["DV2", "drawing a one-node scope toggle", small.paint, large.paint],
+  ]) {
+    const ratio = b / a;
+    const pass = ratio < RATIO;
+    results.push(pass);
+    console.log(`${pass ? "PASS" : "FAIL"} ${id} ${label} on a 50 / 20,000 node map: small ${a.toFixed(2)} ms, large ${b.toFixed(2)} ms, ratio ${ratio.toFixed(1)} (limit ${RATIO})`);
+  }
 } catch (error) {
   console.error(`ERROR ${error.stack ?? error}`);
   results.push(false);
