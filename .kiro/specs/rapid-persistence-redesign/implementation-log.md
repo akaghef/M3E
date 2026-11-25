@@ -58,12 +58,12 @@
 - 根拠: `push()` と `rebuild()` を読んだ。push と journal のどちらにも、まとめる処理はない。
 - 扱い: akaghef の判断待ち（remote の journal に何を記録するかが変わるため）
 
-### 2026-11-25 push と pull のたびに、作業用の store を全体の複製から作り直している
+### 2026-11-25 push と pull のたびに、working store を confirmed 全体の複製から作り直している
 
 - 種類: 問題
 - 書いた agent: unscopen の競合パネルを直した Claude Code の session
 - 対象: `beta/src/node/sync/local.ts` の `rebuild()`
-- 中身: `rebuild()` は、変わった範囲に関係なく毎回、確定済み store の record を全部書き出して新しい store を作る。そのうえで、outbox の Command をすべて当て直す。push の最後にも pull が走るので、同期 1 回ごとに「workspace 全体＋outbox 全体」に比例した処理になる。2026-11-25 の MacBook では、確定済み store が 29MB、outbox が 113 件（664KB）だった。また、確定済み store は `compactAfterLines: 0` で開いているので、local 側の journal は、remote から snapshot ごと取り直さない限り短くならない。作り直しは単純には省けない。pull で戻ってきたのが自分の Command だけでも、remote は確定のときに兄弟順キーを作り直すことがある（sync-principles）。そのため「自分の Command しか戻らなかったから作業用の store はそのままでよい」とは言えない。差分で当てる方法か、複製を安くする方法（APFS の clone など）を設計する必要がある。
+- 中身: `rebuild()` は、変わった範囲に関係なく毎回、confirmed の record を全部書き出して新しい working store を作る。そのうえで、pending をすべて当て直す。push の最後にも pull が走るので、同期 1 回ごとに「workspace 全体＋outbox 全体」に比例した処理になる。2026-11-25 の MacBook では、confirmed が 29MB、outbox が 113 件（664KB）だった。また、confirmed は `compactAfterLines: 0` で開いているので、その journal は、remote から snapshot ごと取り直さない限り短くならない。作り直しは単純には省けない。pull で戻ってきたのが自分の Command だけでも、remote は確定のときに兄弟順キーを作り直すことがある（sync-principles）。そのため「自分の Command しか戻らなかったから working store はそのままでよい」とは言えない。差分で当てる方法か、複製を安くする方法（APFS の clone など）を設計する必要がある。
 - 根拠: `rebuild()` と `pullNow()` を読んだ。大きさは MacBook の Beta workspace を `du` と `wc` で測った。所要時間は測っていない。
 - 扱い: 未対応（直し方に設計が要る）
 
