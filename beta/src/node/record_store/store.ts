@@ -419,8 +419,11 @@ export function writeFileDurably(filePath: string, content: string): void {
   fsyncDir(path.dirname(filePath));
 }
 
+interface JournalPosition { offset: number; length: number }
+
 interface JournalRead {
   lines: JournalLine[];
+  positions: Map<number, JournalPosition>;
   /** Bytes of the file that hold complete, readable lines. */
   goodLength: number;
   size: number;
@@ -431,6 +434,7 @@ interface JournalRead {
 function readJournal(journalPath: string): JournalRead {
   const buffer = fs.readFileSync(journalPath);
   const lines: JournalLine[] = [];
+  const positions = new Map<number, JournalPosition>();
   let goodLength = 0;
   let needsNewline = false;
   let start = 0;
@@ -462,11 +466,12 @@ function readJournal(journalPath: string): JournalRead {
       break;
     }
     lines.push(line);
+    positions.set(line.seq, { offset: start, length: next - start });
     goodLength = next;
     needsNewline = !complete;
     start = next;
   }
-  return { lines, goodLength, size: buffer.length, needsNewline };
+  return { lines, positions, goodLength, size: buffer.length, needsNewline };
 }
 
 export class RecordWorkspaceStore {
@@ -496,6 +501,9 @@ export class RecordWorkspaceStore {
   private snapshotSeq = 0;
   private journalFd: number | undefined;
   private journalSize = 0;
+  /** Byte ranges are derived once on open and published only after append fsync succeeds. */
+  private journalPositions = new Map<number, JournalPosition>();
+  private readonly archivePositions = new Map<string, Map<number, JournalPosition>>();
   /** Lines of the journal file after the snapshot: what an open would replay. */
   private journalLines = 0;
   /** Checksum of the snapshot file, recorded by the compaction that wrote it. */
@@ -622,6 +630,7 @@ export class RecordWorkspaceStore {
 
     if (!fs.existsSync(journalPath)) fs.writeFileSync(journalPath, "");
     const journal = readJournal(journalPath);
+    this.journalPositions = journal.positions;
     let lastSeq: number | undefined;
     for (const line of journal.lines) {
       if (lastSeq !== undefined && line.seq !== lastSeq + 1) {
@@ -915,11 +924,12 @@ export class RecordWorkspaceStore {
   committedCommand(mapId: string, commandId: string): JournalLine | null {
     const known = this.commands.get(commandKey(mapId, commandId));
     if (!known) return null;
-    const inJournal = readJournal(path.join(this.dir, JOURNAL_FILE)).lines.find((line) => line.seq === known.seq);
+    const inJournal = this.readPosition(path.join(this.dir, JOURNAL_FILE), this.journalPositions.get(known.seq));
     if (inJournal) return inJournal;
     for (const entry of readArchive(this.dir, this.now())) {
       if (entry.kind !== "journal" || entry.fromSeq > known.seq || entry.toSeq < known.seq) continue;
-      const line = readJournal(path.join(archiveDir(this.dir), entry.file)).lines.find((item) => item.seq === known.seq);
+      const file = path.join(archiveDir(this.dir), entry.file);
+      const line = this.readPosition(file, this.positionsOfArchive(file).get(known.seq));
       if (line) return line;
     }
     return null;
@@ -1460,6 +1470,7 @@ export class RecordWorkspaceStore {
       const toSeq = lines[lines.length - 1].seq;
       const name = journalArchiveName(fromSeq, toSeq, this.snapshotFormat);
       archiveFile(this.dir, journalPath, name);
+      this.archivePositions.set(path.join(archiveDir(this.dir), name), new Map(this.journalPositions));
       added.push({ file: name, kind: "journal", fromSeq, toSeq, format: this.snapshotFormat, archivedAt: now });
     }
     if (this.currentSeq !== this.snapshotSeq) {
@@ -1489,6 +1500,7 @@ export class RecordWorkspaceStore {
     writeFileDurably(journalPath, "");
     this.journalFd = fs.openSync(journalPath, "a");
     this.journalSize = 0;
+    this.journalPositions = new Map();
     this.journalLines = 0;
   }
 
@@ -1503,10 +1515,12 @@ export class RecordWorkspaceStore {
     // A shared journal segment cannot be cut per scope; bytes and inheritance stay undecided.
     const requested = options.retentionMs ?? ARCHIVE_RETENTION_MS;
     const retentionMs = Math.max(requested, this.longestExplicitRetentionMs());
-    return pruneArchive(this.dir, path.join(this.dir, SNAPSHOT_FILE), this.snapshotSum, {
+    const result = pruneArchive(this.dir, path.join(this.dir, SNAPSHOT_FILE), this.snapshotSum, {
       now: options.now ?? this.now(),
       retentionMs,
     });
+    for (const file of result.deleted) this.archivePositions.delete(path.join(archiveDir(this.dir), file));
+    return result;
   }
 
   /** Resolves when the storage engine holds every commit (at once when there is no engine). */
@@ -1692,6 +1706,7 @@ export class RecordWorkspaceStore {
     writeFileDurably(journalPath, "");
     this.journalFd = fs.openSync(journalPath, "a");
     this.journalSize = 0;
+    this.journalPositions = new Map();
     this.journalLines = 0;
   }
 
@@ -1900,15 +1915,28 @@ export class RecordWorkspaceStore {
     // label must not be refused for it.
     changes = withCurrentDerivedScopeFields(changes, warm ? warm.state : {});
 
+    // Content updates reach only named nodes. Keep the full table out of copy-on-write
+    // and projection; the projector installs those nodes with a rollback after validation.
+    const contentOnly = warm !== undefined && validationUnaffected(changes)
+      && warm.projector.canProjectContent(entry!.records);
     // 2. Compare-and-set on the `before` values.
     let applied: ReturnType<typeof applyChanges>;
     try {
-      applied = applyChangesReduced(warm ? warm.state : {}, changes, meta.syncHash !== undefined);
+      let input: object = warm ? warm.state : {};
+      if (contentOnly) {
+        const nodes: Dict = {};
+        for (const change of changes) {
+          const id = change.key[0];
+          if (hasOwn(warm!.state.nodes, id)) nodes[id] = warm!.state.nodes[id];
+        }
+        input = { ...warm!.state, nodes };
+      }
+      applied = applyChangesReduced(input, changes, meta.syncHash !== undefined);
     } catch (error) {
       return this.failure("INVALID_COMMAND", current(), (error as Error).message);
     }
     if (!applied.ok) return this.failure("CONFLICT", current(), undefined, clientConflicts(applied.conflicts));
-    this.fillExtensionDefaults(warm?.state, applied.state, changes);
+    if (!contentOnly) this.fillExtensionDefaults(warm?.state, applied.state, changes);
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
     // A Command that only edits node content cannot change what validation reports.
@@ -1928,7 +1956,9 @@ export class RecordWorkspaceStore {
     try {
       // An existing map is projected in place: its record table becomes the new one, and
       // `revert` puts it back when the commit is refused further down.
-      result = projector.project(row, previous, { inPlace: entry !== undefined });
+      result = contentOnly
+        ? projector.projectContent(mapId, warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
+        : projector.project(row, previous, { inPlace: entry !== undefined });
     } catch (error) {
       return this.failure("INVALID_STATE", current(), (error as Error).message);
     }
@@ -2228,6 +2258,7 @@ export class RecordWorkspaceStore {
       }
       throw error;
     }
+    this.journalPositions.set(line.seq, { offset: this.journalSize, length: buffer.length });
     this.journalSize += buffer.length;
     this.journalLines += 1;
     this.applyLine(line);
@@ -2261,17 +2292,56 @@ export class RecordWorkspaceStore {
    * snapshot already holds. Null when the archive does not hold every one of those commits.
    */
   private linesAfter(seq: number): JournalLine[] | null {
-    const current = readJournal(path.join(this.dir, JOURNAL_FILE)).lines.filter((line) => line.seq > Math.max(seq, this.snapshotSeq));
+    const current: JournalLine[] = [];
+    for (let next = Math.max(seq, this.snapshotSeq) + 1; next <= this.currentSeq; next += 1) {
+      const line = this.readPosition(path.join(this.dir, JOURNAL_FILE), this.journalPositions.get(next));
+      if (line === null) return null;
+      current.push(line);
+    }
     if (seq >= this.snapshotSeq) return current;
     const found = new Map<number, JournalLine>();
     for (const entry of readArchive(this.dir, this.now())) {
       if (entry.kind !== "journal" || entry.toSeq <= seq || entry.fromSeq > this.snapshotSeq) continue;
-      for (const line of readJournal(path.join(archiveDir(this.dir), entry.file)).lines) {
-        if (line.seq > seq && line.seq <= this.snapshotSeq) found.set(line.seq, line);
+      const file = path.join(archiveDir(this.dir), entry.file);
+      const positions = this.positionsOfArchive(file);
+      for (let next = Math.max(seq + 1, entry.fromSeq); next <= Math.min(this.snapshotSeq, entry.toSeq); next += 1) {
+        const line = this.readPosition(file, positions.get(next));
+        if (line) found.set(next, line);
       }
     }
-    for (let next = seq + 1; next <= this.snapshotSeq; next += 1) if (!found.has(next)) return null;
-    return [...[...found.values()].sort((a, b) => a.seq - b.seq), ...current];
+    const archived: JournalLine[] = [];
+    for (let next = seq + 1; next <= this.snapshotSeq; next += 1) {
+      const line = found.get(next);
+      if (!line) return null;
+      archived.push(line);
+    }
+    return [...archived, ...current];
+  }
+
+  private positionsOfArchive(file: string): Map<number, JournalPosition> {
+    let positions = this.archivePositions.get(file);
+    if (positions === undefined) {
+      positions = readJournal(file).positions;
+      this.archivePositions.set(file, positions);
+    }
+    return positions;
+  }
+
+  private readPosition(file: string, position: JournalPosition | undefined): JournalLine | null {
+    if (position === undefined) return null;
+    const fd = fs.openSync(file, "r");
+    try {
+      const buffer = Buffer.allocUnsafe(position.length);
+      let read = 0;
+      while (read < buffer.length) {
+        const count = fs.readSync(fd, buffer, read, buffer.length - read, position.offset + read);
+        if (count === 0) throw new Error(`The journal was truncated: ${file}`);
+        read += count;
+      }
+      return JSON.parse(buffer.toString("utf8")) as JournalLine;
+    } finally {
+      fs.closeSync(fd);
+    }
   }
 
   /** Bookkeeping a journal line carries besides its record operations. */

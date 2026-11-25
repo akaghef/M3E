@@ -310,6 +310,23 @@ function shallowSameNode(left: Dict, right: Dict): boolean {
   return true;
 }
 
+/** Content fields share the same normalization in full and incremental projection. */
+function nodeContent(record: Dict, node: Dict): void {
+  record.text = present(node.text) ? node.text : "";
+  if (node.collapsed === true) record.collapsed = true;
+  else delete record.collapsed;
+}
+
+function nodeDetails(mapId: string, id: string, node: Dict): DetailsRecord | undefined {
+  const details: Dict = { kind: "details", nodeId: id, mapId, v: 1 };
+  if (present(node.details) && node.details !== "") details.body = node.details;
+  if (present(node.note) && node.note !== "") details.note = node.note;
+  if (present(node.link) && node.link !== "") details.link = node.link;
+  if (!("body" in details || "note" in details || "link" in details)) return undefined;
+  details.rev = undefined;
+  return details as unknown as DetailsRecord;
+}
+
 /**
  * Projects one map. An instance remembers its last result: when `previous` of the next call is
  * that result's `records`, nodes, sibling lists and surfaces whose state objects are unchanged
@@ -332,8 +349,77 @@ export class MapProjector {
   private nodeSetToken = 0;
   private lastRestInput: SnapshotRecord[] = [];
   private lastRest: Dict | undefined;
+  private scopeKeysByRoot = new Map<string, string[]>();
 
   constructor(private readonly workspaceId: string, private readonly hash: HashFn = sha256Hex) {}
+
+  /** Only a canonical, warm projection may skip unrelated records. */
+  canProjectContent(previous: ReadonlyMap<string, SnapshotRecord>): boolean {
+    return previous === this.lastRecords;
+  }
+
+  /**
+   * Existing nodes whose only edited fields are text, collapsed, details, note and link.
+   * The caller checks that boundary and compares before-values on a sparse state first.
+   * Store-owned tables are updated transactionally; no reader may retain them across commits.
+   */
+  projectContent(mapId: string, state: AppState, nodes: Dict, records: Map<string, SnapshotRecord>): ProjectionResult {
+    if (!this.canProjectContent(records)) throw new Error("Content projection requires a warm record table.");
+    const delta = new Map<string, SnapshotRecord | null>();
+    const replaced = new Map<string, SnapshotRecord>();
+    const originalNodes = new Map<string, AppState["nodes"][string]>();
+    const originalScopes = new Map<string, unknown>();
+    const scopes = dictOf(state.scopes);
+    const update = (rk: string, record: SnapshotRecord | undefined): SnapshotRecord | undefined => {
+      const before = records.get(rk);
+      if (record === undefined ? before === undefined : before !== undefined && sameRecordContent(before, record)) return before;
+      if (before !== undefined) replaced.set(rk, before);
+      delta.set(rk, record ?? null);
+      if (record === undefined) records.delete(rk);
+      else records.set(rk, record);
+      return record;
+    };
+    const revert = (): void => {
+      for (const rk of delta.keys()) {
+        const before = replaced.get(rk);
+        if (before === undefined) records.delete(rk);
+        else records.set(rk, before);
+      }
+      for (const [id, node] of originalNodes) state.nodes[id] = node;
+      for (const [key, scope] of originalScopes) scopes[key] = scope;
+    };
+    try {
+      // Full projection emits node records in id order, followed by deleted details records.
+      for (const id of sortedKeys(nodes)) {
+        const node = nodes[id] as Dict;
+        const before = records.get(`node|${id}`);
+        if (before?.kind !== "node") throw new Error(`Missing node ${id}.`);
+        const record = { ...before, rev: undefined } as unknown as Dict;
+        nodeContent(record, node);
+        const projected = update(`node|${id}`, record as unknown as NodeRecord) as NodeRecord;
+        const details = update(`details|${id}`, nodeDetails(mapId, id, node)) as DetailsRecord | undefined;
+        const restored = { ...node, text: projected.text, collapsed: projected.collapsed === true,
+          details: details?.body ?? "", note: details?.note ?? "", link: details?.link ?? "" };
+        const oldNode = state.nodes[id];
+        originalNodes.set(id, oldNode);
+        state.nodes[id] = restored as unknown as AppState["nodes"][string];
+        const memo = this.nodeMemo.get(oldNode);
+        if (memo) this.nodeMemo.set(restored, { ...memo, node: projected, details, selfNormal: true });
+        const parent = this.parentMemo.get(oldNode);
+        if (parent) this.parentMemo.set(restored, parent);
+        for (const key of this.scopeKeysByRoot.get(id) ?? []) {
+          const scope = scopes[key] as Dict;
+          if (scope.label === projected.text) continue;
+          originalScopes.set(key, scope);
+          scopes[key] = { ...scope, label: projected.text };
+        }
+      }
+      return { records, delta, replaced, state, revert };
+    } catch (error) {
+      revert();
+      throw error;
+    }
+  }
 
   /**
    * With `inPlace`, `previous` itself is changed into the result (no copy of the whole table);
@@ -512,8 +598,7 @@ export class MapProjector {
         if (present(nodeType) && nodeType !== "folder" && nodeType !== "leaf" && nodeType !== "text") {
           record.nodeType = nodeType;
         }
-        record.text = present(node.text) ? node.text : "";
-        if (node.collapsed === true) record.collapsed = true;
+        nodeContent(record, node);
         const attributes = cleanAttributes(node.attributes, EDGE_LABEL_ATTRIBUTE);
         if (attributes) record.attributes = attributes;
         let label: unknown;
@@ -546,17 +631,10 @@ export class MapProjector {
         record.rev = undefined;
         const nodeRecord = put(record as unknown as NodeRecord);
 
-        const details: Dict = { kind: "details", nodeId: id, mapId, v: 1 };
-        if (present(node.details) && node.details !== "") details.body = node.details;
-        if (present(node.note) && node.note !== "") details.note = node.note;
-        if (present(node.link) && node.link !== "") details.link = node.link;
+        const details = nodeDetails(mapId, id, node);
         let detailsRecord: DetailsRecord | undefined;
-        if ("body" in details || "note" in details || "link" in details) {
-          details.rev = undefined;
-          detailsRecord = put(details as unknown as DetailsRecord);
-        } else {
-          remove(`details|${id}`);
-        }
+        if (details) detailsRecord = put(details);
+        else remove(`details|${id}`);
         memo = { id, gen, node: nodeRecord, details: detailsRecord, label, selfNormal: false };
         this.nodeMemo.set(node, memo);
       }
@@ -1090,6 +1168,15 @@ export class MapProjector {
       nextState.scopes = scopes;
     }
 
+    this.scopeKeysByRoot.clear();
+    for (const [key, scope] of Object.entries(dictOf(nextState.scopes))) {
+      const roots = dictOf(scope).rootNodeIds;
+      const root = Array.isArray(roots) ? roots[0] : undefined;
+      if (typeof root !== "string") continue;
+      const keys = this.scopeKeysByRoot.get(root) ?? [];
+      keys.push(key);
+      this.scopeKeysByRoot.set(root, keys);
+    }
     this.gen = gen;
     this.lastRecords = out;
     this.scopeByRoot = nextScopeByRoot;

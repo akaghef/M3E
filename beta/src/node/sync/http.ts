@@ -17,7 +17,6 @@ import type http from "http";
 import { activeRecordStore, localModeStore, recordStoreDir } from "../record_store/active";
 import { sameSyncIdentity, type SyncIdentity } from "../record_store/sync_types";
 import type { ConnectionIdentity } from "./issuer";
-import { pullSince } from "./journal_read";
 import { issuerForConnection, pushCommands } from "./push";
 
 function header(req: http.IncomingMessage, name: string): string {
@@ -129,9 +128,12 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
       sendSyncJson(res, 400, { ok: false, code: "INVALID_COMMAND", error: "after must be a non-negative integer." });
       return true;
     }
-    const scope = url.searchParams.get("scope") ?? undefined;
     // `scope` selects nothing yet: disclosure rights are not modelled.
-    sendSyncJson(res, 200, { ...identity, ...pullSince(storeDir, after, store.seq(), scope) });
+    const currentSeq = store.seq();
+    const lines = after > currentSeq ? null : store.journalLinesAfter(after);
+    sendSyncJson(res, 200, { ...identity, ...(lines === null
+      ? { reclone: true, snapshotSeq: currentSeq }
+      : { lines, throughSeq: currentSeq }) });
   } catch (error) {
     if (!res.headersSent) {
       const message = error instanceof SyntaxError ? "Invalid JSON body." : (error as Error).message || "Sync request failed.";
