@@ -238,6 +238,7 @@ describe("an absent nodeType is a text node", () => {
   });
 
   test("a different nodeType still conflicts", () => {
-    expect(applyChanges(state("leaf"), diffState(state(undefined), state("folder"))).ok).toBe(false);
+    // The record store keeps "alias" (it drops "leaf", which reads back as "text").
+    expect(applyChanges(state("alias"), diffState(state(undefined), state("folder"))).ok).toBe(false);
   });
 });

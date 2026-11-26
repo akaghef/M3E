@@ -372,15 +372,38 @@ function emptyShell(bag: Bag, field: string): boolean {
   return !has(bag, field) || (isBag(value) && Object.keys(value).length === 0);
 }
 
-/** A node without nodeType is a text node: the record store reads an absent one back as "text". */
+/** A node without nodeType, or a leaf, is a text node: the record store keeps neither and reads "text" back. */
 function nodeTypeOf(bag: Bag): unknown {
-  return has(bag, "nodeType") && bag.nodeType !== undefined ? bag.nodeType : "text";
+  const value = has(bag, "nodeType") ? bag.nodeType : undefined;
+  return value === undefined || value === "leaf" ? "text" : value;
 }
 
+/** Node fields the record store does not keep: a value read back never shows them. */
+const NODE_NOT_KEPT = new Set(["scopeId", "aliasOf"]);
+/** Node fields the record store keeps only when they differ from this value; absent reads as it. */
+const NODE_DEFAULTS: Record<string, unknown> = {
+  collapsed: false, details: "", note: "", link: "", isBroken: false, edgeOutsideScope: false,
+};
+
+function present(bag: Bag, field: string): boolean {
+  return has(bag, field) && bag[field] !== undefined;
+}
+
+/**
+ * Field equality in the record store's terms: what it reads back for a value it was given.
+ * Without this, a viewer that holds `isBroken: false` or a `scopeId` conflicts with itself.
+ */
 function sameField(left: Bag, right: Bag, field: string, kind?: RecordChange["kind"]): boolean {
   if (emptyShell(left, field) && emptyShell(right, field)) return true;
-  if (kind === "node" && field === "nodeType") return nodeTypeOf(left) === nodeTypeOf(right);
-  return has(left, field) === has(right, field) && sameValue(left[field], right[field]);
+  if (kind === "node") {
+    if (NODE_NOT_KEPT.has(field)) return true;
+    if (field === "nodeType") return nodeTypeOf(left) === nodeTypeOf(right);
+    if (Object.prototype.hasOwnProperty.call(NODE_DEFAULTS, field)) {
+      const fallback = NODE_DEFAULTS[field];
+      return sameValue(present(left, field) ? left[field] : fallback, present(right, field) ? right[field] : fallback);
+    }
+  }
+  return present(left, field) === present(right, field) && sameValue(left[field], right[field]);
 }
 
 function fieldConflicts(change: RecordChange, current: Bag | null, allowAfter: boolean): FieldConflict[] {
