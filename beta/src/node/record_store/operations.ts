@@ -12,8 +12,7 @@ import type {
   ScopeRecord,
   SnapshotRecord,
 } from "../../shared/record_model/types";
-import type { RecordOp } from "./engine";
-import { touchedOf } from "./journal_archive";
+import { touchedOf, type RecordOp } from "./journal_line";
 
 export type DeleteOperation = "oc1" | "oc2" | "oc3" | "oc4";
 
