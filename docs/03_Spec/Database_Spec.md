@@ -396,9 +396,9 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
 
 【提案】journal への追記と fsync が成功した確定は、Neo4j への未適用・適用失敗・応答喪失を理由に取り消さない。journal を切り戻さず、seq を再利用せず、同じ Command を新規に確定し直さない。再生するのは確定済みの `ops` であり、権限・merge・不変条件の規則で元の Command を再審査しない。
 
-【提案】workspace ごとの検査から確定までの直列区間で、検査前に Neo4j の `appliedSeq` と fsync 済み journal の末尾の seq を照合する。`appliedSeq < 末尾の seq` なら、1 件の遅れでも、新規 Command の検査・確定を開始しない。5.2 規則 6 の 10,000 件という上限は、古い状態での検査を許す条件にはしない。Neo4j の所属・適用地点が未確認、または journal より先なら、受付を止めて整合を確認する。
+【決定】（2026-11-27、akaghef が判断を委ねた推奨のとおり）新規 Command の検査は、journal の末尾まで適用済みのメモリ上の record で行い、Neo4j の `appliedSeq` を待たない。Neo4j の遅れは、人の保存も端末からの push も待たせず、断らない。遅れが見えてよいのは Neo4j から読む側だけで、読む側は `minSeq` で必要な seq まで短く待ち、期限で `ENGINE_BEHIND` を返す（`beta/src/node/sync/min_seq.ts`）。例外は、遅れが 5.2 規則 6 の上限（既定 10,000 確定）に達したときで、これは遅いのではなく Neo4j の反映が止まっている状態とみなし、新規 Command を `ENGINE_BEHIND` で断って、その状態を人に示す。journal に確定したものは失われない。検査そのものを Neo4j で行う設計に変えるときは、この決定を見直す。
 
-【提案】追いつくまでの server の挙動は QA2 で選ぶ。新規 Command に `ENGINE_BEHIND` を返して適用を再試行するか、先に適用を完了してから検査する。いずれも `ENGINE_BEHIND` を確定的な拒否として記憶せず、client は同じ commandId・内容を保全して再送できるものとする。fsync 済みの当該 Command は「確定済み・適用待ち」として識別し、新規 Command の一時的な受付拒否と区別する。確定成功の応答は、その seq までの適用完了後に返す（R5.2）。応答を待てなくても未確定とは扱わず、元の結果を照会できるものとする。
+`ENGINE_BEHIND` は確定的な拒否として記憶せず、client は同じ commandId・内容を保全して再送できるものとする。fsync 済みの Command は「確定済み・適用待ち」であり、新規 Command の一時的な受付拒否と区別する。
 
 【提案】適用は `appliedSeq + 1` から seq 順に行い、各確定の record 操作と `appliedSeq` 更新を同じ transaction にする。transaction の成否が不明なら Neo4j の marker を読み直して再開位置を決める。遅れの範囲の読み出し・検証・適用の費用は、その範囲の行数と record 操作数・バイト数に比例させ、workspace・map・journal 全体を走査・複製しない（[Δ 比例の原則](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md#手間は変化分に比例させる)）。
 
@@ -411,7 +411,7 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
 | ID | 決めること | 選択肢 | 推奨と、それぞれが変えるもの |
 |---|---|---|---|
 | QA1 | 拒否・no-op・conflict・権限・失効等の管理状態を、snapshot + journal の復旧入力にどう含めるか | OA1: 同じ snapshot の record と journal の行に含める。OA2: Neo4j に依存しない別の構成要素に置き、snapshot がその範囲・到達地点・checksum を参照する | 【提案】OA1。復旧入力と整合する到達地点を一つの系列で扱える。拒否・no-op の結果を記録する行は graph の変更と区別する。OA1 は record・envelope・seq の意味と format の検討が必要。OA2 は各構成要素の原子的な公開・保存順・欠落検出の契約が必要で、単に別ファイルをコピーするだけでは足りない |
-| QA2 | Neo4j が journal より遅れている間、新規 Command の要求をどう扱うか | OA3: `ENGINE_BEHIND` で直ちに受付を断り、適用は server が再試行する。OA4: 要求内で先に追いついてから検査する | 【提案】OA3。障害中に要求を長く保持せず、client は同じ Command を保全して再送する。OA4 は成功までの再送を減らせる一方、待機期限とその期限での一時応答が必要。どちらも遅れた状態での検査と fsync 済み確定の取り消しは禁止 |
+| QA2 | Neo4j が journal より遅れている間、新規 Command の要求をどう扱うか | 断る／待つ | 【決定】どちらも採らない。検査はメモリ上の record で行い、Neo4j を待たず断らない。上限に達したときだけ `ENGINE_BEHIND` で断る（上の【決定】） |
 | QA3 | 復旧に残す Command 結果の再送窓と期限の証拠をどう定めるか | OA5: workspace の再送窓を時間で設定し、最初の結果の永続化時刻・期限を保存する。OA6: 結果を無期限に保持する | 【提案】OA5。具体的な期間・時計・期限延長時の扱いは akaghef の指定を要する。scope の履歴保持期間と独立させ、件数上限だけで有効な結果を落とさない。期限後に結果不明なら保留し、自動再実行しない（R4.5・R4.6）。OA6 は期限切れをなくすが、snapshot と復旧対象が累積する。窓が未決の間は有効な結果を削除できると解釈しない |
 
 #### 【提案】テスト観点（実装後の確認）
