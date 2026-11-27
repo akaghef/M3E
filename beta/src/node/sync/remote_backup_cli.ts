@@ -4,9 +4,22 @@ import path from "node:path";
 import { checkInvariants } from "../../shared/record_model/invariants";
 import { parseSnapshot, serializeSnapshot } from "../../shared/record_model/jsonl";
 import { recordRk } from "../../shared/record_model/steady";
-import { fsyncDir } from "../record_store/journal_archive";
 import { validateM3eApiUrl } from "../remote_access";
 
+/** fsync a directory so that the rename into it survives a crash (not possible on Windows). */
+function fsyncDir(dir: string): void {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(dir, "r");
+    fs.fsyncSync(fd);
+  } catch {
+    // Windows cannot open a directory for fsync.
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+// An export of the remote's database (Neo4j) as the clone's wire format: a backup, never a store.
 const GENERATION_NAME = /^remote-clone-\d{8}T\d{6}\.\d{3}Z-seq\d+\.jsonl$/;
 
 export async function backupRemoteClone(remote: string, backupDir: string, keep = 48): Promise<string> {

@@ -33,6 +33,23 @@ jobs:
     name: Beta build and test
     runs-on: ubuntu-latest
 
+    # The record store's database. Unit tests make stores of their own names in it.
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: none
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -a bolt://localhost:7687 'RETURN 1'"
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 30
+
+    env:
+      M3E_TEST_NEO4J_BOLT: bolt://127.0.0.1:7687
+
     defaults:
       run:
         working-directory: beta
