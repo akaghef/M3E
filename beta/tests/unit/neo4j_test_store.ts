@@ -4,15 +4,12 @@
 
 import { randomUUID } from "crypto";
 import { RecordWorkspaceStore, type OpenOptions } from "../../src/node/record_store";
-import { Neo4jDurability, type Neo4jConnection } from "../../src/node/record_store/neo4j_durability";
+import { Neo4jDurability, neo4jConnectionFromEnv, type Neo4jConnection } from "../../src/node/record_store/neo4j_durability";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
 
-export const TEST_NEO4J: Neo4jConnection = {
-  uri: process.env.M3E_TEST_NEO4J_BOLT ?? process.env.M3E_NEO4J_BOLT ?? "bolt://127.0.0.1:7687",
-  ...((process.env.M3E_TEST_NEO4J_USER ?? process.env.M3E_NEO4J_USER)
-    ? { user: process.env.M3E_TEST_NEO4J_USER ?? process.env.M3E_NEO4J_USER, password: process.env.M3E_TEST_NEO4J_PASSWORD ?? process.env.M3E_NEO4J_PASSWORD ?? "" }
-    : {}),
-};
+export const TEST_NEO4J: Neo4jConnection = neo4jConnectionFromEnv(process.env, "M3E_TEST_NEO4J")
+  ?? neo4jConnectionFromEnv(process.env)
+  ?? { uri: "bolt://127.0.0.1:7687" };
 
 const made: string[] = [];
 const opened: RecordWorkspaceStore[] = [];

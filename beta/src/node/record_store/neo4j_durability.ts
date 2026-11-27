@@ -12,6 +12,7 @@
 // commit is never dropped while the process lives. A commit that was never made durable was never
 // answered as committed.
 
+import { readFileSync } from "fs";
 import neo4j, { type Driver, type ManagedTransaction } from "neo4j-driver";
 import type { SnapshotRecord } from "../../shared/record_model/types";
 import { applyOps, ensureSchema, writeMarker, type RecordOp } from "../neo4j_store/apply";
@@ -401,17 +402,22 @@ export class Neo4jDurability {
 
 /**
  * The Neo4j the record store runs on, from the environment: M3E_NEO4J_BOLT (required),
- * M3E_NEO4J_USER and M3E_NEO4J_PASSWORD (both omitted when the server has no authentication),
- * M3E_NEO4J_DATABASE (the server's default database when omitted). Null when M3E_NEO4J_BOLT is unset.
+ * M3E_NEO4J_USER with the password from the file M3E_NEO4J_PASSWORD_FILE (preferred, so that no
+ * secret is in a launcher or a process listing) or M3E_NEO4J_PASSWORD; no user means the server has
+ * no authentication. M3E_NEO4J_DATABASE names the database (the server's default when omitted).
+ * Null when M3E_NEO4J_BOLT is unset.
  */
-export function neo4jConnectionFromEnv(env: NodeJS.ProcessEnv = process.env): Neo4jConnection | null {
-  const uri = env.M3E_NEO4J_BOLT?.trim();
+export function neo4jConnectionFromEnv(env: NodeJS.ProcessEnv = process.env, prefix = "M3E_NEO4J"): Neo4jConnection | null {
+  const uri = env[`${prefix}_BOLT`]?.trim();
   if (!uri) return null;
   const connection: Neo4jConnection = { uri };
-  if (env.M3E_NEO4J_USER) {
-    connection.user = env.M3E_NEO4J_USER;
-    connection.password = env.M3E_NEO4J_PASSWORD ?? "";
+  const user = env[`${prefix}_USER`]?.trim();
+  if (user) {
+    connection.user = user;
+    const file = env[`${prefix}_PASSWORD_FILE`]?.trim();
+    connection.password = file ? readFileSync(file, "utf8").replace(/\r?\n$/, "") : env[`${prefix}_PASSWORD`] ?? "";
   }
-  if (env.M3E_NEO4J_DATABASE) connection.database = env.M3E_NEO4J_DATABASE;
+  const database = env[`${prefix}_DATABASE`]?.trim();
+  if (database) connection.database = database;
   return connection;
 }
