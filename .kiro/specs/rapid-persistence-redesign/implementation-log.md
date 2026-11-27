@@ -741,3 +741,12 @@
 - 中身: scope だけを読む経路で、応答（約 2.1 MB）のほぼ全部が描画に使わない attribute だった。描画に要る項目は node の種別によって違う（たとえば `source-mermaid` を描画に使う種別がある）。そこで、描画に要る項目は node type の定義が宣言する、という要件が出ている。拡張の仕組み（10 節）の定義に、この宣言を持たせる案がある。
 - 根拠: その session の計測による。
 - 扱い: 仕様へ反映（DB 仕様書 10.6 節に【提案】として、拡張の定義が持つ描画の宣言と、それを使う projection を書いた）。実装は未対応
+
+### 2026-11-27 viewer の同寸法編集を retained SVG / paint の更新へ接続した
+
+- 種類: 実装・未達
+- 書いた agent: Codex（delta-all-viewer）
+- 対象: viewer の undo・正規化・描画・BroadcastChannel。基準パスは repository root
+- 中身: 既知 node 編集を全描画へ無条件に渡す経路から、寸法・子集合・依存を検査して SVG fragment / bounds / paint slot だけ更新する経路へ変更した。scopen / unscopen の undo は対象 record の before image を使う。scope の正規化に incident relation と Surface View の索引を使う。BroadcastChannel は write set と sequence を送り、基準欠落時だけ全 state を取得する。保存の acknowledgement による全描画を除去した。viewer.ts から正規化を別 module へ移した。
+- 根拠: build 成功。関連48 unit tests 通過。50 / 20,000 node で paint 数増減の更新件数と長い edge の viewport query を検査し、同じ5試験が基準 c3f3138 では全再構築呼出しまたは画面外 paint の50 / 20,000件読取りの assertion で失敗した。最終の全 unit suite は1,611通過・2失敗・27 skipped。vault-watch の2試験は fs.watch の EMFILE で失敗し、単独の fs.watch 再現でも同じ error を確認した。browser の DV1 / DV2 と visual は未実行（Director 依頼）。詳しい条件は viewer-delta-drawing-design.md。
+- 扱い: 部分実装。寸法変更・可視集合変更・reparent / reorder の lazy offset と viewport 展開、rename / Style / alias / filter の依存更新、他の編集入口の undo 差分化は未対応。全更新経路が変化量に比例する要件は未達。browser の独立検証と残る描画コードの実装を継続する。

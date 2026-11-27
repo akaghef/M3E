@@ -76,7 +76,10 @@ function projectionHarness() {
   // Exercise scheduling/working-set logic without pretending a mock is GPU proof.
   const internals = projection as any;
   internals.active = true; internals.gl = {};
-  internals.sceneTiles = {setScene:vi.fn(),updateCommands:vi.fn(),setEditingNode:vi.fn()};
+  let paint: PaintCommand[] = [];
+  internals.sceneTiles = {setScene:vi.fn(scene => { paint = scene.commands; }),
+    forEachPaint: (visit: (command: PaintCommand, slot: number) => void) => paint.forEach(visit),
+    updateCommands:vi.fn(),setEditingNode:vi.fn()};
   const draw = vi.spyOn(internals,"draw").mockImplementation(()=>{});
   vi.spyOn(internals,"uploadInteractionGeometry").mockImplementation(()=>{});
   return {projection,internals,draw,pending,tick:()=>{

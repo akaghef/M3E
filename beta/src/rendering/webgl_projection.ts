@@ -469,7 +469,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     const moved = new Set(ids);
     const slots: number[] = [];
     const commands: PaintCommand[] = [];
-    this.snapshot.paintScene.commands.forEach((command, slot) => {
+    this.sceneTiles?.forEachPaint((command, slot) => {
       if (![command.nodeId, command.sourceNodeId, command.targetNodeId].some(id => id && moved.has(id))) return;
       slots.push(slot); commands.push(command);
     });

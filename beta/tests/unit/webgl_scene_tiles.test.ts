@@ -111,14 +111,14 @@ describe("retained WebGL scene tiles", () => {
     expect(tiles.updateNodePaint({commands:[a]},new Set(["n0"])).commands[1]).toBe(b);
     expect(rebuild).not.toHaveBeenCalled();
   });
-  it("rebuilds stacking slots only when a node gains or loses paint commands", () => {
+  it("retains unrelated stacking slots when a node gains or loses paint commands", () => {
     const {tiles}=harness();
     const a=label(0),b=label(1);
     tiles.setScene({commands:[a,b]});
     const rebuild=vi.spyOn(tiles,"setScene");
     const badge={...a,text:"badge"};
     expect(tiles.updateNodePaint({commands:[a,badge]},new Set(["n0"])).commands).toEqual([a,badge,b]);
-    expect(rebuild).toHaveBeenCalledTimes(1);
+    expect(rebuild).not.toHaveBeenCalled();
     rebuild.mockClear();
     const selected={...a,text:"selected"};
     expect(tiles.updateNodePaint({commands:[selected,badge]},new Set(["n0"])).commands).toEqual([selected,badge,b]);
@@ -215,4 +215,40 @@ describe("retained WebGL scene tiles", () => {
     expect(context.fillText.mock.calls.every(([text]:string[])=>text==='edge label')).toBe(true);
     expect(context.fillText).toHaveBeenCalled();
   });
+});
+
+it.each([50, 20000])("changing paint cardinality touches only owned commands in a %i-node scene", count => {
+  const { tiles } = harness();
+  const commands = Array.from({ length: count }, (_, i) => label(i));
+  tiles.setScene({ commands });
+  const rebuild = vi.spyOn(tiles, 'setScene');
+  const replace = vi.spyOn(PaintIndex.prototype, 'replace');
+  const added = { ...commands[1]!, text: 'scope badge' };
+  for (let i = 0; i < 9; i++) {
+    replace.mockClear();
+    tiles.updateNodePaint({ commands: i % 2 ? [commands[1]!] : [commands[1]!, added] }, new Set(['n1']));
+    expect(replace.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(rebuild).not.toHaveBeenCalled();
+  }
+  const scene = tiles.updateNodePaint({ commands: [commands[1]!] }, new Set(['n1']));
+  expect(scene.commands).toEqual(commands);
+  const bySlot = new Map<number, PaintCommand>();
+  tiles.forEachPaint((command, slot) => bySlot.set(slot, command));
+  expect(bySlot.size).toBe(count);
+  vi.restoreAllMocks();
+});
+
+it.each([50, 20000])('viewport lookup does not read offscreen long-edge paint (%i edges)', count => {
+  let reads = 0;
+  const commands = Array.from({ length: count }, (_, i) => {
+    const command = label(i);
+    Object.defineProperty(command, 'bounds', { get() { reads++;
+      return { x: 0, y: i * 200000, width: 200, height: 100000 };
+    } });
+    return command;
+  });
+  const index = new PaintIndex(commands);
+  reads = 0;
+  expect(index.query({ x: 20, y: 20, width: 100, height: 100 })).toEqual([0]);
+  expect(reads).toBeLessThanOrEqual(1);
 });

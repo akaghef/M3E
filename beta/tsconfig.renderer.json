@@ -15,6 +15,10 @@
     "src/browser/webgl_projection.ts",
     "src/browser/orrery_network.ts",
     "src/browser/viewer-filter-scene.ts",
+    "src/browser/viewer_delta_scene.ts",
+    "src/browser/viewer_delta_model.ts",
+    "src/browser/viewer_delta_state.ts",
+    "src/browser/viewer_delta_broadcast.ts",
     "src/browser/scope_view_client.ts"
   ]
 }

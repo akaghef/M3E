@@ -12,7 +12,7 @@ function run(state: Record<string, unknown>) {
   return new Function("state", `
     const map = { state };
     const viewState = { concretenessLevel: 0, surfaceViewMode: "tree", surfaceLayoutDirection: "right", surfaceSpace: "normal" };
-    const sanitizeMapModelState = () => {};
+    const sanitizeMapModelState = () => {}, trackSurface = () => {};
     // This harness checks node-view contents; save tracking is tested separately.
     const markSaveChanges = () => {}, markSaveCollectionReplacement = () => {};
     const currentScopeRootId = () => "root";

@@ -29,6 +29,7 @@ export class RetainedSvgScene<T = unknown> {
     }
     return replaced;
   }
+  element(key: string): SVGGElement | undefined { return this.parts.get(key)?.element; }
   /** Selection can mutate classes outside render(). Do not reuse that markup. */
   invalidate(key: string): void {
     const part = this.parts.get(key);

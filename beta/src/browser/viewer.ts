@@ -1,3 +1,8 @@
+import { DeltaBroadcast } from "./viewer_delta_broadcast";
+import { captureStatePatch, applyStatePatch, type StatePatch } from "./viewer_delta_state";
+import { createMapNormalizer } from "./viewer_delta_model";
+import { refreshCapturedNodeFragment } from "./webgl_scene_tiles";
+import { StableScenePatch, SceneBounds } from "./viewer_delta_scene";
 import { addLocalSyncToolbar } from "./local_sync_toolbar";
 import { connectFlashGeneration } from "./flash_generation";
 import { toggleDropdown, closeOnOutsideClick } from "./viewer-filter-menu";
@@ -558,6 +563,7 @@ interface ClipboardSyncRecord {
 }
 
 let bc: BroadcastChannel | null = null;
+let deltaBroadcast: DeltaBroadcast<AppState> | null = null;
 let clipboardBc: BroadcastChannel | null = null;
 let lastServerSavedAt: string | null = null;
 let lastServerBaseState: AppState | null = null;
@@ -578,6 +584,7 @@ function trackSavedState(): void {
 }
 
 function markSaveChanges(touches?: SaveTouches): void {
+  deltaBroadcast?.mark(touches);
   if (!map || !lastServerBaseState) return;
   if (!saveStateTracker || saveStateTracker.state !== map.state || saveStateTracker.base !== lastServerBaseState) {
     saveStateTracker = new SaveStateTracker(lastServerBaseState, map.state);
@@ -596,6 +603,7 @@ function markSaveCollectionReplacement(field: "scopes" | "surfaces" | "linearNot
 }
 
 interface UndoSnapshot {
+  delta?: StatePatch;
   concretenessLevel?: number;
   scopeRootId?: string;
   state: AppState;
@@ -663,6 +671,8 @@ viewerFilter.subscribe(() => {
   applyViewFilter();
   if (webglSurfaceSupported()) scheduleWebGLProjectionActivation();
 });
+let patchDocumentScene: ((touches: SaveTouches) => boolean) | null = null;
+const retainedSceneBounds = new SceneBounds();
 let incrementalProjection = false;
 let localEditBatchDepth = 0;
 let localEditBatchPending = false;
@@ -2587,163 +2597,23 @@ function setLinearTextFontScale(nextScale: number, showStatus = true): void {
   }
 }
 
-function inferredScopeId(nodeId: string): string {
-  return `scope:${nodeId}`;
-}
+const { trackSurface, syncTouchedNodeViews, editTouches, restoreIndex, normalizeTouched, inferredScopeId, inferredSurfaceId, sanitizeSurfaceKind, sanitizeSurfaceLayout,
+  defaultSurfaceKindForScopeNode, sanitizeSurfaceNodeViews, sanitizeMapModelState } = createMapNormalizer({
+  rawAttr, isFolderNode, uiLabel, surfaceLayoutForKind,
+});
 
-function inferredSurfaceId(nodeId: string, kind: SurfaceKind): string {
-  return `surface:${nodeId}:${kind}`;
-}
-
-function sanitizeSurfaceKind(raw: unknown): SurfaceKind | null {
-  return raw === "tree"
-    || raw === "system"
-    || raw === "scatter"
-    || raw === "logic-chart"
-    || raw === "timeline" || raw === "lane"
-    ? raw
-    : null;
-}
-
-function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
-  return raw === "tree"
-    || raw === "flow-lr"
-    || raw === "scatter"
-    || raw === "logic-chart"
-    || raw === "timeline" || raw === "lane"
-    ? raw
-    : null;
-}
-
-function defaultSurfaceKindForScopeNode(node: TreeNode): SurfaceKind {
-  const rawLayout = rawAttr(node, "m3e:layout");
-  if (rawLayout === "flow-lr") return "system";
-  // Legacy persisted layout: migrate on read to the Tree two-sided preset.
-  if (rawLayout === "mindmap" || rawLayout === "balanced-tree") return "tree";
-  if (rawLayout === "logic-chart") return "logic-chart";
-  if (rawLayout === "timeline") return "timeline";
-  if (rawLayout === "scatter") return "scatter";
-  return "tree";
-}
-
-function sanitizeSurfaceNodeViews(raw: unknown, nodes: Record<string, TreeNode>): Record<string, SurfaceNodeView> {
-  if (!raw || typeof raw !== "object") {
-    return {};
-  }
-  const views: Record<string, SurfaceNodeView> = {};
-  Object.entries(raw as Record<string, SurfaceNodeView>).forEach(([nodeId, view]) => {
-    if (!nodes[nodeId] || !view || typeof view !== "object") {
-      return;
-    }
-    const next: SurfaceNodeView = {};
-    if (Number.isFinite(view.x)) next.x = Number(view.x);
-    if (Number.isFinite(view.y)) next.y = Number(view.y);
-    if (Number.isFinite(view.flowCol)) next.flowCol = Number(view.flowCol);
-    if (Number.isFinite(view.flowRow)) next.flowRow = Number(view.flowRow);
-    if (view.shape === "rect" || view.shape === "diamond" || view.shape === "rounded") {
-      next.shape = view.shape;
-    }
-    if (Object.keys(next).length > 0) {
-      views[nodeId] = next;
-    }
-  });
-  return views;
-}
-
-function sanitizeMapModelState(state: AppState): void {
-  const rawScopes = state.scopes && typeof state.scopes === "object" ? state.scopes : {};
-  const rawSurfaces = state.surfaces && typeof state.surfaces === "object" ? state.surfaces : {};
-  const scopes: Record<string, MapScope> = {};
-  const surfaces: Record<string, MapSurface> = {};
-  const folderScopeNodeIds = Object.values(state.nodes)
-    .filter((node) => node.id === state.rootId || isFolderNode(node))
-    .map((node) => node.id);
-  const localScopeRootForNode = (nodeId: string): string => {
-    let cursor: string | null = nodeId;
-    while (cursor) {
-      const current: TreeNode | undefined = state.nodes[cursor];
-      if (!current) break;
-      if (current.nodeType === "folder") {
-        return current.id;
-      }
-      cursor = current.parentId ?? null;
-    }
-    return state.rootId;
-  };
-  const validScopeIds = new Set(folderScopeNodeIds.map((nodeId) => inferredScopeId(nodeId)));
-
-  Object.entries(rawSurfaces).forEach(([surfaceKey, rawSurface]) => {
-    if (!rawSurface || typeof rawSurface !== "object") {
-      return;
-    }
-    const surface = rawSurface as MapSurface;
-    const scopeId = typeof surface.scopeId === "string" ? surface.scopeId : "";
-    if (!validScopeIds.has(scopeId)) {
-      return;
-    }
-    const kind = sanitizeSurfaceKind(surface.kind) || "tree";
-    surfaces[surfaceKey] = {
-      id: typeof surface.id === "string" && surface.id ? surface.id : surfaceKey,
-      scopeId,
-      kind,
-      layout: sanitizeSurfaceLayout(surface.layout) || surfaceLayoutForKind(kind),
-      surfaceView: migrateSurfaceViewFromMapRead(
-        state,
-        scopeId,
-        (surface as MapSurface & { surfaceView?: unknown }).surfaceView,
-        isLegacyBalancedTreeSurface(surface.kind) || isLegacyBalancedTreeSurface(surface.layout),
-      ),
-      nodeViews: sanitizeSurfaceNodeViews(surface.nodeViews, state.nodes),
-    };
-  });
-
-  folderScopeNodeIds.forEach((nodeId) => {
-    const node = state.nodes[nodeId];
-    if (!node) return;
-    const scopeId = inferredScopeId(nodeId);
-    const existingScope = rawScopes[scopeId];
-    const surfaceKind = defaultSurfaceKindForScopeNode(node);
-    const preferredPrimarySurfaceId = typeof existingScope?.primarySurfaceId === "string" && surfaces[existingScope.primarySurfaceId]
-      ? existingScope.primarySurfaceId
-      : inferredSurfaceId(nodeId, surfaceKind);
-    const relationIds = Object.values(state.links || {})
-      .filter((link) => {
-        const source = state.nodes[link.sourceNodeId];
-        const target = state.nodes[link.targetNodeId];
-        if (!source || !target) return false;
-        return localScopeRootForNode(source.id) === nodeId || localScopeRootForNode(target.id) === nodeId;
-      })
-      .map((link) => link.id);
-
-    scopes[scopeId] = {
-      id: existingScope?.id || scopeId,
-      label: existingScope?.label || uiLabel(node) || (nodeId === state.rootId ? "Root" : nodeId),
-      rootNodeIds: Array.isArray(existingScope?.rootNodeIds) && existingScope!.rootNodeIds.length > 0
-        ? existingScope!.rootNodeIds.filter((id) => Boolean(state.nodes[id]))
-        : [nodeId],
-      relationIds,
-      primarySurfaceId: preferredPrimarySurfaceId,
-    };
-
-    const existingSurface = surfaces[preferredPrimarySurfaceId];
-    surfaces[preferredPrimarySurfaceId] = {
-      id: existingSurface?.id || preferredPrimarySurfaceId,
-      scopeId,
-      kind: existingSurface?.kind || surfaceKind,
-      layout: existingSurface?.layout || surfaceLayoutForKind(existingSurface?.kind || surfaceKind),
-      surfaceView: existingSurface?.surfaceView || migrateSurfaceViewFromMapRead(state, scopeId, undefined),
-      nodeViews: existingSurface?.nodeViews || {},
-    };
-  });
-
-  state.scopes = scopes;
-  state.surfaces = surfaces;
-}
-
-function syncMapModelStateFromRuntime(): void {
+function syncMapModelStateFromRuntime(touches?: SaveTouches): void {
   if (viewState.concretenessLevel !== 0) return;
   if (!map) {
     return;
+  }
+  if (touches && Object.keys(touches).every(field => field === "nodes")) {
+    const normalized = normalizeTouched(map.state, touches.nodes || []);
+    if (normalized) {
+      const surfaceId = inferredSurfaceId(currentScopeRootId(), surfaceKindForViewMode(viewState.surfaceViewMode));
+      if (syncTouchedNodeViews(map.state, surfaceId, touches.nodes || [])) normalized.surfaces = [...(normalized.surfaces || []), surfaceId];
+      markSaveChanges(normalized); return;
+    }
   }
   const previousScopes = map.state.scopes;
   const previousSurfaces = map.state.surfaces;
@@ -2772,6 +2642,7 @@ function syncMapModelStateFromRuntime(): void {
     };
   }
   const surface = map.state.surfaces[surfaceId]!;
+  trackSurface(surface);
   surface.scopeId = modelScopeId;
   surface.kind = surfaceKind;
   surface.layout = surfaceLayoutForKind(surfaceKind);
@@ -4009,7 +3880,9 @@ function updateScopeMeta(): void {
   scopeMetaEl.textContent = `scope: ${parts.join(" / ")}`;
 }
 
-function updateScopeSummary(): void {
+const scopeSummaryChildren = new Map<string, string>();
+const scopeSummaryOrder = new Map<string, number>();
+function updateScopeSummary(changed?: readonly string[]): void {
   if (!map) {
     scopeSummaryEl.textContent = "outside: n/a";
     return;
@@ -4030,13 +3903,13 @@ function updateScopeSummary(): void {
     ? (parentScopeId === map.state.rootId ? "root" : uiLabel(map.state.nodes[parentScopeId]))
     : "none";
 
-  const childScopeSummaries = (scopeRoot.children || [])
-    .map((childId) => map!.state.nodes[childId])
-    .filter((node): node is TreeNode => Boolean(node))
-    .filter((node) => isFolderNode(node))
-    .map((node) => `${uiLabel(node)}(${countHiddenDescendants(node.id)})`);
-
-  const childSummary = childScopeSummaries.length > 0 ? childScopeSummaries.join(", ") : "none";
+  if (!changed) { scopeSummaryChildren.clear(); scopeSummaryOrder.clear(); scopeRoot.children.forEach((id, i) => scopeSummaryOrder.set(id, i)); }
+  for (const id of changed || scopeRoot.children || []) {
+    const node = map.state.nodes[id];
+    if (node && node.parentId === scopeRootId && isFolderNode(node)) scopeSummaryChildren.set(id, `${uiLabel(node)}(${countHiddenDescendants(id)})`);
+    else scopeSummaryChildren.delete(id);
+  }
+  const childSummary = [...scopeSummaryChildren].sort(([a], [b]) => (scopeSummaryOrder.get(a) || 0) - (scopeSummaryOrder.get(b) || 0)).map(([, label]) => label).join(", ") || "none";
   scopeSummaryEl.textContent = `outside: parent ${parentLabel} | child scopes ${childSummary}`;
 }
 
@@ -4127,7 +4000,7 @@ function makeSelectedFolder(): boolean {
     setStatus("Alias nodes cannot become scopes.", true);
     return false;
   }
-  pushUndoSnapshot();
+  pushUndoSnapshot(editTouches(map.state, [node.id, ...node.children.filter(id => map!.state.nodes[id]?.edgeOutsideScope)]));
   if (isFolderNode(node)) {
     node.nodeType = undefined;
     // Unscopen: inside and outside lie on one scope again (DA58).
@@ -4402,8 +4275,10 @@ function prepareConcretenessView(): void {
 function restoreConcretenessSnapshot(snapshot: UndoSnapshot): void {
   viewState.concretenessLevel = snapshot.concretenessLevel || 0;
   concretenessView = null;
-  map!.state = snapshot.state;
-  prepareConcretenessView();
+  if (snapshot.delta) {
+    applyStatePatch(map!.state, snapshot.delta);
+    restoreIndex(map!.state, snapshot.delta.touches);
+  } else { map!.state = snapshot.state; prepareConcretenessView(); }
   viewState.currentScopeId = viewState.currentScopeRootId = map!.state.nodes[snapshot.scopeRootId || ""] ? snapshot.scopeRootId! : map!.state.rootId;
   viewState.scopeHistory = scopePathIds(viewState.currentScopeRootId).slice(0, -1);
 }
@@ -4446,12 +4321,14 @@ function cloneState(state: AppState): AppState {
   return JSON.parse(JSON.stringify(state)) as AppState;
 }
 
-function pushUndoSnapshot(): void {
+function pushUndoSnapshot(touches?: SaveTouches): void {
   if (!map) {
     return;
   }
+  if (viewState.concretenessLevel !== 0 || concretenessView) touches = undefined;
   undoStack.push({
-    state: cloneState(canonicalMapState()),
+    state: touches ? canonicalMapState() : cloneState(canonicalMapState()),
+    delta: touches ? captureStatePatch(canonicalMapState(), touches) : undefined,
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
@@ -4471,7 +4348,8 @@ function undoLastChange(): void {
   }
 
   redoStack.push({
-    state: cloneState(canonicalMapState()),
+    state: undoStack[undoStack.length - 1]?.delta ? canonicalMapState() : cloneState(canonicalMapState()),
+    delta: undoStack[undoStack.length - 1]?.delta ? captureStatePatch(canonicalMapState(), undoStack[undoStack.length - 1]!.delta!.touches) : undefined,
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
@@ -4495,8 +4373,11 @@ function undoLastChange(): void {
   viewState.reparentSourceIds.clear();
   normalizeSelectionState();
   map.savedAt = nowIso();
-  render();
-  scheduleAutosave();
+  markSaveChanges(snapshot.delta?.touches);
+  if (!snapshot.delta || !patchDocumentScene?.({ nodes: snapshot.delta.touches.nodes })) render();
+  else scheduleSelectionRefresh();
+  scheduleAutosave(Boolean(snapshot.delta));
+  if (snapshot.delta) { preparedSaveState = map.state; preparedSaveView = saveViewKey(); broadcastState(); }
   setStatus("Undo applied.");
   board.focus({ preventScroll: true });
 }
@@ -4508,7 +4389,8 @@ function redoLastChange(): void {
   }
 
   undoStack.push({
-    state: cloneState(canonicalMapState()),
+    state: redoStack[redoStack.length - 1]?.delta ? canonicalMapState() : cloneState(canonicalMapState()),
+    delta: redoStack[redoStack.length - 1]?.delta ? captureStatePatch(canonicalMapState(), redoStack[redoStack.length - 1]!.delta!.touches) : undefined,
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
@@ -4532,8 +4414,11 @@ function redoLastChange(): void {
   viewState.reparentSourceIds.clear();
   normalizeSelectionState();
   map.savedAt = nowIso();
-  render();
-  scheduleAutosave();
+  markSaveChanges(snapshot.delta?.touches);
+  if (!snapshot.delta || !patchDocumentScene?.({ nodes: snapshot.delta.touches.nodes })) render();
+  else scheduleSelectionRefresh();
+  scheduleAutosave(Boolean(snapshot.delta));
+  if (snapshot.delta) { preparedSaveState = map.state; preparedSaveView = saveViewKey(); broadcastState(); }
   setStatus("Redo applied.");
   board.focus({ preventScroll: true });
 }
@@ -8041,6 +7926,7 @@ function render(incremental = false): void {
 }
 
 function renderScene(incremental: boolean): void {
+  patchDocumentScene = null;
   scopeView.guardScope();
   prepareConcretenessView();
   board.dataset.concretenessLevel = String(viewState.concretenessLevel);
@@ -8096,6 +7982,8 @@ function renderScene(incremental: boolean): void {
   const scatterNodeRenderable = (nodeId: string): boolean =>
     !scatterSurface || nodeId !== displayRootId;
 
+  const stableScene = new StableScenePatch(layout);
+  const paintDependency = (id: string) => JSON.stringify([state.nodes[id]?.text, state.nodes[id]?.parentId, effectiveNodeStyleAttrs(state.nodes[id]), state.nodes[id]?.targetNodeId]);
   const pos = layout.pos;
   lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}:${viewState.concretenessLevel}`);
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
@@ -8624,6 +8512,7 @@ function renderScene(incremental: boolean): void {
     }
 
     const children = scatterSurface ? [] : visibleChildren(node);
+    stableScene.remember(nodeId, children, paintDependency(nodeId));
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
     if (!layout.lane && !nodeComponent) {
@@ -8783,6 +8672,51 @@ function renderScene(incremental: boolean): void {
   updateScopeSummary();
   updateMapTitle();
   renderLinearPanel();
+  if (state === map.state && viewState.surfaceViewMode === "tree") {
+    const retainedContext = saveViewKey();
+    patchDocumentScene = (touches) => {
+      if (map?.state !== state || retainedContext !== saveViewKey() || viewerFilter.getSnapshot().result.active || !retainedSceneBounds.box) return false;
+      const changed = new Set(touches.nodes);
+      if (changed.has(displayRootId)) return false;
+      // Components and previews can own geometry beyond their measured node box.
+      for (const id of changed) if (!state.nodes[id] || parseNodeComponent(state.nodes[id]) || nodeAuxMarkup.get(id)) return false;
+      const applied = stableScene.apply(touches, {
+        children: id => visibleChildren(state.nodes[id]), dependency: paintDependency,
+        measure: id => cachedLayoutNode(state, id, displayRootId, structuredLayoutConfig(structuredMode)),
+        draw: id => {
+          const input = toNodeDrawInput(state.nodes[id], pos[id], effectiveNodeStyleAttrs(state.nodes[id]));
+          const output = renderNodeSvg(input);
+          retainedSvgScene.patch(`node:${id}`, output.svg);
+          nodeDrawInputs.set(id, input);
+          retainedSceneBounds.set(`node:${id}`, fragmentBox(`node:${id}`));
+          refreshCapturedNodeFragment(canvas, id, retainedSvgScene.element(`node:${id}`)!);
+        },
+      });
+      if (!applied) return false;
+      const sceneBounds = retainedSceneBounds.box;
+      if (!sceneBounds) return false;
+      const bounds = sceneWorldBounds(sceneBounds, maxX, maxY);
+      contentMinX = bounds.minX; contentMinY = bounds.minY;
+      contentWidth = bounds.maxX - bounds.minX; contentHeight = bounds.maxY - bounds.minY;
+      canvas.setAttribute("width", String(contentWidth)); canvas.setAttribute("height", String(contentHeight));
+      canvas.setAttribute("viewBox", `${contentMinX} ${contentMinY} ${contentWidth} ${contentHeight}`);
+      applyCanvasViewportTransform();
+      if (isWebGLRendererActive() && webglProjection && webglLastSnapshot) {
+        canvas.removeAttribute("hidden");
+        try {
+          const paint = captureSvgPaintScene(canvas, changed, true);
+          const scene = webglProjection.updateNodePaint(paint, changed);
+          if (scene) webglLastSnapshot = { ...webglLastSnapshot, paintScene: scene };
+          webglProjection.present();
+        } finally { canvas.setAttribute("hidden", ""); }
+      } else if (webglSurfaceSupported()) scheduleWebGLProjectionActivation();
+      renderRevision++;
+      board.dataset.renderRevision = String(renderRevision);
+      board.dataset.editWork = JSON.stringify({ incremental: true, measured: changed.size, layouts: 0, branches: 0, nodes: changed.size, edges: 0, fragments: changed.size });
+      syncNodeSelectionPresentation(); updateScopeMeta(); updateScopeSummary([...changed]); updateMapTitle();
+      return true;
+    };
+  }
 }
 
 interface LayoutDiagnosticBox {
@@ -9442,6 +9376,7 @@ function normalizeSelectionState(): void {
 }
 
 function syncSelectionMetadata(): void {
+  if (map) renderedMetaPrefix = renderedMetaPrefix.replace(/( \| savedAt: )[^|]*/, `$1${map.savedAt} `);
   const selected = map?.state.nodes[viewState.selectedNodeId];
   const proposal = viewState.dragState?.proposal;
   const parentLabel = proposal ? (map?.state.nodes[proposal.parentId]?.text ?? proposal.parentId) : "";
@@ -13098,7 +13033,7 @@ async function saveDocToLocalDbOnce(showStatus = false, force = false): Promise<
     if (showStatus) {
       setStatus("Saved locally.");
     }
-    scheduleRender();
+    syncSelectionMetadata();
     return true;
   } catch (err) {
     captured?.retry();
@@ -13385,36 +13320,30 @@ function initBroadcastSync(): void {
   } catch {
     return;
   }
-  bc.onmessage = (ev: MessageEvent<BcStateMessage>) => {
-    if (!map || ev.data.fromTabId === TAB_ID) {
-      return;
-    }
-    if (ev.data.type === "STATE_UPDATE" && isValidAppState(ev.data.state)) {
-      finishGrab(false);
-      stopScatterAnimation(false); disperseForce.invalidate();
-      map.state = ev.data.state;
-      if (typeof ev.data.savedAt === "string" && ev.data.savedAt) {
-        // BcStateMessage.savedAt carries the sender's lastServerSavedAt baseline.
-        lastServerSavedAt = ev.data.savedAt;
+  deltaBroadcast = new DeltaBroadcast(bc, TAB_ID,
+    () => map ? { state: canonicalMapState(), savedAt: lastServerSavedAt || "" } : null,
+    message => {
+      if (!map) return;
+      if (message.savedAt) lastServerSavedAt = message.savedAt;
+      if (message.patch) {
+        if (!message.patch.records.length) return;
+        finishGrab(false);
+        applyStatePatch(map.state, message.patch);
+        if (lastServerBaseState) applyStatePatch(lastServerBaseState, message.patch);
+        restoreIndex(map.state, message.patch.touches);
+        if (!message.patch.touches.nodes?.length || Object.keys(message.patch.touches).some(field => !["nodes", "scopes", "surfaces"].includes(field)) || !patchDocumentScene?.({ nodes: message.patch.touches.nodes })) scheduleRender();
+      } else if (message.state && isValidAppState(message.state)) {
+        finishGrab(false); stopScatterAnimation(false); disperseForce.invalidate();
+        map.state = message.state; trackSavedState(); scheduleRender();
       }
-      trackSavedState();
-      scheduleRender();
-    }
-  };
+    });
+  bc.onmessage = ev => deltaBroadcast?.accept(ev.data);
+  deltaBroadcast.start();
   window.addEventListener("beforeunload", () => bc?.close());
 }
 
 function broadcastState(): void {
-  if (!bc || !map || grabSession) {
-    return;
-  }
-  const msg: BcStateMessage = {
-    type: "STATE_UPDATE",
-    fromTabId: TAB_ID,
-    state: canonicalMapState(),
-    savedAt: lastServerSavedAt || "",
-  };
-  bc.postMessage(msg);
+  if (map && !grabSession) deltaBroadcast?.send();
 }
 
 // ---------------------------------------------------------------------------
@@ -13682,10 +13611,15 @@ function touchDocument(incremental = false, touches?: SaveTouches): void {
     localEditBatchPending = true;
     return;
   }
-  syncLinearNotesToDocState();
-  syncMapModelStateFromRuntime();
+  if (!touches) syncLinearNotesToDocState();
+  syncMapModelStateFromRuntime(touches);
   map.savedAt = nowIso();
-  render(incremental);
+  if (!touches || !patchDocumentScene?.(touches)) render(incremental);
+  else if (new URLSearchParams(location.search).get("deltaDebug") === "1") {
+    const markup = canvas.innerHTML, layout = JSON.stringify(lastLayout);
+    render();
+    if (markup !== canvas.innerHTML || layout !== JSON.stringify(lastLayout)) throw new Error("Incremental scene differs from full rebuild");
+  }
   scheduleAutosave(true);
   preparedSaveState = map.state;
   preparedSaveView = saveViewKey();
@@ -14020,10 +13954,12 @@ function selectedFitNodeIds(includeDescendants: boolean): Set<string> {
 
 /** Box of the whole drawn scene: from the markup when every fragment allows it, otherwise measured. */
 function sceneBox(): MarkupBox {
+  retainedSceneBounds.clear();
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, known = true;
   for (const fragment of Array.from(canvas.children) as SVGGraphicsElement[]) {
     if (!fragment.childElementCount || fragment.dataset.renderKey === "defs") continue;
     const box = fragmentBox(fragment.dataset.renderKey || "");
+    retainedSceneBounds.set(fragment.dataset.renderKey || "", box);
     if (!box) { known = false; break; }
     minX = Math.min(minX, box.x); minY = Math.min(minY, box.y);
     maxX = Math.max(maxX, box.x + box.width); maxY = Math.max(maxY, box.y + box.height);
