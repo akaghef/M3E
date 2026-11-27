@@ -100,7 +100,7 @@ Expected gates:
 ## Residual Risk
 
 - `neo4j-driver` was added to `beta/package.json`, but this sandbox could not refresh `beta/package-lock.json` because registry access failed with `ENOTFOUND registry.npmjs.org`. Director must run `npm install` in `beta/` before live execution.
-- `dump` is a logical pilot-subgraph dump, not a physical Neo4j engine dump. Recovery Gate evidence is based on `logical-export` plus `restore-drill`, matching ADR_008's snapshot requirement.
+- `dump` is a logical pilot-subgraph dump, not a physical Neo4j database dump. Recovery Gate evidence is based on `logical-export` plus `restore-drill`, matching ADR_008's snapshot requirement.
 
 ---
 

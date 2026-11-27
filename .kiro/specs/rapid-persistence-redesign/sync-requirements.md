@@ -10,7 +10,7 @@
   - **推論**: 決定から導いたもの。
 - 受入条件は試験の定義であり、実施の結果ではない。試験で与える期限・容量・番号は fixture で、製品の既定値ではない。
 
-**確定点は、remote の journal への fsync のままとする（Q1 で (b) を暫定に採った）。** remote の保存媒体を失えば、どの local にもまだ配られていない確定は失われうる。その代わり、復旧した地点と、欠けたかもしれない範囲を示す。二媒体での保全は、複雑さを避けるため当面は持たない。
+**確定点は remote の Neo4j の write transaction の確定である（akaghef、2026-11-27）。** remote の保存媒体を失えば、どの local にもまだ配られていない確定は失われうる。その代わり、復旧した地点と、欠けたかもしれない範囲を示す。二媒体での保全は、複雑さを避けるため当面は持たない。
 
 ## 1. 目的・適用範囲・保証の限界
 
@@ -96,7 +96,7 @@
 - 許可は scope の権限と同じ場所に置く。scope、許可される相手（アカウント）、許可の種類（接頭辞つきの開いた集合、例 `m3e:unlock`）、許可した human、任意の期限を持つ。付与も取り消しも Command である。
 - 許可は与えた scope の中だけで効き、入れ子の scope に継承しない。
 - 有効とは、確定の時点で、期限内であり、許可した human がその scope を今も編集できることである。
-- 取り消しは許可のレコードの削除である。誰が許可していたかは journal の保持期間（archive の 90 日）だけ追える。
+- 取り消しは許可のレコードの削除である。誰が許可していたかは journal の保持期間だけ追える。
 - ロックを外す Command を出した human と、許可した human が同じであることは求めない。
 
 **受入条件：**
@@ -148,8 +148,8 @@
 
 ### R4.1　local commit の耐久性
 
-**要件：** WHEN local commit を完了通知するとき、THE local SHALL Command の内容・`commandId`・依存を outbox に fsync 済みとし、永続化に失敗した操作を完了扱いにしない。  
-**受入条件：** fsync 後・通知前に process を停止して再起動すると、同じ ID・内容・依存の Command が復元される。容量不足を注入して fsync を失敗させた場合、完了通知は出ず、未保存であることが判別できる。  
+**要件：** WHEN local commit を完了通知するとき、THE local SHALL Command の内容・`commandId`・依存を Neo4j の `Outbox` node に transaction で保存済みとし、永続化に失敗した操作を完了扱いにしない。  
+**受入条件：** Neo4j の transaction の確定後・通知前に process を停止して再起動すると、同じ ID・内容・依存の Command が復元される。容量不足を注入して Neo4j の transaction を失敗させた場合、完了通知は出ず、未保存であることが判別できる。  
 **根拠：決定**。
 
 ### R4.2　Command ID と内容の対応
@@ -193,20 +193,20 @@
 ### R5.1　remote の保存媒体の喪失
 
 **要件：** IF remote の保存媒体が失われた場合、THEN THE remote SHALL 届く local と backup から復旧した地点と、欠けたかもしれない確定の範囲を示し、欠けがないと確認できない復旧を完全な復旧と表示しない。  
-**受入条件：** 確定 101 を fsync した後、どの local も 101 を pull しないうちに remote の媒体を失わせる。復旧の結果は「100 まで復旧、101 以降は欠けた可能性がある」と表示され、完全な復旧とは表示されない。  
+**受入条件：** 確定 101 の Neo4j の transaction を完了した後、どの local も 101 を pull しないうちに remote の媒体を失わせる。復旧の結果は「100 まで復旧、101 以降は欠けた可能性がある」と表示され、完全な復旧とは表示されない。  
 **根拠：決定**（Q1、暫定）。複雑さを避けるため、媒体 1 つの喪失で確定を失わない保証は当面持たない。
 
 ### R5.2　確定応答の条件
 
-**要件：** WHEN 確定成功の応答を返すとき、THE remote SHALL その確定の journal への fsync と、その確定までの engine への適用を完了している。  
-**受入条件：** fsync の前に停止すると成功応答は出ない。fsync の後、engine への適用の前に停止しても成功応答は出ない。両方の完了後に成功応答を返した場合、その後の問い合わせは当該確定より古い状態を返さない。  
-**根拠：決定**（Q1）。
+**要件：** WHEN 確定成功の応答を返すとき、THE remote SHALL record の変更・`Commit`・`CommandResult`・`Head.seq` を同じ Neo4j の write transaction で確定している。  
+**受入条件：** transaction の確定前に停止すると成功応答は出ない。確定後に成功応答を返した場合、その後の問い合わせは当該確定より古い状態を返さない。  
+**根拠：決定**（akaghef、2026-11-27）。
 
-### R5.3　未適用の確定と直列検査
+### R5.3　確定の transaction と直列検査
 
-**要件：** WHILE 確定済みだが engine 未適用の記録が存在する間、THE remote SHALL 古い engine 状態を用いて後続 Command を確定せず、先行する確定の適用を回復する。  
-**受入条件：** 値 `0→1` の確定記録を保存後、engine 適用前に故障させる。その間に前提値 `0` の別 Command を送る。復旧後は `1` を含む状態で評価され、未適用だった `0` を根拠に確定されない。  
-**根拠：決定**。
+**要件：** WHEN Command を確定するとき、THE remote SHALL workspace の `Head` を lock し、同じ Neo4j の write transaction の中で Neo4j から読んだ record を検査する。非同期の適用は行わない。  
+**受入条件：** 値 `0→1` の transaction の途中で停止した場合、変更と `Commit` は一体として未確定か確定済みになる。確定済みなら次の Command は `1` に対して評価される。journal より Neo4j が遅れる状態は生じない。  
+**根拠：決定**（akaghef、2026-11-27）。
 
 ### R5.4　確定結果の再生
 
@@ -216,21 +216,21 @@
 
 ### R5.5　復旧対象となる管理状態
 
-**要件：** WHEN snapshot と journal から復旧するとき、THE remote SHALL 内容に加えて、権限、未解決 conflict、必要な Command 結果、epoch・履歴 ID、端末失効、消去状態を回復する。  
-**受入条件：** 権限失効、conflict 登録、Command 確定、端末失効を順に行った後、engine の保存内容を失わせて復旧する。各状態と依存の停止が再現され、旧権限や失効端末が復活しない。  
+**要件：** WHEN Neo4j を clone または定期 export から復旧するとき、THE remote SHALL 内容に加えて、権限、未解決 conflict、必要な Command 結果、epoch・履歴 ID、端末失効、消去状態を回復する。  
+**受入条件：** 権限失効、conflict 登録、Command 確定、端末失効を順に行った後、Neo4j の保存内容を失わせ、端末は remote の clone、remote は定期 export から復旧する。各状態と依存の停止が再現され、旧権限や失効端末が復活しない。  
 **根拠：決定**。
 
-### R5.6　snapshot の自己完結性と到達地点
+### R5.6　clone / export の自己完結性と到達地点
 
-**要件：** WHEN snapshot を復旧用として公開するとき、THE remote SHALL 対象範囲・履歴 ID・epoch・到達地点・検証情報・必要な構成要素を特定可能にし、未完成の snapshot を有効な復旧基点として公開しない。  
-**受入条件：** snapshot の生成途中で停止するか、構成要素の一つを除去する。復旧時に不完全性が検出され、その snapshot を基点とした復旧完了にはならない。完全な snapshot と後続 journal では、対応する状態を再構成できる。  
-**根拠：推論**。
+**要件：** WHEN Neo4j の状態を clone / export するとき、THE remote SHALL 対象範囲・履歴 ID・epoch・到達地点・検証情報・必要な構成要素を特定可能にし、未完成の payload を有効な復旧基点として公開しない。snapshot は Neo4j の状態であり、別の snapshot ファイルは置かない。  
+**受入条件：** clone / export の生成途中で停止するか構成要素を除去すると、不完全性が検出され復旧完了にならない。完全な payload からは対応する状態を Neo4j に復元できる。  
+**根拠：決定**（akaghef、2026-11-27）。
 
-### R5.7　local engine の再構成
+### R5.7　local の Neo4j の再構成
 
-**要件：** WHEN 各端末の engine を再構築するとき、THE local SHALL 確定状態を保持する scope ごとの snapshot と確定記録から再構成し、未確定の意図は outbox に基づいて区別して復元する。  
-**受入条件：** local の engine データだけを削除し、snapshot・journal・outbox を残して再起動する。確定状態と pending の区別が復元され、pending が確定済みとして再登録されない。  
-**根拠：決定**。journal と snapshot が durability authority（system of record）、各端末の Neo4j が semantic authority であり、Neo4j は replay で再構築する。特定の DB 製品・native dump 形式には依存しない。
+**要件：** WHEN 端末の Neo4j を再構築するとき、THE local SHALL remote から clone し、保全できた未確定の意図は outbox に基づいて確定済み状態と区別する。outbox は端末の Neo4j の `Outbox` node に置く。  
+**受入条件：** 端末の Neo4j を失わせ、remote の clone から確定状態を戻す。保全できた pending は同じ commandId・内容を維持し、確定済みとして再登録しない。端末にしかない outbox を database 喪失後にも必ず復元できるとは扱わない。  
+**根拠：決定**（akaghef、2026-11-27）。Neo4j が永続と検査・query を担い、端末は clone、remote は定期 export で復旧する。
 
 ## 6. push・pull・部分複製
 
@@ -323,7 +323,7 @@
 ### R7.6　conflict と解決 Command
 
 **要件：** WHEN conflict の登録または解決を確定するとき、THE remote SHALL 元の Command を識別できる状態を保持し、解決を別 Command として記録し、依存 Command の再評価結果を追跡可能にする。  
-**受入条件：** conflict 登録後に engine を再構築しても、元の ID・理由・未実行の依存を取得できる。異なる解決を同時に送っても、解決済み状態を無視して二重に適用しない。元の ID の内容を書き換える方法では解決できない。  
+**受入条件：** conflict 登録後に database を再構築しても、元の ID・理由・未実行の依存を取得できる。異なる解決を同時に送っても、解決済み状態を無視して二重に適用しない。元の ID の内容を書き換える方法では解決できない。  
 **根拠：決定**（Q5）および**決定**。
 
 ### R7.7　未定義の merge case
@@ -380,9 +380,9 @@
 
 ### R8.7　compaction の安全条件
 
-**要件：** WHEN journal を snapshot に畳み込み旧記録を破棄するとき、THE remote SHALL 復旧・同期・有効な再送窓・保証中の履歴利用に必要な情報が残ることを検証してから破棄する。  
-**受入条件：** snapshot 作成途中に停止しても、従来の復旧経路は失われない。compaction 後に、確定状態の復旧、再送窓内の重複排除、保持対象の過去版取得を検証できる。最新状態だけを再生できても、必要な過去版が失われれば不合格とする。  
-**根拠：推論**。開始契機は未決。archive に移した journal は、その範囲を覆う snapshot の検証が通っていれば 90 日で削除する（決定）。
+**要件：** WHEN Neo4j 内の保持対象外の確定記録を破棄するとき、THE remote SHALL 復旧・同期・有効な再送窓・保証中の履歴利用に必要な情報が残ることを検証してから破棄する。  
+**受入条件：** 定期 export の途中で停止しても、検証済み export は失われない。確定記録の削減後に、確定状態の復旧、再送窓内の重複排除、保持対象の過去版取得を検証できる。最新状態だけを再生できても、必要な過去版が失われれば不合格とする。  
+**根拠：推論**。保持対象外の確定記録を削減する前に Neo4j の現在状態と必要な履歴・再送結果・名前付き snapshot・定期 export の保全を検証する。JSON Lines の compaction と journal の archive は置かない。
 
 ### R8.8　消去と旧 snapshot からの復旧
 
@@ -410,10 +410,10 @@
 **受入条件：** 古いコピーを持つ移動先を指定する。状態検証が完了するまで切替完了にはならない。切替中も local commit は続けられ、その outbox が消去されたり自動的に別 workspace へ送られたりしない。  
 **根拠：決定**。
 
-### R9.4　端末の clone・backup 復元
+### R9.4　端末の clone による復旧
 
-**要件：** WHEN clone または backup から local を新たに成立させるとき、THE local SHALL 新しい端末 ID を使用し、復元した既存 Command の ID・内容・依存を維持する。  
-**受入条件：** 一つの backup から二つの local を復元する。端末 ID は互いに異なり、保存済みの同じ Command は同じ ID のままである。新規 Command の発行が、既存 outbox の ID 再発行を伴わない。  
+**要件：** WHEN remote の clone から local を新たに成立させるとき、THE local SHALL 新しい端末 ID を使用し、復元した既存 Command の ID・内容・依存を維持する。  
+**受入条件：** 定期 export から復旧した remote を clone して二つの local を作る。保全できた既存 Command はそれぞれの outbox に戻す。端末 ID は互いに異なり、保存済みの同じ Command は同じ ID のままである。新規 Command の発行が、既存 outbox の ID 再発行を伴わない。  
 **根拠：決定**。
 
 ### R9.5　非互換 client の停止と変換
@@ -428,10 +428,10 @@
 **受入条件：** 仮決めの規則を変更した後に、変更前の snapshot・journal を replay する。元の確定値と解決結果は変わらない。新規則による現在状態の変更が必要なら、別の明示的な変更として識別できる。  
 **根拠：推論**。
 
-### R9.7　local の旧 backup と消去状態
+### R9.7　export から復旧した remote の clone と消去状態
 
-**要件：** WHEN 旧 backup から local を復元するとき、THE local SHALL 消去対象を再公開しないために必要な消去状態を確認し、確認不能な対象を通常の閲覧可能状態として有効化しない。  
-**受入条件：** 消去前の backup を、消去後に offline で復元する。必要な消去状態や復号可否を確認できない対象は公開されない。確認後も消去済み対象は読めない。既存 local の offline 継続と、旧 backup の復元を同一の許可根拠で処理しない。  
+**要件：** WHEN 消去前の export から復旧した remote を clone するとき、THE local SHALL 消去対象を再公開しないために必要な消去状態を確認し、確認不能な対象を通常の閲覧可能状態として有効化しない。  
+**受入条件：** 消去前の export を消去後に remote の Neo4j へ復元する。local はその remote の clone で復旧する。必要な消去状態や復号可否を確認できない対象は公開されない。確認後も消去済み対象は読めない。既存 local の offline 継続と、export から復旧した remote の clone を同一の許可根拠で処理しない。  
 **根拠：推論**。取り出し済み平文の例外は R8.8 に従う。
 
 ## 10. 性能・観測可能性・受け入れ条件
@@ -456,8 +456,8 @@
 
 ### R10.4　運用・監査情報
 
-**要件：** WHEN 同期・復旧・競合処理の状態を問い合わせられたとき、THE remote SHALL 権限の範囲内で、確定地点・適用地点・scope ごとの到達地点、Command の結果、依存による停止理由、resolution、実行主体と端末、容量計測の範囲を確認可能にする。  
-**受入条件：** DB 適用停止、応答喪失、依存 park、媒体喪失をそれぞれ注入する。どこまで確定し、どこまで適用され、何が未確認かを区別できる。復元端末の送信者情報と元 Command の由来を混同せず、権限外の本文が診断情報へ漏れない。  
+**要件：** WHEN 同期・復旧・競合処理の状態を問い合わせられたとき、THE remote SHALL 権限の範囲内で、Neo4j の確定地点・local の pull の到達地点・scope ごとの到達地点、Command の結果、依存による停止理由、resolution、実行主体と端末、容量計測の範囲を確認可能にする。  
+**受入条件：** Neo4j の transaction 失敗、応答喪失、依存 park、媒体喪失をそれぞれ注入する。どこまで Neo4j で確定し、どこまで local が pull し、何が未確認かを区別できる。復元端末の送信者情報と元 Command の由来を混同せず、権限外の本文が診断情報へ漏れない。  
 **根拠：決定**および**推論**。
 
 ## 未決事項と、実装前に決める優先順位
@@ -466,7 +466,7 @@
 
 | ID（上ほど先に決める） | 未決事項 | 決めるべき内容と手戻りの理由 | 関連要件 |
 |---|---|---|---|
-| **K1** | **remote の保存媒体の喪失と、復旧の表示** | 確定点は journal への fsync（Q1 の (b)、暫定）。媒体を失ったとき、復旧した地点と欠けたかもしれない範囲を何から判定するか（local の到達地点、backup の地点）を決める。二媒体での保全を後から足すときは、確定点の定義から見直す。 | R5.1–R5.3、R9.2 |
+| **K1** | **remote の保存媒体の喪失と、復旧の表示** | 確定点は Neo4j の write transaction。媒体を失ったとき、復旧した地点と欠けたかもしれない範囲を何から判定するか（local の到達地点、backup の地点）を決める。二媒体での保全を後から足すときは、確定点の定義から見直す。 | R5.1–R5.3、R9.2 |
 | **K2** | **Command の内容同一性・結果・期限の保存契約** | `commandId` に固定する意味内容、schema 変更時の同一性、送信端末情報と作成由来の区別、再送窓の起算点・時計・期限証拠、reject・park・確定結果の再照会規則を決める。これが曖昧だと backup 復元・変換・重複排除が衝突する。 | R4.2、R4.5–R4.7、R9.4–R9.5 |
 | **K3** | **scope への射影と検証単位** | 一確定の断片 ID、必要な可視部分の完了判定、snapshot と scope 鎖の結び付き、取得対象の到達地点を定める。同じ source scope でも主体により edge 内容の可視性が異なるため、「scope の raw journal をそのまま配る」では成立しない。 | R3.4、R5.6、R6.5–R6.7 |
 | **K4** | **crypto-shredding の管理範囲と復旧条件** | 消去単位、鍵の共有単位、鍵の backup、消去状態を確認する基準、offline 復元を許可できる条件を定める。暗号化後に消去単位を細かくしたい場合、既存 ciphertext・鍵配置の作り直しが必要になり得る。 | R8.8、R9.7 |
@@ -474,11 +474,11 @@
 | **K6** | **merge の対象粒度と操作表** | attribute の key、details の本文・note・link、未設定値、集合・配列の比較単位を定める。並べ替え LWW の対象が node 単位か親単位か複数 node の組か、削除との各組合せも必要。型の組合せに加え、対象・前提・構造条件を含む表にする。 | R2.5、R4.7、R7.1、R7.4–R7.7 |
 | **K7** | **Undo と conflict 解決の証拠** | 実差分を誰が作ったかの証拠、証拠の保持期間、解決 Command と元 Command の結果の対応、依存を再評価してよい条件を定める。値だけ残す保存形式では、後から強い Undo や依存の安全な再開を実現できない。 | R7.2–R7.3、R7.6、R8.7 |
 | **K8** | **完全な復旧を認定する情報** | 全 scope の inventory、最後の確定地点を確認する根拠、必要コピーの所在、消去例外を含めた被覆判定を定める。local から集めた最大番号だけでは完全性を証明できない。通常の remote 移動で履歴 ID を維持する条件もここで決める。 | R5.5–R5.6、R9.1–R9.3 |
-| **K9** | **容量の計測範囲と受付制限** | workspace 使用量に engine、snapshot、共有履歴、二媒体の複製、local outbox をどの単位で含めるかを定める。到達不能端末の使用量を含む集計は、計測時点・不明部分を表示する。容量不足時の受付停止は、保持義務を破る削除と区別する。 | R4.1、R8.1–R8.3、R10.4 |
+| **K9** | **容量の計測範囲と受付制限** | workspace 使用量に database、snapshot、共有履歴、二媒体の複製、local outbox をどの単位で含めるかを定める。到達不能端末の使用量を含む集計は、計測時点・不明部分を表示する。容量不足時の受付停止は、保持義務を破る削除と区別する。 | R4.1、R8.1–R8.3、R10.4 |
 | **K10** | **単一 Command・push の受付上限** | 最大 byte 数、変更対象数、依存数などを定める。不可分な巨大 Command を無制限に受け入れると、対話優先でも長い待ちを避けられない。push 全体の事前検証に必要な資源上限も関係する。 | R4.3、R6.2、R10.2 |
-| **K11** | **互換性の範囲** | engine の位置づけは決定（journal と snapshot が durability authority、Neo4j が semantic authority）。残るのは、保持済みデータの復旧互換性と、client の書込互換性の範囲。journal に無いドメイン状態を Neo4j にだけ置くことは認めない。 | R4.7、R5.5–R5.7、R9.5–R9.6 |
+| **K11** | **互換性の範囲** | Neo4j が durability authority と semantic authority を担う。残るのは clone / export の復旧互換性と client の書込互換性の範囲。状態と必要な管理記録は Neo4j に保持し、clone / export に含める。 | R4.7、R5.5–R5.7、R9.5–R9.6 |
 | **K12** | **保持期間・容量の既定値** | 各領域の設定値、設定しない場合の意味、Undo・由来・重複排除に必要な保持との関係を決める。Rapid の 30 日は候補であり、現時点の規定値にはしない。 | R4.5、R8.1–R8.3、R8.5 |
-| **K13** | **snapshot・compaction の契機** | 件数・大きさ・時刻・起動時のどれを使うか、または組み合わせるかを決める。R8.7 の安全条件を先に固定できれば、契機は後から変更しやすい。 | R5.6、R8.7 |
+| **K13** | **定期 export と確定記録の削減の契機** | export の周期と確定記録の削減の契機を決める。R8.7 の安全条件を満たす。別の snapshot ファイルと log compaction は置かない。 | R5.6、R8.7 |
 | **K14** | **性能の数値目標** | R10.1 の条件で測定後、対話表示、local 永続化、remote 確定、取り込み、clone・復旧の目標値を決める。現段階では数値 SLO は未決であり、合格済みとは判定しない。 | R10.1–R10.2 |
 
 | **K15** | **ロックの範囲** | 決定済み（R2.6、R2.7）。部分木に及ぶロックと、許可の継承は、必要になったら欄の追加で足す。 | R2.6、R2.7 |
@@ -511,11 +511,11 @@
 | Q20 | 許可の取り消し | レコードの削除。来歴は journal の保持期間だけ | R2.7 |
 | Q21 | 許可した human が権限を失ったとき | 許可は効かなくなる（確定時に判定） | R2.7 |
 
-Neo4j の位置づけは、journal と snapshot を durability authority（system of record）、各端末の Neo4j を semantic authority とすることに決まった（同日）。journal は workspace に一本、未確定の Command は端末ごとの outbox。archive に移した journal は、覆う snapshot の検証を条件に 90 日で削除する。
+Neo4j は durability authority（永続する現在状態）と semantic authority を担う。journal は workspace に一本で Neo4j の `Commit` node に置く端末と remote の交換記録、未確定の Command は端末の `Outbox` node に置く。snapshot は Neo4j の状態で、別のファイルは置かない。端末は remote の clone、remote は定期 export で復旧する。
 
 ## 12. 1 往復目で分かった、決定どうしの緊張
 
-- 「fsync で確定」と「届く local から最長の部分を集めて remote を作り直す」: どの local にも配られていない確定は local から戻せない。戻せた最長の部分と、全確定の保全は別である（Q1、K1）。
+- 「Neo4j の transaction で確定」と「届く local から最長の部分を集めて remote を作り直す」: どの local にも配られていない確定は local から戻せない。戻せた最長の部分と、全確定の保全は別である（Q1、K1）。
 - 「scope だけを clone」と「全 local を集めた workspace の復旧」: どの local も持たない scope がありうる。最大の番号を集めても完全な workspace にはならない（R9.2、K8）。
 - 「確定済み prefix の上に pending を重ねる」と「scope 間の consistent cut を保証しない」: 地点の違う scope を合成した確定状態は、一つの workspace prefix の状態とは限らない。scope ごとの到達地点を持つ部分状態として扱う（R6.6、R6.7）。
 - 「Command 間の partial acceptance」と「不一致なら push 全体を abort」: 前半を確定した後で abort の条件が分かっても、前半は取り消せない。abort の条件は確定を始める前に検査し終える（R6.2）。

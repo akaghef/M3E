@@ -185,7 +185,7 @@ DC51 は shared `selectionHighlight.guide` と既存 adapter で実装。既存�
 `disperseGuideEndpoints` を再利用し、選択中の親子 edge 一組だけを描く。
 group-frame の選択 identity と左右巡回候補は維持する。adapter の描画後に
 既存 WebGL snapshot が同じ SVG guide を読み取る。GraphLink の除外・集約、
-Lane 描画、layout engine、保存形式は変更していない。
+Lane 描画、配置の計算、保存形式は変更していない。
 
 タスク5・8は **2026-10-24 akaghef 受け入れ** として記録した。
 これはユーザーから与えられた受け入れ記録であり、今回の DC51 ブラウザ試験の成功とは区別する。

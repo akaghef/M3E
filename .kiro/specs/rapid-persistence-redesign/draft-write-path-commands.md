@@ -73,7 +73,7 @@
 | 47 | 起動 | `start_viewer.ts:298–311, 313–320`（`ensureMap` 内の旧 id 移行） | 起動のたび | 旧 id の行を新 id へ UPDATE。新旧の行が両方あると、旧行を内容を確かめずに DELETE（`:325–330`） | 各単文 | なし | 確認 |
 | 48 | 起動 | `rapid_mvp.ts:852–895`（DB を開くたびの schema 移行） | 全経路 | `documents→maps` の改名と列の追加 | 個別の DDL | なし | 確認 |
 | 49 | 起動 | `start_viewer.ts:498–509, 4413–4416` → `rapid_mvp.ts:1602` | 起動のたび | `beta/data/` の sample JSON と sample 専用 SQLite を作る（workspace の外） | — | なし | 確認 |
-| 50 | backup | `start_viewer.ts:3922–3930` → `backup.ts:44`（engine backup） | 起動時と定期 | DB file の物理複製 | — | なし | 確認 |
+| 50 | backup | `start_viewer.ts:3922–3930` → `backup.ts:44`（database backup） | 起動時と定期 | DB file の物理複製 | — | なし | 確認 |
 | 51 | CLI | `system_diagram_runner.ts:78–95, 258–310`（command の種類 `:215–219`） | CLI | 最初に取った全状態に command を適用し、command ごとに全体を POST（baseSavedAt なし）。node ID は呼出し元が指定。破壊的な command の前に JSON snapshot を書く（`:282`） | 層 A 1 の base なし | あり | 確認 |
 | 52 | CLI | `projects/PJ02_MathOntoBridge/runtime/render_runtime_map.mjs:67–87, 640–651` | CLI | new と rename の後、生成した全状態を `force: true` で POST | なし（force） | あり | 確認 |
 | 53 | CLI | `projects/PJ02_MathOntoBridge/runtime/sync_runtime_state.mjs:275–293` | CLI | 全状態を取って変更し、baseSavedAt 付きで POST | 層 A 1・2 | あり | 確認 |
@@ -143,7 +143,7 @@
 | 47 | 旧 map id の移行 | なし | — | — | — | 削除（一度きりの data migration に吸収） |
 | 48 | DB schema の移行 | なし | — | — | — | 削除（同上） |
 | 49 | sample の生成 | なし（workspace の map data ではない） | — | — | — | 対象外（既定 map への誤読込み＝層 B 58 だけ止める） |
-| 50 | engine backup | なし（backup） | — | — | — | export のみ残す（backup として。Recovery Gate の根拠にはしない） |
+| 50 | database backup | なし（backup） | — | — | — | export のみ残す（backup として。Recovery Gate の根拠にはしない） |
 | 51 | System Diagram の command を map に反映 | `delete`、`assert`、`rename`、`set-attribute` | command ごとの記録 | なし（いまは base なし） | なし | Command へ変換（呼出し元が ID を決めてよいかは未決） |
 | 52 | PJ02 の実行状態を map に描く | 定義語なし（map 全体の置換） | map の全記録 | なし（force） | なし | Command へ変換か削除 |
 | 53 | PJ02 の実行状態の同期 | `assert`、`rename`、`set-attribute` | 変わる node | 全体の revision | なし | Command へ変換 |
@@ -311,7 +311,7 @@ Command の検証を一つにすると、次の差がそのまま仕様の判断
 
 - 行番号は 1 節の表に置き換える（research は `d67b834` 基準）。
 - 7 節にあって、内容を確認したもの: ブラウザ保存とマージ、`?scope=`、MCP、Flash、旧 Flash、linear-text、relation edge、append-mf-h、mapify-oracle、cas/pn-generate、collab、Vault の import・watch・live 保存・export、Blueprint、Home の各操作、backup の restore、cloud の push・pull、起動時の `ensureMap`、schema の移行、CLI と script の一部、Final。
-- 追加したもの: `force` による全置換（層 A 3）、存在しない map id への保存による作成（4）、`?scope=` が境界をまたぐ relation edge を消すこと（5）、MCP の種類ごとの内訳（7〜14）、Vault のファイル削除による参照先の書換え（27）、確定後の Vault 書出し（28）、PJ02 の script 2 本（52・53）、起動時の sample 生成（49）、engine backup（50）、Final に条件付き確定がないこと（58）、Final も 研究 map を作ること（60）、未追跡の配布 payload（63）、collab の `mapVersion` が全 map 共通であること（24）、ブラウザ側の操作の全体（層 B）、特に利用者の操作なしの書込み（層 B 37・40・41・43・56・58・59）。
+- 追加したもの: `force` による全置換（層 A 3）、存在しない map id への保存による作成（4）、`?scope=` が境界をまたぐ relation edge を消すこと（5）、MCP の種類ごとの内訳（7〜14）、Vault のファイル削除による参照先の書換え（27）、確定後の Vault 書出し（28）、PJ02 の script 2 本（52・53）、起動時の sample 生成（49）、database backup（50）、Final に条件付き確定がないこと（58）、Final も 研究 map を作ること（60）、未追跡の配布 payload（63）、collab の `mapVersion` が全 map 共通であること（24）、ブラウザ側の操作の全体（層 B）、特に利用者の操作なしの書込み（層 B 37・40・41・43・56・58・59）。
 - 7 節の「cloud pull は SQLite へ保存しない」は正しい。加えて、browser が送った状態を conflict backup の file に保存する（層 A 42）。
 
 ## 5. まとめ

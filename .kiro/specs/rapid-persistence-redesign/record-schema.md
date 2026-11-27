@@ -18,7 +18,7 @@
 | 値を書き換えるだけ | 旧い語彙の値、文字列に詰めた設定、役割の設定 | migration では一字も変えずに運び、後で Command で直す。journal に残る |
 | コードの名前だけ | `RapidMvpModel`、`docId` | データに触れない。いつでもできる |
 
-本書が決めるのは一つ目だけ。保存エンジン上の持ち方（6 節）は journal から作り直せるので、誤っても直せる。直せないのは、レコードの形と識別である。
+本書が決めるのは一つ目だけ。Neo4j 上の持ち方（6 節）は、レコードの形と識別を保って変更する。
 
 ## 2. 決定（akaghef）
 
@@ -74,9 +74,9 @@ scope は、複雑な対象を一枚の面で切り出したものと読む。�
 
 ### rev と時刻と発行者
 
-- **DA2 時刻を持たない**: node に作成時刻・更新時刻を持たせない。持つのは `rev`（そのレコードを最後に変えた確定の通し番号）だけ。時刻と発行者は「確定の表」（通し番号 → 確定時刻・発行者。確定 1 回につき 1 行）から引く。journal を圧縮してもこの表は残す。
+- **DA2 時刻を持たない**: node に作成時刻・更新時刻を持たせない。持つのは `rev`（そのレコードを最後に変えた確定の通し番号）だけ。時刻と発行者は「確定の表」（通し番号 → 確定時刻・発行者。確定 1 回につき 1 行）から引く。journal の保持対象外の確定記録を削減してもこの表は残す。
   - 理由: 数学の map は 100 万 node 規模を見込む。全 node に時刻を持たせると、ほぼ誰も読まない値が node の数だけ増える。
-  - 手放すもの: 「いつ作ったか」は、journal を圧縮した後は引けない（DA13）。
+  - 手放すもの: 「いつ作ったか」は、journal の保持範囲より前は引けない（DA13）。
 - **DA29 rev の粒度**: node のラベルと attribute は、node 単位の一つの `rev` で管理する。attribute ごとには分けない。edge と details は独立したレコードで、それぞれ `rev` を持つ。
 - **DA13 作成者を別に持たない**: 「誰が作ったか」を node に持たせない。最後に変えた確定の発行者だけが引ける。
 - **DA14 発行者は必須**: 確定には必ず発行者を記録する。発行者は、サーバが認証済みの接続から決める。画面や AI agent の自己申告は使わない。
@@ -140,11 +140,11 @@ scope は、複雑な対象を一枚の面で切り出したものと読む。�
 
 on-disk format に効くものを確定し、format 2 とした。仕様の本文は [DB 仕様書](../../../docs/03_Spec/Database_Spec.md)、根拠の原稿は物理量と拡張の土台の session の freeze v1 原稿である。
 
-- authority を二つに分ける。Neo4j は各端末の正本エンジン（semantic authority: invariant の検査と query）。durability authority（replication・backup・recovery の単位）は journal と snapshot。Neo4j は base snapshot と log suffix の replay で再構築する。[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md) もこれに合わせて改めた。
+- Neo4j が durability authority（永続する現在状態）と semantic authority（invariant の検査と query）を担い、map の表示も Neo4j の問い合わせから出す。journal は Neo4j の `Commit` node に置く端末と remote の交換記録である。端末は remote から clone して復旧し、remote は定期 export で保全する。[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md) に従う。
 - journal は workspace に一本で、remote の sequencer が `seq` を振る。未確定の Command は端末ごとの outbox に積む。
 - journal の envelope に `touched`（実差分の出たレコードと event kind）と `provenance` を足す。HLC と base revision は持たない。`seq`・`committedAt`・`issuer`・`touched` は、どの format でも意味を変えない。
-- schemaVersion は snapshot の header の `format` で、journal の行には持たない。format を上げるたびに base snapshot を書き、replay はそこから後だけを保証する。upcasting はしない。
-- archive の segment は 90 日で削除する。削除は、covering snapshot の fsync と checksum の検証で gate する。減衰する量の累積 `{v[k], t}` は snapshot に持つ。来歴は record の側に持つ。
+- schemaVersion は Neo4j の `Head.format` に持ち、clone / export の header にも渡す。journal の各確定には持たない。format の切り替え点の seq を保持し、そこより前の journal の upcasting はしない。
+- journal の保持対象外の確定記録は、Neo4j の現在状態、再送結果、名前付き snapshot、定期 export の保全を検証して削減する。snapshot は Neo4j の状態であり、別の snapshot ファイルと journal の archive は置かない。減衰する量の累積 `{v[k], t}` と来歴は Neo4j の record に持つ。
 - 兄弟順は fractional indexing で、同じ親の下で `ord` は一意。同時の move は `seq` の順の LWW、cycle を作る move は拒否、interleaving を防ぐ。
 - 拡張: `extensionDef` のレコード（`name` と `version` が key）、node と edge の `extensions`（`name@version` の集合）、重ねられる、外しても値を残す、agent も定義できる、意味上の分類も拡張にする。parent edge に `relationType`・`attributes`・`extensions` の欄を足す。描画の宣言を定義に持たせる。
 - 拡張の欄の型の語彙は `string`・`int`・`float`・`bool`・`enum`・`time`・`timeExp`・`nodeRef`・`accountRef`・`list<T>`。canonical な時刻は ISO 8601 の UTC 文字列（ミリ秒、末尾 `Z`）で、cache と Neo4j は epoch ミリ秒の整数も持つ。
@@ -153,17 +153,17 @@ on-disk format に効くものを確定し、format 2 とした。仕様の本�
 
 akaghef の個別の承認はまだ受けていない。
 
-- **確定の境界**: journal への追記が成功した時点を確定とする。その後で保存エンジンへの反映が失敗しても、取り消さない。「確定済み・未反映」として扱い、追いつくまでその workspace の次の確定を止める。初版の「追記してからエンジンを確定する」は、追記の後にエンジンが失敗すると、利用者には失敗と返したのに再起動後に変更が現れる。
+- **確定の境界**: 1 Command を 1 回の Neo4j の write transaction で確定する。Neo4j から読んだ状態で検査し、record の変更・`Commit`・`CommandResult`・`Head.seq` を同じ transaction で書く。確定後に応答する。非同期の適用や、確定済み・未反映という状態は無い。
 - **直列化**: workspace ごとに、検査の開始から確定までを 1 件ずつ順に処理する。同時に処理すると、「A を B の子に」と「B を A の子に」がどちらも変更前の木で検査を通り、循環ができる。
 - **通し番号は workspace で一本**: 初版は map ごとだった。node を別の map へ移すと、その `rev` が別の map の別の確定を指してしまう。確定する側は workspace ごとに一つなので、一本にできる。
-- **再送**: 同じ ID の再送には最初の結果を返す。同じ ID で中身が違う依頼は拒否する。依頼には「どの通し番号を基準にしたか」を載せ、journal の圧縮より古い基準の依頼は、取り直しをさせてから受ける（消した node が再送で復活するのを防ぐ）。
+- **再送**: 同じ ID の再送には最初の結果を返す。同じ ID で中身が違う依頼は拒否する。依頼には「どの通し番号を基準にしたか」を載せ、journal の保持範囲より古い基準の依頼は、取り直しをさせてから受ける（消した node が再送で復活するのを防ぐ）。
 - **適用した番号と受け取った番号を分ける**: 通知を受けただけで中身を取っていない部分は、「古い」と印を付けて持つ。キャッシュの番号を進めるのは、実際に適用したところまで。
-- **大きな操作**: 100 万 node の取り込みや巨大な部分木の削除は、論理の上では 1 回の確定だが、エンジンの 1 回の transaction にはしない。見えない状態で分割して作り、検査の後で公開する（方法は IB40）。
+- **大きな操作**: 100 万 node の取り込みは、どの scope からもたどれない部分木として複数の Command に分ける。各 Command は 1 回の Neo4j の write transaction で確定し、最後の Command が root を親につないで公開する（DB 仕様書 14 節）。
 - **変えた欄だけを当てる**: 検査を通した後、依頼の変更後のレコードを丸ごと書かず、変えた欄だけを現在のレコードに当てる（第 1 段で実装済み）。欄の削除は「変更前にあって変更後に無い」で表す（同）。
 
 ## 4. レコードの種別
 
-エンジンに依らない論理の形。snapshot はこの単位で 1 行になる。
+database の物理表現から独立した論理の形。移行入力・export・clone payload の直列化では、この単位で 1 行になる。snapshot はある seq の時点の Neo4j の状態である。
 
 | 種別 | key | field | 現行での置き場 |
 |---|---|---|---|
@@ -216,7 +216,7 @@ edge  kind `edge`（parent edge）   親 root → 子 b   兄弟順キー "a1"
 - scope の root は実在する node。alias は scope の root になれない。一つの node が複数の scope の root になってよい（DA60）。
 - parent edge の scope は実在する。parent edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る parent edge の scope が S である。これで、一つの scope に載る parent edge は、その root を頂点とする 1 本の木になる。検査は parent edge ごとに局所で済む。
 - root の scope の root は map の root で、この scope は消せない。
-- `connectionId` は parent edge と relation edge をまたいで一意。エンジンの制約では保証できないので、確定する側で検査する（レビュー）。
+- `connectionId` は parent edge と relation edge をまたいで一意。edge を record の node にし、Neo4j の `(ws, rk)` の一意制約と、確定する transaction の検査で保証する（6 節）。
 - 検査は触った周辺だけで行う（親の付け替えなら、新しい親の祖先をたどって循環を見る）。map 全体は走査しない。
 
 ## 5. nodeType と details
@@ -238,7 +238,7 @@ edge  kind `edge`（parent edge）   親 root → 子 b   兄弟順キー "a1"
 
 現行の `details` は 6,696 件にあり、1 行の平文 5,268、複数行の平文 1,110、Markdown・数式の記法あり 276、JSON らしいもの 41、HTML らしいもの 1。長さの中央値は 59 字。`text` の details を Markdown の本文とすれば、そのまま収まる。
 
-## 6. Neo4j 上の持ち方（提案。誤っても journal から作り直せる）
+## 6. Neo4j 上の持ち方（レコードの形と識別を保つ）
 
 | 論理のレコード | Neo4j での持ち方 |
 |---|---|
@@ -296,7 +296,7 @@ edge  kind `edge`（parent edge）   親 root → 子 b   兄弟順キー "a1"
 
 - 旧い形 → 新しい形 → 旧い形への書き戻しが、上の表の「保存しない」「導出」「捨てる」を差し引いて元と一致する。
 - 往復とは独立に、元データを別の方法で走査して対応を確かめる。往路と復路が同じ誤解をしていると、往復は一致してしまう（レビュー）。
-- 空のエンジンへ、snapshot と journal だけから復元する試験を通す。
+- 端末の Neo4j を remote から clone して復旧し、remote の Neo4j を定期 export から復旧する試験を通す。
 - 切替の時点で旧い側の書き込みを止める手順を定める。
 - 問題が 0 件のときだけ切り替え、旧い DB は消さずに保管する。
 
@@ -406,7 +406,7 @@ scope の大きさ（2,126 scope）:
 
 edge を node として持つ形（線が線の端点になれる形）は、線として持つ形に比べて、問い合わせが 1.1〜2 倍、保存の大きさが 1.14 倍だった。どちらも実用の範囲に収まる。
 
-- **DA54 Neo4j 上では edge を node として持つ**（担当の決め打ち）。DA21 を満たせること、ID の一意制約を一つにできること（種別をまたいだ一意が守れる）が理由。保存エンジン上の持ち方なので、誤っていれば journal から作り直せる。6 節の表は、この決定で読み替える。
+- **DA54 Neo4j 上では edge を node として持つ**（担当の決め打ち）。DA21 を満たせること、ID の一意制約を一つにできること（種別をまたいだ一意が守れる）が理由。Neo4j 上の持ち方は、レコードの意味と識別を保って変更する。6 節の表は、この決定で読み替える。
 
 ### Neo4j への取り込みと読み戻し（実データの snapshot）
 
@@ -436,7 +436,7 @@ edge を node として持つ形（線が線の端点になれる形）は、線
 - **IB54 map の複製**: `duplicateMap` は `state_json` を丸写しするので、全 ID が二つの map に重複する。現行データの重複 1,613 件はここから来ている。第 2 段では複製時に ID を振り直す。
 - **IB55 全体保存に落ちる条件**: Command の経路があっても、collab が有効なとき、Vault を監視しているとき、「Use Local」、基準が無いとき、の四つで全体保存に落ちる。発行者は端末の自己申告のまま（DA14 は未実装）。
 - **IB56 未確定の Command の保持**: brief の要求（再読込・通信失敗・再起動後も未確定の編集を保つ）が、移行後の仕様に書かれていない。第 1 段はメモリの変数だけで、再読込で消える。
-- **IB57 確定済み・未反映の間の読み込み**: journal への追記が確定した後、エンジンが追いつくまでの間、読み込みと再送に何を返すか。
+- **IB57 確定と読み込み**: 確定は Neo4j の write transaction なので、未反映の確定は生じない。応答後の読み込みはその状態を Neo4j から返し、再送には最初の結果を返す。
 - **IB58 1 回の Command の中の複数の付け替え**: 「触った周辺だけ」の検査を変更 1 件ずつに当てると、同じ Command の中の「A を B の下へ」「B を A の下へ」を見逃す。Command の全変更を当てた後の状態で検査する。
 - **IB59 edge を消すときの連鎖**: edge が他の edge の端点になれるので、node を消すと、接する線、その線に接する線、と連鎖する。閉包を同じ確定で消すか、参照が残る削除を拒否するかを決める。
 

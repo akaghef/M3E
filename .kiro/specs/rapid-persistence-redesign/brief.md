@@ -5,7 +5,7 @@
 根拠資料:
 
 - [現行の Rapid 保存経路の事実確認](./research-current-state.md)（Codex、dev-beta `d67b834`）
-- [保存エンジン候補の外部調査](./research-engines.md)
+- [database 候補の外部調査](./research-engines.md)
 - 発端は akaghef と ChatGPT の会話の export（2026-10-23〜24）。非公開の Drive へのリンクを含むので、public repo には置かない。その中の FA・WA・CA などの採番は正規の接頭辞ではないので、引用しない。用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。会話の 9 操作の表のうち、TC8 の「Move」（親を変える）は reparent、TC7 の「Reorder」は reorder に当たる。ただし導出演算の Move(x,p,g) は reorder を含む一般形で（Reorder = Move(x, parent(x), g)）、node move に当たる。なお Editing_Design.md は reorder を reparent の一形態（同じ親への `ReparentNodeCommand`）として扱っており、Glossary の区別と食い違う（未整理）。
 
 ## Problem
@@ -46,7 +46,7 @@
 - RQ23: 同じ commandId を再送しても二重に適用しない。
 - RQ24: 確定状態と revision は常に対で進む。通知を受けただけで基準を進めない。
 - RQ25: 上記の全書き手が同じ確定経路を通る。移行後に map 全体を書き換える経路を残さない。
-- RQ26: snapshot と journal の replay だけで復旧できる（[ADR 008](../../../docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md) の Recovery Gate と同じ基準）。
+- RQ26: 端末の Neo4j は remote の clone から、remote の Neo4j は定期 export から復旧できる（[ADR 008](../../../docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md) の Recovery Gate と同じ基準）。
 - RQ27: 各 PC で offline でも編集できる。
 - RQ28: relation edge は生成時から安定した ID を持つ。Rapid occurrence と Deep entity を結ぶ entity binding を後から足しても、二度目の data migration が要らない。
 
@@ -58,7 +58,7 @@
 
 1. 書込みのアルゴリズム
 2. 論理レコードモデル
-3. 物理エンジン
+3. database
 4. 正本の所有と同期
 
 RQ19 の制約のもとで data migration の対象になるのは 2（論理レコードモデル）だけである。
@@ -67,19 +67,19 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 |---|---|---|
 | 書込み経路 | Command（intent・対象・対象の base revision・commandId・provenance）→ 検証 → 1 transaction で確定 → 確定した変更と revision を返す。端末は確定前の Command を保持し、保存応答・通知・再読み込みを同じ取り込み処理に通す | 不要 |
 | 論理レコードモデル | node、parent edge（親と兄弟順）、relation edge、scope ごとの linear-text、属性。レコードごとの revision と、entity binding の置き場所を持つ | **この 1 回** |
-| 物理エンジン | 論理レコードモデルの保存先 | snapshot と journal があれば、切替は replay で済む |
+| database | 論理レコードモデルの保存先は Neo4j | 一度きりの移行入力を Neo4j に取り込み、以後は clone / export で復旧する |
 
 ### DC39 移行先の候補
 
-- **OP43**：journal と snapshot を正本の形式にする。読み書きの本体は SQLite の正規化テーブル。Neo4j は journal から作る materialization とし、いつでも追加でき、migration は要らない。ADR 008 はすでに Rapid が所有するレコードの materialization を認めているので、ADR 008 の変更は要らない。
+- **OP43**：SQLite の正規化テーブルを読み書きの本体にする候補。採用する database は Neo4j とする（DC39）。
   - 計測では、20,150 行で 1 行の reparent が 0.02 ms、ファイルは 1.6 MB。部分木の読取りは部分木の大きさに比例する。
 - **OP44**：Rapid の正本も Neo4j に置く。
   - Node.js から使える組込みモードがないので、PC ごとに JVM サービスを常駐させるか、8/24 案のホスト交代方式（host lease）が要る。
   - Community には online backup がなく、macOS / Windows 11 は開発用途のみの対応。
-  - Recovery Gate のため、journal と snapshot はどのみち必要になる。
+  - Recovery Gate は端末の remote からの clone と、remote の定期 export からの復旧を実証する。
   - ADR 008 の改訂が要る。
 - **OP45**：SQLite の正規化テーブルだけを正本にし、journal は持たない。いちばん小さく済むが、Neo4j を正本にするなら二度目の migration が要る。RQ26 の根拠もない。
-- 参考：組込みの Cypher エンジン（Kùzu の fork である LadybugDB）を正本にする案は、保存層がまだ安定していないため、一度きりの移行先としては危うい（[research-engines.md](./research-engines.md)）。
+- 参考：組込みの Cypher の database（Kùzu の fork である LadybugDB）を永続する現在状態の保存先にする案は、保存層がまだ安定していないため、一度きりの移行先としては危うい（[research-engines.md](./research-engines.md)）。
 
 ### DC40 出し方の候補
 
@@ -88,10 +88,10 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 
 ### 決定済み
 
-- DC39（2026-11-16、akaghef）：正本エンジンは Neo4j とし、全面の書き換えを到達形とする。SQLite は正本の並走先ではなく、export format の一つになる。復旧の正本は engine 非依存の snapshot と journal の replay のまま変えない（RQ26）。この範囲は OP44 を超える（Rapid に限らない到達形になる）ため、ADR 008 の Decision 3（Neo4j の role を owner concern で分ける）と Decision 6（SQLite 判断の局所化）の改訂が要る。Final を製品として配布する場合に Neo4j をどう同梱するか（JVM 同梱、組込み系への切替、export された SQLite を読む閲覧専用 mode）は製品化時の決定として保留する。
+- DC39（akaghef、2026-11-27）：M3E の database は Neo4j（graph）であり、永続する現在状態・map の表示・全ての検査と query を担う。journal は Neo4j の `Commit` node に置く端末と remote の交換記録であり、状態の保存先ではない。snapshot はある seq の Neo4j の状態で、別の snapshot ファイルや JSON の database は置かない。端末は remote から clone して復旧し、remote は定期 export で保全する。SQLite は export format の一つとする。Final の同梱方式は製品化時に決める。
 - DC40 = OP46（2026-11-16、akaghef）：書込み経路（Command 化）を先に、現在の保存形式のまま出す。その後、data migration を workspace ごとに本番 1 回だけ行う（RQ19）。リハーサルは回数無制限で、旧 SQLite は read-only で保持する。
 - IS138（2026-11-16、akaghef）：ID は全体一意とする（map と workspace をまたいでも一意）。移行時に重複 ID（node 1,148 件ほか）を一括で振り直す。
-- IS142 の一部（2026-11-16、akaghef）：journal は workspace × 書き手端末の append-only stream とし、端末ごとに採番する。Syncthing による `data.sqlite` 全体の同期はやめる。stream の輸送は Syncthing で行う（append-only file の mirror は構造上競合しない。agent 間 messaging の経路の統一とは別の関心として扱う）。
+- IS142 の一部（akaghef、2026-11-27）：journal は workspace に一本で、remote が確定順に採番する。Neo4j の `Commit` node から HTTP の push / pull で交換する。未確定の Command は端末の Neo4j の `Outbox` node に置く。`data.sqlite` 全体の同期は使わない。
 - 定量的な再審 trigger（commit 時間や payload 比の閾値で ADR の再審を自動起票する案）は採用しない（2026-11-16、akaghef）。過去に全体 JSON 方式が放置された原因は要件定義の重さとして扱う。
 - IS126（2026-11-16、akaghef）：兄弟順は fractional index。同一キーの衝突は端末 ID と連番の suffix で決定的に順序付け、キー長が閾値を超えた兄弟列だけ再配置する。
 - IS127（2026-11-16、akaghef）：Undo は逆向きの Command とする。Undo 自体が journal に載る。外部の変更を取り込んだ後は、自端末が発行した Command だけを Undo の対象にする。
@@ -99,7 +99,7 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - IS136（2026-11-16、akaghef）：attribute は独立したレコードにする。set-attribute / unset-attribute の Command 単位とレコード単位を一致させる。
 - IS143（2026-11-16、akaghef）：移行時に schema version 表を入れ、table 名も旧実装と変える。新形式の DB を旧実装が開いたら空の表を作らず即失敗させる（fail closed）。
 - IS144（2026-11-16、akaghef）：Schema v2 はこの移行に畳み込む方針。内容を精査したうえで、requirements で取り込む範囲を確定する。
-- 第 2 段のレコードの形（2026-11-16、akaghef。record-schema.md の DA1〜DA7）：線の総称 edge に `relationType` を置く、node に時刻を持たせない、既定値と同じ欄を保存しない、scope の境界を scope のレコードで表し `folder` を払拭する、Surface View の旧い語彙は移行で書き換えない、正本の配置は木で別の場所からは alias、`nodeType` をスキーマの分岐にして種別ごとの内容を details に置く。本文と未決は [record-schema.md](./record-schema.md)。2026-11-17 に決定を足した（scope が自分の ID を持つ、profile、relationType の名前、兄弟順キーを端末も作る、通し番号を workspace で一本にする、journal への追記を確定の境界とする）。本書の記述と食い違う点は record-schema.md が優先する。移行後の形を現在形で書いた仕様の案は [post-migration-spec.md](./post-migration-spec.md)。
+- 第 2 段のレコードの形（2026-11-16、akaghef。record-schema.md の DA1〜DA7）：線の総称 edge に `relationType` を置く、node に時刻を持たせない、既定値と同じ欄を保存しない、scope の境界を scope のレコードで表し `folder` を払拭する、Surface View の旧い語彙は移行で書き換えない、正本の配置は木で別の場所からは alias、`nodeType` をスキーマの分岐にして種別ごとの内容を details に置く。本文と未決は [record-schema.md](./record-schema.md)。2026-11-17 に決定を足した（scope が自分の ID を持つ、profile、relationType の名前、兄弟順キーを端末も作る、通し番号を workspace で一本にする、Neo4j の write transaction を確定の境界とする）。本書の記述と食い違う点は record-schema.md が優先する。移行後の形を現在形で書いた仕様の案は [post-migration-spec.md](./post-migration-spec.md)。
 
 ### 既存の Neo4j 実装（2026-11-11、Cursor。2026-11-16 に採否を決定）
 
@@ -112,7 +112,7 @@ dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 
 - `beta/src/cutover/`（22 ファイル、約 4,150 行）：状態の分解と組み立て、Command への対応付け、木の不変量、scope 権限判定。入出力を持たない部品。
 - `beta/src/node/sync/`：scope 単位の記録と再送の土台。
 - `beta/src/node/rapid_mvp.ts`：環境変数 `M3E_BETA_NEO4J_URI` があるときだけ保存・読込みが Neo4j に切り替わる。既定は SQLite のまま。切替は `neo4jRequest()` が保存 1 回ごとに `spawnSync` で Node の子プロセスを起動する方式で、その間サーバ全体が止まる。
-- この実装は「Command 化せずにエンジンだけ差し替え」の順序で、本 brief の決定（書込み経路の Command 化を先行）と逆。**残すか、部品（特に `cutover/`）だけ使うか、捨てるかは未決**。Command の commit 経路の実装は `rapid_mvp.ts` の同じ関数群に触れるため、この採否を決めてから着手する。
+- この実装は「Command 化せずに database だけ差し替え」の順序で、本 brief の決定（書込み経路の Command 化を先行）と逆。**残すか、部品（特に `cutover/`）だけ使うか、捨てるかは未決**。Command の commit 経路の実装は `rapid_mvp.ts` の同じ関数群に触れるため、この採否を決めてから着手する。
 - 2026-11-11 の push は 2 箇所の破損を含み、別セッションが修正済み（`fa42b0e`、`3c4cc85`）。稼働中の通常 Beta（2026-11-08 起動）は未再起動で、再起動後に個人 map が開けることは未確認。
 - 関連の残置物：worktree `/Users/akaghef/dev/M3E-worktrees/neo4j-cutover`（枝 `codex/neo4j-cutover`）に未コミットの `scripts/beta/neo4j-durable.sh`（専用設定・データ置き場・ポートで Neo4j を start/stop/status する script）。試行用データ置き場 `~/Library/Application Support/M3E-Neo4j-trial` は空で停止済み。退避 `~/Backups/M3E/261111-pre-neo4j/` は Windows 統合（2026-11-16）より前の時点。
 - 実装作業は本体 checkout の枝を切り替えず、作業ごとの worktree で行う（`docs/06_Operations/Worktree_Separation_Rules.md`）。
@@ -129,11 +129,11 @@ dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 
 
 複数端末の同期については、2026-11-18 の [同期の思想](./sync-principles.md) がこの節を更新する（確定者を remote に、複製の単位を scope に改めた）。
 
-- engine store（SQLite file、Neo4j store）は端末 local に置き、同期しない。journal から再生できる使い捨ての導出物として扱う。backup の対象は journal と snapshot で、engine store は守らない。
+- Neo4j は端末 local と remote に置き、永続する現在状態を保持する。端末は remote から clone して復旧し、remote の Neo4j 全体を定期 export して保全する。
 - 複数 PC の一貫性は、workspace ごとに確定者（writer）を一つに固定して得る。個人 workspace の確定者は Mac、team workspace の確定者は Beta の server process。
 - 他の PC は Command を確定者へ送り、local には楽観適用して即描画する。offline の間は確定前の Command を local に保持し（RQ22）、再接続時に確定者へ流す。長期の単独作業は writer の役割を明示操作で移譲する。自動 failover は作らない。
-- Mac mini は常時稼働の集約点とする。全 stream の mirror、snapshot の置き場、store-and-forward、workspace 横断の materialization を担う。
-- server・engine・viewer は同じ端末に同居させ、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
+- Mac mini は常時稼働の集約点とする。remote の Neo4j と定期 export、store-and-forward、workspace 横断の materialization を担う。
+- server・database・viewer は同じ端末に同居させ、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
 - iPad など server を立てられない端末は、mini の server に接続する閲覧専用の client とする。編集は当面させない。snapshot を読み込む offline 閲覧 mode は将来の拡張とする。
 - access control の判定単位は scope、複製の単位は workspace とする。stream は workspace 粒度で運び、提供側の server が読み出し時に scope の ACL を適用する。ADR 008 の Constraints「Scope を storage / Authority boundary と同一化しない」はこの決定と衝突するので、ADR 008 の改訂で扱う。
 - 前提条件：Mac と Windows の workspace data は同期停止により分岐している（Windows 固有の map が約 13 件）。一度きりの migration の前に、Windows 固有分を Mac 系列へ統合する。統合は別作業として行う。
@@ -147,12 +147,12 @@ dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 
     - 1 回の編集の確定時間の p50（20,150 node → 201,491 node）は、全 JSON の現行方式が 52 → 769 ms で、map の大きさにほぼ比例して増える。
     - 草案のレコードモデルではほぼ横ばいで、SQLite（DELETE）が 0.32 → 0.38 ms、Neo4j が 5.9 → 7.1 ms。
     - 3 歩先までの近傍は Neo4j が約 2 倍速く、1 点の読取りと map 全体の読込みは SQLite が速い。
-    - 同じ Command 列を適用すると、どのエンジンの最終状態も兄弟順キーまで一致した。
+    - 同じ Command 列を適用すると、どの database の最終状態も兄弟順キーまで一致した。
 - PR17：いま実際に必要な Deep query を棚卸しする。ADR 008 の Demand Gate（3 件）が満たせるかを確かめる。
   - → 結果は [pr17-deep-query-inventory.md](./pr17-deep-query-inventory.md)（2026-10-26）。**Demand Gate は満たしていない。**
     - 4 条件（source をまたぐ、実際の運用から出た、固定されている、Neo4j が要る理由がある）をすべて満たす問い合わせは 0 件だった。
     - 実需は 1〜2 歩の「探す」問いで、grep・file の読取り・LLM で答えられていた。
-    - 現在のデータには、map をまたぐ構造化された関係が 0 件しかない。Deep の制約はエンジンではなく、同一性と関係のデータが欠けていることである。
+    - 現在のデータには、map をまたぐ構造化された関係が 0 件しかない。Deep の制約は database ではなく、同一性と関係のデータが欠けていることである。
 
 ### PR14・PR15 の草案レビュー（2026-10-25、Director）
 
@@ -184,7 +184,7 @@ dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 
 - IS144：未実装の Schema v2（Model_State_And_Schema_V2.md）を、この移行で置き換えるか。RQ19 のもとでは、後でもう一度変える機会がない（PR14 の 9）。
 - IS145：Concreteness Axis の level ごとの編集を Command にするか（PR15 の 13）。
 - IS146：collab の経路、使われていない REST の経路、UI からの取り込みをどうするか（PR15 の 16・17・18）。
-- IS147：エンジンを問わず、再帰や可変長の問い合わせには、実行計画を固定する試験が要る。
+- IS147：database を問わず、再帰や可変長の問い合わせには、実行計画を固定する試験が要る。
   - PR16 で、SQLite の再帰 CTE は結合の順序を固定しないと、16,400 node の部分木の読取りに約 9 秒かかった。
   - Neo4j の可変長の pattern は、始点を固定しないと全 node から展開して 2.6 秒かかった。
 - IS148：計画の map の `m3e:stable-id` 付き 20 node と `planning-ref` の relation edge 32 本は、`docs/semantic` の entity と REFS の関係と同じ内容である。同じ関係が Final の map、Beta の複写、`docs/semantic` の 3 か所に別々に保存されていて、つなぐ鍵は命名規約だけである（PR17）。ADR 008 の「canonical owner は一つ」に反するので、移行でどれを正本にするかを決める。
@@ -254,7 +254,7 @@ PR18：保存形式を変えずに、移行より先に直せる不具合。ど�
 - IS128：Final channel、cloud 上の複製、Vault を、一度きりの移行にどう含めるか
 - IS129：書き手を 1 プロセスに限る方法（別の server や CLI は DB を直接開けてしまう）
 - IS130：Command intent と Glossary の対応。node move（reparent / reorder）、rename、delete、paste（新しい ID で複製）、scopen / unscopen は定義済み。親の挿入、親の除去、分割、統合には定義語がない
-- IS131：journal の圧縮と、snapshot を作る頻度
+- IS131：Neo4j の定期 export の周期と、journal の保持対象外の確定記録を削減する契機
 - IS132：サーバーは起動のたびに、開発 map と研究 map を内容を変えないまま全置換し、`saved_at` だけを進める（2026-10-23 02:33 と 2026-10-24 21:25 の起動で確認。内容の差はない）。その結果、起動前から開いているタブの基準時刻がずれ、次の保存は競合マージに入る。そこでは nodes 以外の変更が落ちる（IS117）。原因は、起動時に既存の map にも `renameMap` を呼んでいたこと。研究 map の ID は固定値として埋め込まれている。PR18 で直した（`4861dac`）。Final の実装（final/src）には同じ処理が残っていて、Channel_Release_Policy に従った Final の更新で直る。
 
 ## Constraints

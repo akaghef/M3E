@@ -245,6 +245,6 @@ Linear <-> Tree 変換の詳細方針は `Linear_Tree_Conversion.md` を参照�
 - データモデル不変条件: [./Data_Model.md](./Data_Model.md)
 - Linear <-> Tree 変換仕様: [./Linear_Tree_Conversion.md](./Linear_Tree_Conversion.md)
 - Freeplane マッピング方針: [../competitive_research/freeplane/Freeplane_Data_Model_Mapping.md](../competitive_research/freeplane/Freeplane_Data_Model_Mapping.md)
-- カスタムエンジン採択: [../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md](../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
+- 描画と操作の仕組みの採択: [../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md](../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
 - SQLite 採択: [../09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md](../09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md)
 - コマンド API: [./Command_Language.md](./Command_Language.md)

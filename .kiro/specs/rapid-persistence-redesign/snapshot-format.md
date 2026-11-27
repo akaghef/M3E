@@ -1,10 +1,10 @@
-# snapshot の形式と、現行データからの変換規則
+# 移行入力・export・clone payload の形式と変換規則
 
-2026-11-17。状態: 担当の決め打ち、未承認。[post-migration-spec.md](./post-migration-spec.md) のレコードを、ファイルにどう書くかと、現行の保存データからどう作るかを定める。変換の実装と、合否を判定する検査は、本書だけを共有して別々に書く。
+2026-11-17。状態: 担当の決め打ち、未承認。[post-migration-spec.md](./post-migration-spec.md) のレコードを、一度きりの移行入力・export・clone payload にどう直列化するかと、移行元の保存データからどう作るかを定める。snapshot はある seq の時点の Neo4j の状態という役割で、別の snapshot ファイルや JSON の database は置かない。変換の実装と、合否を判定する検査は、本書だけを共有して別々に書く。
 
-## 1. ファイル
+## 1. 輸送・書き出しの形式
 
-- workspace 一つにつき、UTF-8 の JSON Lines を一つ。1 行が 1 レコード。
+- 移行入力・export・clone payload は workspace 一つにつき UTF-8 の JSON Lines を一つとし、1 行が 1 レコード。取り込んだ状態の永続は Neo4j が担う。JSON は push / pull / clone の wire format と export に用いる。
 - 各行は `kind` を持つ。行の順序に意味は無い。書き出すときは、`kind`、次に key の文字列順で並べる（差分を安定させるため）。
 - 1 行目は `{"kind":"snapshot","format":1,"workspaceId":"…","seq":0}`。
 - 値が無い欄は書かない。`null` は書かない。

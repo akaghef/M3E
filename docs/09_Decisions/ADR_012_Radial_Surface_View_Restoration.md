@@ -23,7 +23,7 @@ akaghef が改めて Radial と Disperse の違いを与えた:
 > 一方で Disperse は、親子同士は parent edge ではなく、入れ子のカテゴリとして表す。
 > ノード同士の関係性は relation edge で記述される。
 
-この定義により、Radial と Disperse は **同一の力学配置エンジンの上で、
+この定義により、Radial と Disperse は **同一の力学による配置の計算の上で、
 親子関係の投影方式（parent edge か group か）だけが異なる2つの View** として定義できる。
 角度系ではなく、この parent edge/group 軸こそが Radial の固有性である。
 
@@ -39,7 +39,7 @@ akaghef が改めて Radial と Disperse の違いを与えた:
   力学系（direction を持たない）。
 - **Disperse**: tree の親子関係を **入れ子（包含・group）** として描画する。画面に出る
   線は relation edge のみ。配置は力学系。
-- Radial と Disperse は同一の配置エンジン（WebCola、[Decision_Pool 2026-08-23-003](../06_Operations/Decision_Pool.md)）を共有する。差は WebCola へ親子関係を **link（バネ）として渡すか、group（包含制約）として渡すか**のみ。
+- Radial と Disperse は同一の配置の計算（WebCola、[Decision_Pool 2026-08-23-003](../06_Operations/Decision_Pool.md)）を共有する。差は WebCola へ親子関係を **link（バネ）として渡すか、group（包含制約）として渡すか**のみ。
 - **角度系 option（`clockwise` / `counterclockwise` / `balanced`）は正本から削除する。** ADR_010 の指摘（実装実体がない）は正しいままなので、角度系は復活させない。
 - Radial / Disperse の subtype は `scatter`（人が置いた座標をそのまま使う）/ `force`（力学配置）の2つ。**`cluster` という subtype は廃止する。** tree の group（親子の入れ子投影）は Disperse の切替可能な subtype ではなく、Disperse の既定の親子表現そのものである。
 - Radial には group 投影が無いため、collapse した部分木は縮約されて単なる1ノードになる（Disperse の super-node 化と同じ「縮約」操作だが、group footprint は持たない）。
@@ -53,7 +53,7 @@ akaghef が改めて Radial と Disperse の違いを与えた:
 ## Consequences
 
 - 正本 [map_layout_modes.md](../03_Spec/map_layout_modes.md) を5種構成に戻し、Disperse subtype 定義を `cluster` 抜きの2種に改める。
-- Radial の実装（内部 mode key、UI、seam lab）を Disperse の力学配置エンジンと共有する形で再導入する。角度系コードは復元しない。
+- Radial の実装（内部 mode key、UI、seam lab）を Disperse の力学による配置の計算と共有する形で再導入する。角度系コードは復元しない。
 - 既存保存データの legacy `mindmap` は Tree の両側 preset のままでよい（ADR_010 の migration 方針を維持）。新規の Radial 選択は parent edge 投影の力学配置として保存する。
 
 ## Follow-up

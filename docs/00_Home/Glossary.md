@@ -22,7 +22,7 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 
 | 正規語 | 意味 | 関連語 | 備考 |
 |---|---|---|---|
-| **workspace (ws)** | 永続データ実体の単位。SQLite 本体・backup・audit・cloud-sync などをまとめて保持する入れ物 | map, data profile, owner | 概念階層の最上位。`ws > map > scope > node`。workspaceId を単なる表示ラベルとして使う運用は避ける |
+| **workspace (ws)** | 永続データ実体の単位。Neo4j 上の record・journal と、backup・同期の対象をまとめる入れ物 | map, data profile, owner | 概念階層の最上位。`ws > map > scope > node`。workspaceId を単なる表示ラベルとして使う運用は避ける |
 | **map** | workspace 内で扱う 1 つの知識マップ | workspace, node, scope | （別表記）doc / document は非推奨。仕様語は `map`。実装の `docId` は互換名として残る |
 | **node** | 思考要素の最小単位。`nodeType` を持つ | nodeType, edge, scope, alias | 型の定義と例は `nodeType` の項を参照 |
 | **nodeType** | node の型。例: `text` / `image` / `folder` / `alias` / `agent` | node, agent | 自然言語では `node type` と表記する。例示は閉じた列挙ではない。用語としての型と、現在の保存・実装で対応する型一覧は区別する。後者は [Data Model](../03_Spec/Data_Model.md#nodetype-一覧) を参照 |
@@ -129,14 +129,14 @@ M3E の正規語を維持し、property graph 語彙は対応先として扱う�
 | **Deep entity** | 文書横断の stable identity と typed semantics を持つ entity | Deep, Rapid occurrence, entity binding | 本文を Rapid occurrence と二重所有しない |
 | **entity binding** | Rapid occurrence と Deep entity の同一性または対応を結ぶ assertion | Rapid occurrence, Deep entity, scope bind | many-to-many を許す。`scope bind` は表示面間の同期契約であり別概念 |
 | **referential state** | materialized record の参照解決状態 | materialization, canonical source | `resolved / indexed-only / inaccessible / stale / missing / tombstoned / unresolved`。参照不能を deletion と同一視しない |
-| **journal** | Command / operation の因果と履歴をreplay可能に保存する論理記録 | snapshot, Recovery Gate, proposal journal | 操作の歴史。物理DB複製であるbackupと区別する。Rapid の保存では、確定した変更を確定順に追記するだけの記録（書き換え・削除をしない）で、1 件は Command に通し番号、record ごとの基準 revision、record 単位の変更前後の値を加えたもの。単位は workspace × 書き手端末。journal への追記を確定の境界とする。Undo・復旧・同期・materialization の入力になる。詳細は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) |
-| **backup** | database engine等の物理状態を複製し、同系統のrestoreに使うartifact | journal, snapshot, Recovery Gate | engine依存の補助復旧経路。単独ではRecovery Gateの根拠にしない |
-| **snapshot** | engineに依存しない論理直列化からsemantic stateをrebuildする復旧artifact。journal の replay の起点にもなる（Raft の snapshot に当たる） | journal, backup, Recovery Gate | M3E-owned accepted graphはsnapshot + journal replayのみでの復旧実証を要求する |
-| **confirmed** | remote が確定させた状態を、local が複製して持つもの。remote の journal を確定順に追記して作る | pending, working store, journal, snapshot | 置き場所は `sync/confirmed/`。通し番号は remote のものをそのまま使い、local は自分で確定させない。Bayou の committed write、git の `origin/main` に当たる。詳細は [local-mode-design.md](../../.kiro/specs/rapid-persistence-redesign/local-mode-design.md) |
-| **pending** | local で commit したが、remote がまだ確定させていない Command | confirmed, working store, Command | outbox に fsync して置く。push で remote へ送り、確定・no-op・拒否のいずれかの結果を受けると outbox から外れる（拒否は conflicts に移る）。状態ではなく Command の側を指す。Bayou の tentative write、git の未 push の commit に当たる |
-| **working store** | confirmed の上に pending を順に当てた状態。viewer と MCP はここを読み書きする | confirmed, pending | 置き場所は `store/`。pull で confirmed が進むと、pending を当て直して作り直す（git の rebase に当たる）。当たらない pending は conflicts に移る |
+| **journal** | 端末と remote の間で、確定した変更を確定順に push / pull するための記録 | snapshot, Recovery Gate, proposal journal | workspace ごとに一本で、remote の sequencer が `seq` を振る。Neo4j の `Commit` node に置き、状態の保存先にはしない。record の変更と `Commit` の作成は同じ Neo4j の write transaction で確定する。Undo・同期・materialization の入力となり、保持対象外の確定記録は保持条件を検証して削減する。詳細は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) |
+| **backup** | remote の Neo4j 全体を定期的に export して残す復旧用 artifact | journal, snapshot, Recovery Gate | export のファイルは輸送・書き出しの形式であり、database ではない。remote の復旧に使う |
+| **snapshot** | ある `seq` の時点の状態を表す役割。M3E では Neo4j の状態である | journal, backup, Recovery Gate | Neo4j と別の snapshot ファイルは置かない。record のファイルは一度きりの移行入力、export、clone の配送 payload に限る。端末の復旧は remote からの clone、remote の保全は定期 export で行う |
+| **confirmed** | remote が確定させた状態を、local が複製して持つもの。remote の journal を確定順に追記して作る | pending, working store, journal, snapshot | 置き場所は端末の Neo4j の confirmed 用 store（`ws`）。通し番号は remote のものをそのまま使い、local は自分で確定させない。Bayou の committed write、git の `origin/main` に当たる。詳細は [local-mode-design.md](../../.kiro/specs/rapid-persistence-redesign/local-mode-design.md) |
+| **pending** | local で commit したが、remote がまだ確定させていない Command | confirmed, working store, Command | Neo4j の `Outbox` node に transaction で保存する。push で remote へ送り、確定・no-op・拒否のいずれかの結果を受けると outbox から外れる（拒否は conflicts に移る）。状態ではなく Command の側を指す。Bayou の tentative write、git の未 push の commit に当たる |
+| **working store** | confirmed の上に pending を順に当てた状態。viewer と MCP はここを読み書きする | confirmed, pending | 置き場所は端末の Neo4j の working store 用の `ws`。pull で confirmed が進むと、pending を当て直して作り直す（git の rebase に当たる）。当たらない pending は conflicts に移る |
 | **Rebuild Gate** | source-materialized recordをcanonical owner source群から再構築できることを確認するgate | canonical source, materialization, Recovery Gate | 他者が所有する正本からderived read modelを再生成するgate |
-| **Recovery Gate** | M3E-owned accepted recordを自己のsnapshot + journal replayだけで復旧できることを確認するgate | snapshot, journal, Rebuild Gate | backup / restoreは補助検証してよいがgate根拠にしない |
+| **Recovery Gate** | M3E-owned accepted record を、端末では remote からの clone、remote では Neo4j の定期 export から復旧できることを確認する gate | snapshot, journal, backup, Rebuild Gate | 内容・権限・conflict・再送結果・世代・失効・消去状態を含む復旧を実証する |
 
 ## 1.6 RAG評価軸とconsumption mode
 

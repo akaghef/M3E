@@ -2,7 +2,7 @@
 
 2026-11-19。状態: 実装担当の設計メモ、未承認。on-disk format に効く一方通行の決定（4 節）は akaghef の回答を待つ。二方向に戻せる点は推奨で仮決めし、実装ログに「仮決め」として残す。
 
-対象: `beta/src/node/record_store/store.ts`（`JournalLine`、`compact()`、`readJournal`、`commitsAfter`、`committedCommand`）、`engine.ts`（engine の catch-up）、`legacy_api.ts`（`storeReadCommittedCommand`）。前提の文書: [sync-principles](sync-principles.md)、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)、[DB 仕様書](../../../docs/03_Spec/Database_Spec.md) 6 節、[実装ログ](implementation-log.md) の 2026-11-19 の journal 関連の項目。
+対象: `beta/src/node/record_store/store.ts`（`JournalLine`、`compact()`、`readJournal`、`commitsAfter`、`committedCommand`）、`engine.ts`（database の catch-up）、`legacy_api.ts`（`storeReadCommittedCommand`）。前提の文書: [sync-principles](sync-principles.md)、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)、[DB 仕様書](../../../docs/03_Spec/Database_Spec.md) 6 節、[実装ログ](implementation-log.md) の 2026-11-19 の journal 関連の項目。
 
 ## 1. 現状（dev-beta 3adbf06 で確認）
 
@@ -38,7 +38,7 @@
 
 ### 1.4 compaction が他の経路に与える影響（今の実装のまま呼んだ場合）
 
-- **engine catch-up**: `commitsAfter(seq)` は `seq < snapshotSeq` で `null` を返し、engine（Neo4j）は `deleteAllRecords` → full rebuild に落ちる（engine.ts:101-106）。compaction のたびに、遅れていた engine は全件再構築になる。
+- **database catch-up**: `commitsAfter(seq)` は `seq < snapshotSeq` で `null` を返し、database（Neo4j）は `deleteAllRecords` → full rebuild に落ちる（engine.ts:101-106）。compaction のたびに、遅れていた database は全件再構築になる。
 - **committed Command の読み出し**: `committedCommand` は journal を毎回全部読んで線形探索する（O(journal)）。compaction 後は過去の Command の行が消えるので `null`。`storeReadCommittedCommand`（legacy_api.ts:214）経由の audit / Undo が過去を失う。
 - **dedupe**: retry の判定は `this.commands`（commandId → seq, hash）で行い、`commit-index.json` に直近 100,000 件だけ残る。これを超えて古い retry は新規 Command として通る。sync-principles の「重複排除の記録は保持期間より長く残す」とは件数で切る点が合っていない。
 - **書かれる頻度**: どの commit がどの record に触れたかが消える（実装ログ 2026-11-19 の既存項目）。

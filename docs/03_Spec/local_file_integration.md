@@ -37,7 +37,7 @@ M3E とローカルファイルシステム（Obsidian vault、Markdown フォ�
 | ローカルファイル連携モード | `.md` | 明示的に開始する強結合モード |
 
 - 本設計の対象は **ローカルファイル連携モード** である。
-- Import / Export は関連するが、同期エンジンや conflict policy の責務は持たない。
+- Import / Export は関連するが、同期の仕組みや conflict policy の責務は持たない。
 
 ---
 
@@ -180,7 +180,7 @@ POST /api/vault/watch/stop   →  Watcher 停止
 
 ---
 
-## 4. 同期エンジン（SyncEngine）
+## 4. 同期の仕組み（SyncEngine）
 
 ### 4.a 責務
 

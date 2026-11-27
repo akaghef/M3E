@@ -132,7 +132,7 @@ Lane の切替は永続 Topology を変えない。レーン順は `children[]` 
 
 検証観点: 正常系では root の子 node の順序がレーン順に保たれ、孫 node 間の relation edge がレーンをまたいで表示されることを確認する。境界系では `right` / `down` の方向、レーンを飛び越す relation edge を確認する。失敗系では選択から計算した内訳線が relation edge として保存されず、View 切替で Topology が変わらないことを確認する。
 
-Radial と Disperse は同一の力学配置エンジンを共有し、**親子関係を parent edge にするか group にするかだけが異なる**。座標計算のアルゴリズムに違いはない。
+Radial と Disperse は同一の力学による配置の計算を共有し、**親子関係を parent edge にするか group にするかだけが異なる**。座標計算のアルゴリズムに違いはない。
 
 #### 親子の投影方式（parent edge / group）と粗視化
 

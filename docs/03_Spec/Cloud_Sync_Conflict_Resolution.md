@@ -66,7 +66,7 @@ M3E の sync コマンドは Git のワークフローに対応させる。
 
 ---
 
-## 2. 3-Way Diff エンジン
+## 2. 3-Way Diff による差分の計算
 
 ### 2.1 Base Snapshot 管理
 
@@ -321,7 +321,7 @@ IndexedDB `m3e-conflict-backups` に保存。直近 N 件保持。
 ### Phase 1: 基盤（最小 diff + snapshot）
 
 - [ ] Base snapshot の IndexedDB 保存（sync 成功時）
-- [ ] 3-way diff エンジン（node 単位の変更検出）
+- [ ] 3-way diff による差分の計算（node 単位の変更検出）
 - [ ] `sync fetch` API 追加
 - [ ] MergeSession のライフサイクル管理
 

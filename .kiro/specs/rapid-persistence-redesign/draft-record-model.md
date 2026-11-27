@@ -15,7 +15,7 @@
 
 ## 0. 要約
 
-1. data migration の対象は「論理レコード」と、その snapshot の形式である。保存エンジン（SQLite / Neo4j）には依存させない。
+1. data migration の対象は「論理レコード」と、その snapshot の形式である。database（SQLite / Neo4j）には依存させない。
 2. レコード種別は 10 種。map・node・parent edge（親と兄弟順）・attribute・relation edge・scope の付随設定・linear-text・Surface View の保存設定・Surface View ごとの node 配置値・注釈（annotation）。alias は node の一種として扱い、scope の範囲は folder node から導出する。
 3. 兄弟順は fractional index のキーで表す（`fractional-indexing` を使う）。順序は `(親, キー, 子の nodeId)` で一意に決まる。キーを割り当てるのは確定を行う側で、journal には割り当てた結果のキーを記録する。
 4. revision は record ごとに持ち、値は「その record を最後に変更した map の確定の通し番号」とする。client は通し番号の位置を基準として保持し、取りこぼした分は journal から取り寄せる。
@@ -195,7 +195,7 @@
 - **キーは確定する側だけが作る。**
   - Command は位置を兄弟の nodeId で示す（直前の兄弟、直後の兄弟、または末尾）。
   - 確定側がその時点の兄弟からキーを作り、journal にはそのキーを記録する。
-  - これにより replay と別エンジンでの再構築は、キーの生成方法に関係なく決定的になる。
+  - これにより replay と別 database での再構築は、キーの生成方法に関係なく決定的になる。
   - 既存の `reorderInsertionIndex`（shared/reorder_insertion.ts）は兄弟の ID で解決しているので、そのまま入力に使える。
 - 順序は `(parentId, key, nodeId)` で比べる。キーは ASCII で、比較は BINARY 照合（SQLite）とコードポイント順（Neo4j）で一致する。
 - offline の端末（RQ27）が仮のキーを作る場合は、jittered 版で衝突を減らす。合流するときの確定側が割り当て直す。
@@ -252,7 +252,7 @@
 
 使い方:
 
-- **replay**: 変更後の値を、変更前の `rev` と一致するときだけ適用する。intent を実行し直さないので、エンジンが違っても決定的になる。
+- **replay**: 変更後の値を、変更前の `rev` と一致するときだけ適用する。intent を実行し直さないので、database が違っても決定的になる。
   - 一致しないときは journal の破損として扱い、処理を止める。
   - すでに変更後の `rev` に達していれば飛ばす。これで中断後の再開が冪等になる。
 - **Undo**: 変更前と変更後を入れ替えた新しい Command を作り、base は変更後の `rev` とする。逆向きの Command と変更前の値の保持のどちらを選んでも（IS127）、この形で足りる。
@@ -277,33 +277,28 @@
 - Flash の重複防止キー（`m3e:flashImportKey`、673 件）は、node の attribute を全件走査して照合している（mcp_service.ts:410）。
   - commandId による重複排除に置き換えられるが、attribute は data なので残す。
 
-## 6. snapshot
+## 6. snapshot と輸送・export の形式
 
-**提案**（Glossary の snapshot、ADR 008 の Recovery Gate）:
+snapshot はある seq の時点の Neo4j の状態である。別の snapshot ファイルは置かない。以下のファイル形式は、一度きりの移行入力、export、clone payload に限る（Glossary、ADR 014）。
 
 - **単位と形式**: map ごとに 1 つの JSON Lines ファイル。
   - 1 行目は header。形式の版、`mapId`、source の識別、通し番号、作成時刻、種別ごとの件数を持つ。
   - 2 行目以降は 1 行に 1 レコード（種別、key、`rev`、値）。
   - 最後の行は、種別ごとの SHA-256 と全体の SHA-256 を持つ。
-  - journal も同じ規約の JSON Lines で、通し番号の範囲ごとに区切る。
+  - journal は Neo4j の `Commit` node に置く。push / pull の wire format と export では JSON で運ぶ。
 - **決定性**: 各行は RFC 8785（JCS）で正規化する。既存の実装を使う（例: npm の `canonicalize`。版と保守状況は未確認）。
   - 行の順は、種別の固定順（2 節の表の順。後から足す種別は末尾）と、その中での key のバイト順。
   - 同じ通し番号の同じレコードからは、同じバイト列ができる。
   - JCS は数値を ECMAScript の規則で書き出すので、実データの `linearTextFontScale = 1.2000000000000002` もそのまま往復する。
 - **入れないもの**:
-  - エンジン内部の ID（SQLite の rowid、Neo4j の elementId）
+  - database 内部の ID（SQLite の rowid、Neo4j の elementId）
   - 導出値（`children[]`、scope の範囲、`relationIds`）
   - cache、空の node 配置値
-- **再構築の手順**（Recovery Gate の実証）:
-  1. 空のエンジンを用意する。
-  2. snapshot のレコードを `rev` 付きで読み込み、通し番号を S に設定する。
-  3. S より後の journal を 5 節の replay 規則で適用する。
-  4. 2.2 節の不変条件を検査する。
-  5. 再構築したエンジンから同じ通し番号で snapshot を作り、元のエンジンの snapshot と SHA-256 が一致することを確かめる。
-  - backup / restore は補助としてのみ使う。
-- **置き場所**: エンジンのファイルとは別の failure domain に置く（ADR 008 Constraints）。
-  - Syncthing は `backups/` を除外しているので、PC 間で共有する snapshot と journal の置き場所は、同期の設計（DP2）と一緒に決める。
-  - 作る頻度と journal の保持期間は IS131。
+- **復旧の手順**（Recovery Gate の実証）:
+  1. 端末の Neo4j は remote から clone する。
+  2. remote の Neo4j は database 全体の定期 export から復旧する。
+  3. 内容と管理状態、到達地点の一致を検証する。
+- **置き場所**: remote の定期 export は、Neo4j の保存先とは別の failure domain に保全する。端末に別の snapshot ファイルは置かない。
 
 ## 7. Deep への備え（RQ28）
 
@@ -396,7 +391,7 @@
 - 実際の移行は「問題の件数が 0 のときだけ切り替え、旧 DB は消さずに archive する」（CLAUDE.md の破壊的操作の規則）。
 - **残る危険**: `Object.keys(nodes)` の順に依存するコードがあると、object の key の順を無視した比較では検出できない。Concreteness Axis は木の順から計算し直していることを確認した（concreteness_axis.ts `projectConcreteness`）。それ以外は未調査。
 
-## 9. 物理の素描（エンジン中立性を示すためだけ）
+## 9. 物理の素描（database 中立性を示すためだけ）
 
 ### 9.1 SQLite
 
