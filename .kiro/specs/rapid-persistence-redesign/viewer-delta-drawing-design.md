@@ -8,7 +8,7 @@
 
 | 区間 | 実装 | 現在の範囲 |
 |---|---|---|
-| undo / redo | `viewer_delta_state.ts` の record 単位の before image。逆方向も同じ write set を capture する | scopen / unscopen の入口が node と派生 scope / Surface View の write set を宣言する。rename / alias label / incoming edge label は property before image。edge color / port は link record。従来の全 snapshot と混在可能。構造的に未対応の操作・Concreteness は従来 snapshot |
+| undo / redo | `viewer_delta_state.ts` の record 単位の before image。逆方向も同じ write set を capture する | scopen / unscopen の入口が node と派生 scope / Surface View の write set を宣言する。rename / alias label / incoming edge label は property before image。edge color / port は link record。keyed state の子・兄弟追加は新規 leaf record・親の collapsed・挿入 slot・割り当てた order key。従来の全 snapshot と混在可能。構造的に未対応の操作・Concreteness は従来 snapshot |
 | 正規化 | `viewer_delta_model.ts`。初回に node→incident relation edge、scope→relation edge / Surface View の索引を構築。既知 node の編集は対象部分木と影響先だけ更新 | Surface View の nodeViews は対象 node の項目のみ更新。relationIds の順序は全正規化と同じ。未知の変更・state の入替は全正規化 |
 | Layout / SVG | `viewer_delta_scene.ts:StableScenePatch`。全再描画時に子集合と描画依存を保持。既知の編集では対象 node の依存、子集合、寸法を検査し、全対象の検査成功後に SVG fragment を patch | Tree で寸法・子集合・描画依存が変わらない更新。scopen / unscopen もこの判定を通る。キー・node ID・node 数による分岐はない |
 | Grab の兄弟順序変更 | `viewer_delta_reorder.ts`。全描画時に親・子順・preorder と subtree span を保持し、交差した兄弟区間を rotation する | 右・左・下向き Tree の同一親の移動。対象部分木の座標・入射 edge・SVG順・paint順・WebGL hit geometry・bounds を更新。親 children 全体の splice / filter は行わない |
@@ -35,7 +35,7 @@ load / import / map 切替 / Surface View 切替 / write set 不明の場合は 
 | 寸法・Style・filter の変更 | 同寸法 rename と alias 参照の更新は差分化した。寸法が変わる rename、Style が edge / layout へ与える影響、filter の変更依存は未対応 |
 | Tree 以外、component、preview、active filter、display root の変更 | 追加の描画依存をまだ差分化していない。意味や pixels を変えないため既存 full path |
 | 大きい scope の relationIds | scope record が配列全体を所有するため、その scope を更新すると配列の再構成・順序合わせ・before image の費用が残る |
-| scopen / unscopen と対応する Grab 以外の undo | 多数の編集入口がまだ従来 `pushUndoSnapshot()` を使う。Grab の Undo / Redo・取消・受信描画は同じ区間 plan を使う。rename / alias label / incoming edge label と一部の edge 編集以外の write set 宣言が残る |
+| scopen / unscopen と対応する Grab 以外の undo | 多数の編集入口がまだ従来 `pushUndoSnapshot()` を使う。Grab の Undo / Redo・取消・受信描画は同じ区間 plan を使う。rename / alias label / incoming edge label・keyed state の子/兄弟追加・一部の edge 編集以外の write set 宣言が残る。挿入の履歴は局所化したが、挿入時の Layout・正規化・配信はまだ full path |
 | load 時の負荷 | live browser の比較を未実行。bounds と所有者索引の構築分を含め、悪化しないことを Director が計測する |
 
 ## 検証
@@ -135,3 +135,26 @@ npx playwright test --retries=1
 
 
 R5 のローカル結果: `npm run test:unit` は1,675通過・27 skipped・2失敗（既存vault-watchのEMFILE、2 unhandled error）。build:testと全typecheckは成功。最終のmetadata正規化変更後の関連42試験も通過した。viewer.tsは17,561行。autosaveの関数抽出試験へ実AliasIndexを接続して依存不足の8失敗を解消し、部分captureのtimeoutも最終runで解消した。全unitの成功を報告するにはDirector環境で既存watch試験を含む再実行が必要。
+
+
+## R6 の回帰調査と挿入履歴
+
+Director の `1387f96` 実測は DV1〜DV4 が4/4 PASS（DV4 31.4 / 47.7 ms、比率1.5）、DJ1〜DJ5が5/5、localが16/16、unitが1,677通過・0失敗。visualは190 expected / 51 unexpected / 1 flaky。新規の失敗2件は本roundの受入完了を妨げている。
+
+`scope_plane.spec.js:52` の7件は新規 node の未描画ではなく、scope退出のcamera移動先に接続したSVGを見て操作が進み、直後のTabがcameraを途中のzoomで停止させてrootを切り離す状態として、実際のviewerを起動するjsdom診断で再現した。ノード作成前にpending cameraの移動先を確定してから、既存のanchor保持とnudgeを行う。ブラウザーのfont/geometryを再現したという主張ではない。`viewer_scope_edit.test.ts` は固定geometryと手動animation frameで同じscope移動・Tab/Escape・Undo/Redoを通し、camera確定を外すnegative controlではrootが欠けて失敗する。
+
+`scope_layout_diff.spec.js:37` の最初の右矢印でroot選択が残る件は未解決。fixtureを正規化した起動、Workbench付きの起動でもjsdomでは再現しなかった。提供済みerror-contextだけでは入力の消費と描画中の例外を区別できない。Directorのpageerror/console errorまたはtraceが必要であり、推測だけの修正は加えていない。
+
+`captureNodeInsertion` は追加前のleaf不在、親collapsed、挿入slotを保持し、Undoの削除長とRedoの挿入長を反転する。既存の上書きrangeとは区別し、appendは末尾だけを読む。`assignInsertionOrder` は既存 `SaveStateTracker.markParentEdge` を呼び、その際にkeyが付く未保存の隣接leafもfield履歴へ含める。キーが無い旧baselineとConcretenessは従来snapshotを使う。子追加/兄弟追加の共通処理をまとめ、viewer.tsは17,561→17,555行（初期上限17,593）となった。
+
+50 / 20,000のappend履歴、逆操作、peer配信は無関係なchild slot読取り0。中間挿入で後続兄弟が残ること、作成保存の前後どちらからもUndo/RedoのCommandを適用できること、隣接leafのkeyの有無を復元することを検査する。挿入時の全正規化・全Layout・初回の全配信、寸法変更と巨大部分木のlazy offsetは引き続き未達。serverの差分通知は別担当の変更待ちで、node側は変更していない。
+
+browser: **未実行（Director 依頼）**。まず `beta/` で次を実行し、最初の右矢印が失敗したtraceとpageerrorを返す。その後、全judgeと全visualを独立再実行する。
+
+```sh
+npx playwright test tests/visual/scope_layout_diff.spec.js tests/visual/scope_plane.spec.js --retries=1 --trace=on
+node tests/acceptance/delta_viewer_judge.mjs .
+npx playwright test --retries=1
+```
+
+R6 checkpoint のローカル結果は build成功、全unit 1,682通過・27 skipped・2失敗（既存vault-watchのEMFILE、2 unhandled error）。最後のConcreteness guard後の関連30試験は全通過。右矢印回帰とブラウザーの修正確認、lazy offsetなどの未達は残っている。

@@ -846,3 +846,15 @@
 
 
 R5 checkpoint のローカル検証: `npm run test:unit` の build:test / 全typecheckは成功、unitは1,675通過・27 skipped・2失敗（vault_watch_api_integration.test.jsの既存EMFILE、2 unhandled error）。autosaveの新規8失敗は、抽出したviewer関数へ新しいAliasIndex依存を渡していなかった試験setupを実クラスへ接続して解消した。部分captureのtimeoutも最終runでは解消。最後の正規化のmetadata fast pathについて、変更後に関連42試験を再実行し通過した。server-side同期の差分通知とlazy offsetの未達は上記のまま。受入判定を合格へ変更していない。
+
+
+### 2026-11-27 scope移動中の追加と挿入Undoの局所化
+
+- 種類: 回帰修正・部分実装・未解決
+- 書いた agent: Codex（delta-all-viewer、R6）
+- 対象: scope退出直後のTab、子/兄弟追加の履歴とorder key、scope_layout_diffの右矢印
+- 中身: scope移動中のノード追加はcameraを予定移動先へ確定してから既存のanchor/nudgeを行う。追加履歴は新規leaf record、親collapsed、childrenの挿入slot、keyが付く新規隣接leafだけ。既存markParentEdgeを使い、無keyの旧baselineとConcretenessは従来snapshot。追加共通処理をまとめviewer.tsを17,561→17,555行に縮小。
+- 根拠: scope_planeと同じ操作を実viewerのjsdom起動で実行し、新規nodeは存在するがrootが切り離されることを確認。固定frameの回帰試験はcamera確定を外すとroot欠落で失敗する。50 / 20,000の履歴・逆操作・peer反映で無関係なslot読取り0。作成保存前後のUndo/Redo Command適用、隣接leafのkey復元を検査。最終build/unitは本節の追記参照。
+- 扱い: R6の2回帰中、最初の右矢印でrootが残る件は原因未確定。正規化fixture/Workbench付きのjsdomでも再現しなかった。Directorのtrace/pageerrorが必要。browserは未実行（Director 依頼）、元Playwrightの通過は未確認。寸法変更・巨大部分木のlazy offset、挿入時の全正規化/全Layout/全配信、残る構造Undoは未達。server通知はstore worker待ち。goalは完了していない。
+
+R6 checkpoint の検証: 最終 `npm run build` は成功。`npm run test:unit` の build:test / 全typecheckは成功、unitは1,682通過・27 skipped・2失敗（既存vault-watchのEMFILE、2 unhandled error）。Concreteness/異なるstateの挿入を従来履歴へ戻すguardの追加後、関連30試験を再実行して通過。最終のnegative controlでもcamera確定を外した場合だけroot欠落で失敗し、修正を戻した試験は通過した。`git diff --check` 成功。ブラウザー受入は未実行（Director 依頼）。

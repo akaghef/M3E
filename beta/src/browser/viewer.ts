@@ -5,7 +5,7 @@ import { TreeReorder, rotateRange, type ReorderPlan } from "./viewer_delta_reord
 import { NodePresence } from "./viewer_delta_presence";
 import { focusBoard } from "./viewer_delta_selection";
 import { DeltaBroadcast } from "./viewer_delta_broadcast";
-import { captureNodeFields, cloneState, captureStatePatch, applyStatePatch, inverseStatePatch, ChildOrderHistory, type StatePatch } from "./viewer_delta_state";
+import { assignInsertionOrder, captureNodeInsertion, captureNodeFields, cloneState, captureStatePatch, applyStatePatch, inverseStatePatch, ChildOrderHistory, type StatePatch } from "./viewer_delta_state";
 import { createMapNormalizer } from "./viewer_delta_model";
 import { captureHiddenNodePaint, refreshCapturedNodeFragment } from "./webgl_scene_tiles";
 import { StableScenePatch, SceneBounds } from "./viewer_delta_scene";
@@ -4322,14 +4322,14 @@ function moveConcretenessLevel(delta: -1 | 1): void {
   focusBoard(board);
 }
 
-function pushUndoSnapshot(touches?: SaveTouches, fields?: readonly string[]): void {
+function pushUndoSnapshot(touches?: SaveTouches, fields?: readonly string[], delta?: StatePatch): void {
   if (!map) {
     return;
   }
-  if (viewState.concretenessLevel !== 0 || concretenessView) touches = undefined;
+  if (viewState.concretenessLevel !== 0 || concretenessView) { touches = undefined; delta = undefined; }
   undoStack.push({
     state: touches ? canonicalMapState() : cloneState(canonicalMapState()),
-    delta: touches ? fields ? captureNodeFields(canonicalMapState(),touches.nodes||[],fields) : captureStatePatch(canonicalMapState(), touches) : undefined,
+    delta: delta ?? (touches ? fields ? captureNodeFields(canonicalMapState(),touches.nodes||[],fields) : captureStatePatch(canonicalMapState(), touches) : undefined),
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
@@ -11852,44 +11852,36 @@ if (conflictUseRemoteBtn) {
 }
 
 function addChild(): void {
-  const parentId = viewState.selectedNodeId;
-  const before = nodeViewportAnchor(parentId);
-  const parent = getNode(parentId);
+  const parent = getNode(viewState.selectedNodeId);
   if (isAliasNode(parent)) {
     setStatus("Alias nodes cannot own children.", true);
     return;
   }
-  pushUndoSnapshot();
-  const id = newId();
-  map!.state.nodes[id] = createNodeRecord(id, parentId, "");
-  placeEdgeOnOpenScope(map!.state.nodes[id]!);
-  parent.children.push(id);
-  viewState.collapsedIds.delete(parentId);
-  parent.collapsed = false;
-  setSingleSelection(id, false);
-  touchDocument(true);
-  preserveNodeViewportAnchor(parentId, before);
-  nudgeActiveNodeIntoView({ animate: false });
-  focusBoard(board);
+  insertChild(parent, parent.children.length, parent.id, true);
 }
 
 function addSibling(): void {
   const node = getNode(viewState.selectedNodeId);
-  const before = nodeViewportAnchor(node.id);
   if (node.parentId === null) {
     addChild();
     return;
   }
   const parent = getNode(node.parentId);
-  pushUndoSnapshot();
-  const currentIndex = parent.children.indexOf(node.id);
-  const id = newId();
+  insertChild(parent, parent.children.indexOf(node.id) + 1, node.id, false);
+}
+
+function insertChild(parent: TreeNode, index: number, anchorId: string, expand: boolean): void {
+  const before = nodeViewportAnchor(anchorId), id = newId();
+  const beforeInsert = !concretenessView && viewState.concretenessLevel === 0 && saveStateTracker?.state === map!.state && saveStateTracker.hasIndexedEdges ? captureNodeInsertion(map!.state, parent.id, id, index) : undefined;
+  pushUndoSnapshot(beforeInsert?.touches, undefined, beforeInsert);
   map!.state.nodes[id] = createNodeRecord(id, parent.id, "");
   placeEdgeOnOpenScope(map!.state.nodes[id]!);
-  parent.children.splice(currentIndex + 1, 0, id);
+  parent.children.splice(index, 0, id);
+  if (beforeInsert) assignInsertionOrder(map!.state, beforeInsert, id, index, () => saveStateTracker!.markParentEdge(id, index));
+  if (expand) { viewState.collapsedIds.delete(parent.id); parent.collapsed = false; }
   setSingleSelection(id, false);
   touchDocument(true);
-  preserveNodeViewportAnchor(node.id, before);
+  preserveNodeViewportAnchor(anchorId, before);
   nudgeActiveNodeIntoView({ animate: false });
   focusBoard(board);
 }
@@ -12581,6 +12573,8 @@ function createNodeByDirectionAndEdit(direction: "breadth" | "depth", commitEdit
   if (!map) {
     return;
   }
+  // An edit belongs to the destination scene, not a transient scope-camera frame.
+  if (cameraMotion) moveCameraTo(cameraMotion.to, { animate: false });
   localEditBatchDepth++;
   try {
     if (commitEditor) stopInlineEdit(true, { focusBoard: false });

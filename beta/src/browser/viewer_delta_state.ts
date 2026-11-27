@@ -2,7 +2,7 @@ import { isOrderKey } from '../shared/record_model/order_key';
 import type { SaveTouches } from './save_command';
 
 type Bag = Record<string, any>;
-export interface ArrayRange { id: string; index: number; values: string[] }
+export interface ArrayRange { id: string; index: number; values: string[]; deleteCount?: number }
 export interface StateField { collection:string; id:string; key:string; present:boolean; value?:unknown }
 export interface StatePatch { touches: SaveTouches; records: Array<{ collection: string; id: string; value?: unknown; present: boolean }>; children?: ArrayRange[]; fields?: StateField[] }
 export const cloneState = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value));
@@ -29,7 +29,8 @@ export function applyStatePatch(state: object, patch: StatePatch, skipChildren =
   }
   for (const range of skipChildren ? [] : patch.children || []) {
     const children = target.nodes[range.id].children;
-    range.values.forEach((value, index) => { children[range.index + index] = value; });
+    if (range.deleteCount !== undefined) children.splice(range.index, range.deleteCount, ...range.values);
+    else range.values.forEach((value, index) => { children[range.index + index] = value; });
   }
 }
 
@@ -41,7 +42,9 @@ export function inverseStatePatch(state: object, patch: StatePatch): StatePatch 
       return {...record,present:!!bag && Object.prototype.hasOwnProperty.call(bag,record.id),value:cloneState(bag?.[record.id])};
     }),
     fields: patch.fields?.map(field=>captureField(state,field.collection,field.id,field.key)),
-    children: patch.children?.map(range => ({...range,values:source.nodes[range.id].children.slice(range.index,range.index+range.values.length)})),
+    children: patch.children?.map(range => ({...range,
+      ...(range.deleteCount === undefined ? {} : {deleteCount:range.values.length}),
+      values:source.nodes[range.id].children.slice(range.index,range.index+(range.deleteCount ?? range.values.length))})),
   };
 }
 
@@ -90,4 +93,25 @@ export class ChildOrderHistory {
 export function captureNodeFields(state: object, ids: readonly string[], keys: readonly string[]): StatePatch {
   const nodes=[...new Set(ids)];
   return {touches:{nodes,edges:[]},records:[],fields:nodes.flatMap(id=>keys.map(key=>captureField(state,'nodes',id,key)))};
+}
+
+/** Before image for insertion of one fresh leaf. The parent's children are not
+ * copied: undo removes the inserted slot; redo captures that slot and leaf. */
+export function captureNodeInsertion(state: object, parent: string, id: string, index: number): StatePatch {
+  const patch = captureStatePatch(state, {nodes:[id],edges:[id]});
+  patch.fields = captureNodeFields(state, [parent], ['collapsed']).fields;
+  patch.children = [{id:parent,index,values:[],deleteCount:1}];
+  patch.touches.nodes = [id,parent];
+  return patch;
+}
+
+/** Keep the key-assignment write set in the same insertion history, including
+ * any not-yet-keyed neighbouring leaves. The fresh leaf is already a record. */
+export function assignInsertionOrder(state: object, patch: StatePatch, id: string, index: number, assign: () => void): void {
+  const history = new ChildOrderHistory(); history.recordEdgeOrders(state, id, index);
+  const fields = history.patch().fields!.filter(field=>field.id!==id);
+  patch.fields!.push(...fields);
+  patch.touches.nodes = [...new Set([...patch.touches.nodes!,...fields.map(field=>field.id)])];
+  patch.touches.edges = [id,...fields.map(field=>field.id)];
+  assign();
 }

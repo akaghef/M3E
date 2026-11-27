@@ -1,7 +1,8 @@
 import { SaveStateTracker } from '../../src/browser/save_command';
 import { keysBetween } from '../../src/shared/record_model/order_key';
 import { expect, it, vi } from 'vitest';
-import { captureNodeFields, captureStatePatch, applyStatePatch, inverseStatePatch, ChildOrderHistory } from '../../src/browser/viewer_delta_state';
+import { assignInsertionOrder, captureNodeInsertion, captureNodeFields, captureStatePatch, applyStatePatch, inverseStatePatch, ChildOrderHistory } from '../../src/browser/viewer_delta_state';
+import { applyChanges } from '../../src/shared/map_changes';
 import { rotateRange } from '../../src/browser/viewer_delta_reorder';
 import { DeltaBroadcast } from '../../src/browser/viewer_delta_broadcast';
 
@@ -15,6 +16,76 @@ it.each([50, 20000])('undo and redo copy only declared records (%i nodes)', coun
   applyStatePatch(state, patch); expect(state.nodes['0']!.text).toBe('0'); expect(state.nodes.new).toBeUndefined();
   applyStatePatch(state, inverse); expect(state.nodes['0']!.text).toBe('changed'); expect(state.nodes.new.text).toBe('created');
   expect(state.nodes['1']).toBe(original);
+});
+
+it.each([50,20000])('append history, inverse and peer replay never read unrelated child slots (%i)',count=>{
+  const children=Array.from({length:count},(_,i)=>`n${i}`);
+  const state:any={nodes:{root:{children,collapsed:true}}}, peer=structuredClone(state);
+  let reads=0;
+  Object.defineProperty(children,0,{get(){reads++;return 'n0';},configurable:true});
+  Object.defineProperty(state.nodes,'unrelated',{get(){throw new Error('unrelated node read');},enumerable:true});
+  const before=captureNodeInsertion(state,'root','new',count);
+  state.nodes.new={id:'new',parentId:'root',children:[],text:'',edgeOrder:'a9',edgeOutsideScope:true};
+  children.push('new');state.nodes.root.collapsed=false;
+  const after=inverseStatePatch(state,before);
+  expect(before.records).toHaveLength(1);expect(before.fields).toHaveLength(1);
+  expect(after.children).toEqual([{id:'root',index:count,values:['new'],deleteCount:0}]);
+  applyStatePatch(state,before);expect(children.length).toBe(count);expect(state.nodes.new).toBeUndefined();
+  expect(state.nodes.root.collapsed).toBe(true);
+  const repeated=inverseStatePatch(state,after);expect(repeated).toEqual(before);
+  applyStatePatch(state,after);expect(children.length).toBe(count+1);expect(children.at(-1)).toBe('new');
+  expect(state.nodes.new.edgeOutsideScope).toBe(true);expect(state.nodes.root.collapsed).toBe(false);
+  const channel={postMessage:vi.fn()},sender=new DeltaBroadcast(channel,'sender',()=>({state,savedAt:'now'}),vi.fn());
+  sender.mark(after.touches);sender.childOrder(after.children!,after.fields);sender.send();
+  const patch=channel.postMessage.mock.calls[0]![0].patch;
+  expect(patch.records.map((r:any)=>r.id)).toEqual(['new']);
+  applyStatePatch(peer,patch);expect(peer.nodes.root.children.at(-1)).toBe('new');
+  expect(peer.nodes.new).toEqual(state.nodes.new);
+  applyStatePatch(peer,before);expect(peer.nodes.root.children.length).toBe(count);
+  expect(reads).toBe(0);
+});
+
+it('inverts insertion in the middle without overwriting the following sibling',()=>{
+  const state:any={nodes:{root:{children:['a','b']}}};
+  const before=captureNodeInsertion(state,'root','new',1);
+  state.nodes.new={id:'new',children:[]};state.nodes.root.children.splice(1,0,'new');
+  const after=inverseStatePatch(state,before);
+  applyStatePatch(state,before);expect(state.nodes.root.children).toEqual(['a','b']);
+  applyStatePatch(state,after);expect(state.nodes.root.children).toEqual(['a','new','b']);
+});
+
+it.each([false,true])('saves insertion undo/redo with a valid edge key (creation acknowledged: %s)',acknowledge=>{
+  const state:any={rootId:'root',nodes:{root:{id:'root',parentId:null,children:['a'],text:'root'},a:{id:'a',parentId:'root',children:[],text:'a',edgeOrder:'a0'}}};
+  let remote=structuredClone(state);
+  const tracker=new SaveStateTracker(structuredClone(state),state,{indexedEdges:true});
+  const before=captureNodeInsertion(state,'root','new',1);
+  state.nodes.new={id:'new',parentId:'root',children:[],text:'new'};state.nodes.root.children.push('new');
+  assignInsertionOrder(state,before,'new',1,()=>tracker.markParentEdge('new',1));
+  const save=()=>{
+    const capture=tracker.capture(),result=applyChanges(remote,capture.changes);
+    expect(result.ok).toBe(true);if(result.ok)remote=result.state;
+    capture.accept();
+  };
+  if(acknowledge)save();
+  const after=inverseStatePatch(state,before);
+  applyStatePatch(state,before);tracker.mark(before.touches);save();
+  expect(remote.nodes.root.children).toEqual(['a']);
+  applyStatePatch(state,after);tracker.mark(after.touches);save();
+  expect(remote.nodes.root.children).toEqual(['a','new']);
+  expect(remote.nodes.new.edgeOrder).toBe(state.nodes.new.edgeOrder);
+});
+
+it('restores the absence of keys on new neighbours in the same insertion transaction',()=>{
+  const state:any={nodes:{root:{children:[]}}};
+  const tracker=new SaveStateTracker(structuredClone(state),state,{indexedEdges:true});
+  state.nodes.a={parentId:'root',children:[]};state.nodes.root.children.push('a');
+  const before=captureNodeInsertion(state,'root','new',1);
+  state.nodes.new={parentId:'root',children:[]};state.nodes.root.children.push('new');
+  assignInsertionOrder(state,before,'new',1,()=>tracker.markParentEdge('new',1));
+  expect(before.fields?.map(field=>field.id)).toEqual(['root','a']);
+  const after=inverseStatePatch(state,before);
+  applyStatePatch(state,before);expect(state.nodes.a.edgeOrder).toBeUndefined();
+  applyStatePatch(state,after);expect(state.nodes.a.edgeOrder).toBeDefined();expect(state.nodes.new.edgeOrder).toBeDefined();
 });
 
 it('broadcasts deltas after baseline exchange, recovers gaps and ignores duplicates', () => {

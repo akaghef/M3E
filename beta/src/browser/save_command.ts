@@ -159,6 +159,7 @@ export class SaveStateTracker<T extends object> {
   }
 
   get needsFullSave(): boolean { return this.full; }
+  get hasIndexedEdges(): boolean { return this.indexedEdges; }
 
   mark(touches?: SaveTouches): void {
     if (!touches) { this.full = true; return; }
