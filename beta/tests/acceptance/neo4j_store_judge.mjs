@@ -221,9 +221,24 @@ async function createNeo4j(root, name) {
   if (pw.status !== 0) throw new Error(`set-initial-password ${name}: ${pw.stderr || pw.stdout}`);
   return { name, dir, conf, port, env, bolt: `bolt://127.0.0.1:${port}` };
 }
+/**
+ * `neo4j start` / `neo4j stop` run asynchronously: a synchronous child blocks the judge's event loop for the ~11 s a stop
+ * takes, so sockets the servers close meanwhile (keep-alive timeout 5 s) are still pooled when the next request goes out,
+ * and that request fails with ECONNRESET on the client side, which is not the server dropping it.
+ */
+function neo4jCtl(neo, command) {
+  return new Promise((resolve) => {
+    const child = spawn(NEO4J_BIN, [command], { env: neo.env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.on("data", (c) => { out += c; });
+    child.stderr.on("data", (c) => { out += c; });
+    child.once("error", (e) => resolve({ status: -1, out: String(e) }));
+    child.once("close", (status) => resolve({ status, out }));
+  });
+}
 async function startNeo4j(neo) {
-  const r = spawnSync(NEO4J_BIN, ["start"], { env: neo.env, encoding: "utf8" });
-  if (r.status !== 0 && !/already running/i.test(r.stdout + r.stderr)) throw new Error(`neo4j start ${neo.name}: ${r.stdout}${r.stderr}`);
+  const r = await neo4jCtl(neo, "start");
+  if (r.status !== 0 && !/already running/i.test(r.out)) throw new Error(`neo4j start ${neo.name}: ${r.out}`);
   const deadline = Date.now() + 120_000;
   while (!(await portOpen(neo.port))) {
     if (Date.now() > deadline) throw new Error(`neo4j ${neo.name} did not open bolt ${neo.port}`);
@@ -233,8 +248,8 @@ async function startNeo4j(neo) {
     try { await cypher(neo, "RETURN 1"); return; } catch (e) { if (Date.now() > deadline) throw e; await sleep(500); }
   }
 }
-function stopNeo4j(neo) {
-  spawnSync(NEO4J_BIN, ["stop"], { env: neo.env, encoding: "utf8" });
+async function stopNeo4j(neo) {
+  await neo4jCtl(neo, "stop");
 }
 let neo4jDriverModule = null;
 async function cypher(neo, query, params = {}) {
@@ -477,7 +492,7 @@ async function synthetic(BETA) {
       const before = { remote: await allViewerHashes(remote), A: await allViewerHashes(A), B: await allViewerHashes(B), unsentA: (await status(A))?.unsent };
       const ports = { remote: remote.port, A: A.port, B: B.port };
       await Promise.all([stopServer(A), stopServer(B), stopServer(remote)]);
-      Object.values(neo).forEach(stopNeo4j);
+      await Promise.all(Object.values(neo).map(stopNeo4j));
       await Promise.all(Object.values(neo).map(startNeo4j));
       remote = await startServer(BETA, "remote", participantEnv(root, "remote", neo.remote), ports.remote);
       A = await startServer(BETA, "A", localEnv("A"), ports.A);
@@ -491,7 +506,7 @@ async function synthetic(BETA) {
     // (b) with Neo4j stopped the server refuses or reports it, never serving file state.
     await guarded("B2", async () => {
       const okBefore = await textOf(B, "m1", "j_a");
-      stopNeo4j(neo.B);
+      await stopNeo4j(neo.B);
       const g = await call(B.base, "GET", "/api/maps/m1", undefined, 20_000);
       const list = await call(B.base, "GET", "/api/maps", undefined, 20_000);
       const cur = { state: { ...seedState, nodes: { ...seedState.nodes, j_a: { ...seedState.nodes.j_a, text: T("while-down") } } } };
@@ -512,7 +527,7 @@ async function synthetic(BETA) {
       const want = await textOf(A, "m1", "j_a");
       const port = A.port;
       await stopServer(A);
-      stopNeo4j(neo.A);
+      await stopNeo4j(neo.A);
       A = await startServer(BETA, "A", localEnv("A"), port, { waitReady: false });
       await sleep(3000);
       const early = await call(A.base, "GET", "/api/maps/m1", undefined, 10_000);
@@ -525,7 +540,7 @@ async function synthetic(BETA) {
     scanAll("final", [["remote", false], ["A", true], ["B", true]]);
   } finally {
     for (const s of [...servers]) await stopServer(s);
-    Object.values(neo).forEach(stopNeo4j);
+    await Promise.all(Object.values(neo).map(stopNeo4j));
     console.log(`temp=${root}`);
   }
 }
