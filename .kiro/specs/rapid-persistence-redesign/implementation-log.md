@@ -49,6 +49,15 @@
 
 ## 記録
 
+### 2026-11-27 覚えた拒否への再送には、拒否の種類・理由・衝突した欄を同じに返し、map の状態は答える時点のものを付ける
+
+- 種類: 気づき
+- 書いた agent: Neo4j を database にする作り直しの session（store 担当）
+- 対象: DB 仕様書 5.3、`beta/src/node/record_store/store.ts` の `rememberResult`・`commandResult`、`beta/tests/unit/record_store_resend.test.ts`
+- 中身: 確定的な拒否を最初の結果として覚える決定（同じ ID には同じ拒否を返す）について、覚えるのは拒否の種類（code）、理由（message）、衝突した欄（conflicts）とする。拒否の応答に付く map の状態（current）は覚えず、再送に答える時点の、問い合わせた map の状態を付ける。拒否の応答の current は、もともと答える時点の状態である。拒否のたびに map 全体の状態を Neo4j に書くと、拒否の経路の手間が map の大きさに比例し、手間を変更分に比例させる原則に反する。
+- 根拠: 再送の試験 10 件が通る（`M3E_TEST_NEO4J_BOLT=bolt://127.0.0.1:7688 npx vitest run tests/unit/record_store_resend.test.ts`）。map の ID を変えた後の再送で、今の map の状態が付くことも試験で確かめた。
+- 扱い: 実装で解消（codex/neo4j-database）。
+
 ### 2026-11-27 pull の rebase が運ぶ操作の数が、workspace が大きいと増えることがある
 
 - 種類: 問題
