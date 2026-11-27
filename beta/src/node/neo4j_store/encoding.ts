@@ -331,3 +331,19 @@ export function decodeRecord(props: PropertyMap): SnapshotRecord {
   });
   return Object.fromEntries(entries) as unknown as SnapshotRecord;
 }
+
+/**
+ * The label every record node of one store carries. One Neo4j database holds several stores
+ * (a remote's workspace, a local's confirmed copy and its working store); the label keeps them
+ * apart, and the store's `rk` constraint and indexes are made on it. A short hash of the name
+ * keeps two names that sanitize alike apart.
+ */
+export function storeLabel(store: string): string {
+  if (store === "") throw new Error("A store needs a name.");
+  let hash = 0x811c9dc5;
+  for (const char of store) {
+    hash ^= char.codePointAt(0)!;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `S_${store.replace(/[^A-Za-z0-9]/g, "_")}_${hash.toString(36)}`;
+}

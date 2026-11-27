@@ -93,6 +93,7 @@ import { MapRecordChanges } from "./map_changes";
 
 import type { SyncCommand, SyncIdentity, SyncMapOperation } from "./sync_types";
 import { appendJsonLine, readDurableLines } from "../sync/outbox";
+import { Neo4jDurability, type LoadedStore, type Neo4jConnection, type StoredCommand } from "./neo4j_durability";
 
 export const SNAPSHOT_FILE = "snapshot.jsonl";
 export const JOURNAL_FILE = "journal.jsonl";
@@ -288,6 +289,13 @@ function canonicalStringify(value: unknown): string {
       .map((key) => `${JSON.stringify(key)}:${canonicalStringify(source[key])}`).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
+}
+
+/** A remembered result without the map state a refusal carries; the state is the present one when it is answered again. */
+function withoutState(result: CommitResult): CommitResult {
+  if (result.ok) return jsonClone(result);
+  const { current: _current, ...rest } = result as CommitFailure;
+  return jsonClone(rest) as CommitResult;
 }
 
 function jsonClone<T>(value: T): T {
@@ -539,6 +547,8 @@ export class RecordWorkspaceStore {
   /** Problems of the last compaction or archive retention pass that stopped; empty when it ran. */
   private maintenanceProblems: string[] = [];
   private engine: EngineQueue | undefined;
+  /** Neo4j, when the store runs on it: then it is the database and no file is read or written. */
+  private durability: Neo4jDurability | undefined;
   private readonly engineBacklogLimit: number;
   private readonly engineRetry: EngineRetryOptions | undefined;
   private closed = false;
@@ -599,7 +609,54 @@ export class RecordWorkspaceStore {
     return store;
   }
 
-  private constructor(dir: string, options: OpenOptions) {
+  /**
+   * Opens the store `name` in Neo4j, the database of the record store. The store must exist
+   * (made by `createInNeo4j`, a clone, or the one-time migration from the old files).
+   */
+  static async openNeo4j(connection: Neo4jConnection, name: string, options: OpenOptions = {}): Promise<RecordWorkspaceStore> {
+    const { durability, loaded } = await Neo4jDurability.open(connection, name);
+    if (loaded === null) {
+      await durability.close();
+      throw new Error(`No record store named ${name} in Neo4j (${connection.uri}).`);
+    }
+    try {
+      return new RecordWorkspaceStore("", { ...options, neo4j: undefined, applier: undefined }, { durability, loaded });
+    } catch (error) {
+      await durability.close();
+      throw error;
+    }
+  }
+
+  /** Writes a new store into Neo4j from records (a snapshot header first). Refuses a name that exists. */
+  static async createInNeo4j(connection: Neo4jConnection, name: string, records: SnapshotRecord[]): Promise<void> {
+    const header = records[0] as SnapshotHeader | undefined;
+    if (!header || header.kind !== "snapshot") throw new Error("The records must start with the snapshot header.");
+    const filled: SnapshotHeader = { ...header, historyId: header.historyId ?? randomUUID(), epoch: header.epoch ?? 1 };
+    await Neo4jDurability.create(connection, name, { records: [filled, ...records.slice(1)], commands: [], retired: [], mapSeq: [] });
+  }
+
+  /** The state a store holds, for writing it into Neo4j once (migration from the old files). */
+  exportForNeo4j(): LoadedStore & { lines: Array<{ seq: number; line: unknown }> } {
+    const lines: Array<{ seq: number; line: unknown }> = [];
+    for (const line of this.linesAfter(Math.max(0, this.snapshotSeq)) ?? []) lines.push({ seq: line.seq, line });
+    return {
+      records: [this.header(), ...this.all.values()],
+      commands: [...this.commands.entries()].map(([id, entry]) => [id, this.storedCommand(entry)]),
+      retired: [...this.retired.entries()],
+      mapSeq: [...this.mapSeq.entries()],
+      lines,
+    };
+  }
+
+  private storedCommand(entry: CommandEntry): StoredCommand {
+    const stored: StoredCommand = { seq: entry.seq, hash: entry.hash, mapIds: [...entry.mapIds] };
+    if (entry.canonicalHash !== undefined) stored.canonicalHash = entry.canonicalHash;
+    if (entry.syncHash !== undefined) stored.syncHash = entry.syncHash;
+    if (entry.result !== undefined) stored.result = withoutState(entry.result);
+    return stored;
+  }
+
+  private constructor(dir: string, options: OpenOptions, neo4jStore?: { durability: Neo4jDurability; loaded: LoadedStore }) {
     this.dir = dir;
     this.now = options.now ?? (() => new Date().toISOString());
     const envLimit = Number(process.env.M3E_ENGINE_BACKLOG_LIMIT);
@@ -610,6 +667,32 @@ export class RecordWorkspaceStore {
     const compactAfter = options.compactAfterLines ?? (Number.isFinite(envCompact) && envCompact >= 0 ? envCompact : DEFAULT_COMPACT_AFTER_LINES);
     this.compactAfterLines = Math.max(0, Math.floor(compactAfter));
 
+    if (neo4jStore) {
+      this.durability = neo4jStore.durability;
+      const loaded = neo4jStore.loaded;
+      const header = loaded.records.find((record) => record.kind === "snapshot") as SnapshotHeader | undefined;
+      if (!header) throw new Error(`The Neo4j store ${neo4jStore.durability.store} has no snapshot header record.`);
+      if (header.format !== SNAPSHOT_FORMAT) throw new Error(`The Neo4j store holds format ${String(header.format)}, not ${SNAPSHOT_FORMAT}.`);
+      this.workspaceId = header.workspaceId;
+      this.historyId = header.historyId ?? randomUUID();
+      this.epoch = header.epoch ?? 1;
+      this.snapshotFormat = header.format;
+      let seq = Number.isInteger(header.seq) ? header.seq : 0;
+      for (const record of loaded.records) {
+        if (record.kind === "snapshot") continue;
+        const rk = recordRk(record);
+        if (this.all.has(rk)) throw new Error(`Two records of the store share the key ${JSON.stringify(rk)}.`);
+        this.all.set(rk, record);
+        if (record.kind === "commit" && record.seq > seq) seq = record.seq;
+      }
+      this.currentSeq = seq;
+      this.snapshotSeq = seq;
+      for (const [id, body] of loaded.retired) this.retired.set(id, body);
+      for (const [mapId, value] of loaded.mapSeq) this.mapSeq.set(mapId, value);
+      for (const [id, entry] of loaded.commands) {
+        this.commands.set(id, { ...entry, mapIds: new Set(entry.mapIds), result: entry.result as CommitResult | undefined });
+      }
+    } else {
     const snapshotPath = path.join(dir, SNAPSHOT_FILE);
     const journalPath = path.join(dir, JOURNAL_FILE);
     if (!fs.existsSync(snapshotPath)) throw new Error(`No record store in ${dir} (${SNAPSHOT_FILE} is missing).`);
@@ -723,6 +806,7 @@ export class RecordWorkspaceStore {
         writeFileDurably(indexPath, JSON.stringify({ ...index, snapshot: this.snapshotSum }) + "\n");
       }
       writeFileDurably(snapshotPath, content);
+    }
     }
 
     this.idIndex.clear();
@@ -906,7 +990,21 @@ export class RecordWorkspaceStore {
   /** Journal lines after `seq`, from the journal and the archive; null when they no longer reach back that far. */
   journalLinesAfter(seq: number): JournalLine[] | null {
     this.assertOpen();
+    if (this.durability) throw new Error("On Neo4j the journal is read with readJournalAfter.");
     return this.linesAfter(seq);
+  }
+
+  /** Journal lines after `seq` through the current commit: from Neo4j, or from the old files. Null when they no longer reach back that far. */
+  async readJournalAfter(seq: number): Promise<JournalLine[] | null> {
+    this.assertOpen();
+    if (!this.durability) return this.linesAfter(seq);
+    if (seq >= this.currentSeq) return [];
+    try {
+      return await this.durability.readLines(seq, this.currentSeq) as JournalLine[];
+    } catch (error) {
+      if ((error as { code?: string }).code === "JOURNAL_GAP") return null;
+      throw error;
+    }
   }
 
   /**
@@ -934,7 +1032,8 @@ export class RecordWorkspaceStore {
     });
     if (ids.length > 0) {
       const row: CommandResultLine = { afterSeq: this.currentSeq, forget: ids };
-      appendJsonLine(path.join(this.dir, COMMAND_RESULTS_FILE), row);
+      if (this.durability) this.durability.enqueue({ kind: "forget", commandIds: ids });
+      else appendJsonLine(path.join(this.dir, COMMAND_RESULTS_FILE), row);
       this.loadResultLine(row);
     }
     const line: JournalLine = { seq: this.currentSeq + 1, issuer: "system", committedAt: this.now(), mapId: "", intent: LOCAL_REBASE_INTENT, ops };
@@ -1006,6 +1105,7 @@ export class RecordWorkspaceStore {
   committedCommand(_mapId: string, commandId: string): JournalLine | null {
     const known = this.commands.get(commandId);
     if (!known || known.result) return null;
+    if (this.durability) throw new Error("On Neo4j a committed Command is read with readCommittedCommand.");
     const inJournal = this.readPosition(path.join(this.dir, JOURNAL_FILE), this.journalPositions.get(known.seq));
     if (inJournal) return inJournal;
     for (const entry of readArchive(this.dir, this.now())) {
@@ -1017,11 +1117,25 @@ export class RecordWorkspaceStore {
     return null;
   }
 
+  /** The journal line of a Command committed under this id: from Neo4j, or from the old files. */
+  async readCommittedCommand(mapId: string, commandId: string): Promise<JournalLine | null> {
+    if (!this.durability) return this.committedCommand(mapId, commandId);
+    const known = this.commands.get(commandId);
+    if (!known || known.result) return null;
+    const lines = await this.durability.readLines(known.seq - 1, known.seq).catch(() => null);
+    return (lines?.[0] as JournalLine | undefined) ?? null;
+  }
+
   /**
    * `appliedSeq`: the last commit the storage engine holds (the journal position when there is no
    * engine). `error`: why the engine is behind, while it is; the applier keeps retrying.
    */
-  engineStatus(): { appliedSeq: number; error?: string } {
+  engineStatus(): { appliedSeq: number; error?: string; database?: "neo4j" | "files" } {
+    if (this.durability) {
+      const status: { appliedSeq: number; error?: string; database: "neo4j" } = { appliedSeq: this.currentSeq, database: "neo4j" };
+      if (this.durability.error !== undefined) status.error = this.durability.error;
+      return status;
+    }
     if (!this.engine) return { appliedSeq: this.currentSeq };
     const status: { appliedSeq: number; error?: string } = { appliedSeq: this.engine.appliedSeq };
     if (this.engine.error !== undefined) status.error = this.engine.error;
@@ -1038,6 +1152,7 @@ export class RecordWorkspaceStore {
    */
   backupTo(targetDir: string): string[] {
     this.assertOpen();
+    if (this.durability) throw new Error("A store on Neo4j is backed up by exporting the database, not by copying files.");
     assertNotLiveM3e(targetDir);
     if (path.resolve(targetDir) === path.resolve(this.dir)) throw new Error("The backup directory is the store directory itself.");
     if (fs.existsSync(targetDir)) {
@@ -1073,7 +1188,15 @@ export class RecordWorkspaceStore {
   // ---------------------------------------------------------------- commits
 
   private commandResult(entry: CommandEntry): CommitResult {
-    if (entry.result) return jsonClone(entry.result);
+    if (entry.result) {
+      const result = jsonClone(entry.result);
+      if (!result.ok && (result as Partial<CommitFailure>).current === undefined) {
+        const mapId = [...entry.mapIds][0];
+        const map = mapId === undefined ? undefined : this.maps.get(mapId);
+        (result as CommitFailure).current = map ? this.currentOf(map) : null;
+      }
+      return result;
+    }
     return { ok: true, savedAt: this.committedAtOf(entry.seq), seq: entry.seq, replayed: true };
   }
 
@@ -1095,9 +1218,13 @@ export class RecordWorkspaceStore {
   private rememberResult(id: string, content: Pick<CommandEntry, "hash" | "syncHash" | "mapIds">, result: CommitResult): void {
     if (!id.trim() || this.commands.has(id)) return;
     if (result.ok ? !result.noOp : !REMEMBERED_REJECTIONS.has(result.code)) return;
-    const entry: StoredCommandEntry = { ...content, mapIds: [...content.mapIds], seq: this.currentSeq, result: jsonClone(result) };
+    const entry: StoredCommandEntry = { ...content, mapIds: [...content.mapIds], seq: this.currentSeq, result: withoutState(result) };
     const row: CommandResultLine = { afterSeq: this.currentSeq, commandId: id, entry };
-    appendJsonLine(path.join(this.dir, COMMAND_RESULTS_FILE), row);
+    if (this.durability) {
+      this.durability.enqueue({ kind: "result", commandId: id, entry: { ...entry, mapIds: [...content.mapIds] } as StoredCommand });
+    } else {
+      appendJsonLine(path.join(this.dir, COMMAND_RESULTS_FILE), row);
+    }
     this.loadResultLine(row);
   }
 
@@ -1620,6 +1747,7 @@ export class RecordWorkspaceStore {
    */
   compact(): void {
     this.assertOpen();
+    if (this.durability) return;
     const journalPath = path.join(this.dir, JOURNAL_FILE);
     const snapshotPath = path.join(this.dir, SNAPSHOT_FILE);
     if (this.journalSize === 0 && this.currentSeq === this.snapshotSeq) return;
@@ -1673,6 +1801,7 @@ export class RecordWorkspaceStore {
    */
   pruneArchive(options: { now?: string; retentionMs?: number } = {}): PruneResult {
     this.assertOpen();
+    if (this.durability) return { deleted: [], problems: [] };
     // The 30-day default is not a deletion floor. An explicit scope window can only lengthen the 90-day pass.
     // A shared journal segment cannot be cut per scope; bytes and inheritance stay undecided.
     const requested = options.retentionMs ?? ARCHIVE_RETENTION_MS;
@@ -1687,11 +1816,39 @@ export class RecordWorkspaceStore {
 
   /** Resolves when the storage engine holds every commit (at once when there is no engine). */
   flush(): Promise<void> {
+    if (this.durability) return this.durability.durable();
     return this.engine ? this.engine.flush() : Promise.resolve();
+  }
+
+  /**
+   * Resolves when every commit made so far is in the database. A client is answered only after
+   * this: on Neo4j it is the transaction that holds the commit; on the old files it is the fsync
+   * the commit already did. Rejects with code `DATABASE_UNAVAILABLE` while Neo4j cannot be written.
+   */
+  durable(): Promise<void> {
+    return this.durability ? this.durability.durable() : Promise.resolve();
+  }
+
+  /** True when the store runs on Neo4j, the database. */
+  onNeo4j(): boolean {
+    return this.durability !== undefined;
+  }
+
+  /** Neo4j's state for display: the records of one map, read by query. Null when the store is not on Neo4j. */
+  async mapRecordsFromDatabase(mapId: string): Promise<SnapshotRecord[] | null> {
+    this.assertOpen();
+    return this.durability ? this.durability.mapRecords(mapId) : null;
   }
 
   async close(): Promise<void> {
     if (this.closed) return;
+    if (this.durability) {
+      const durability = this.durability;
+      this.durability = undefined;
+      this.closed = true;
+      await durability.close();
+      return;
+    }
     this.closed = true;
     if (this.engine) {
       try {
@@ -1708,6 +1865,8 @@ export class RecordWorkspaceStore {
 
   /** Compaction when the journal is long enough, then the archive retention pass. Never throws. */
   private maintain(): void {
+    // On Neo4j there are no files to compact or archive.
+    if (this.durability) return;
     const problems: string[] = [];
     try {
       if (this.compactAfterLines > 0 && this.journalLines >= this.compactAfterLines) this.compact();
@@ -1735,6 +1894,10 @@ export class RecordWorkspaceStore {
 
   private closeFiles(): void {
     this.closed = true;
+    if (this.durability) {
+      void this.durability.close();
+      this.durability = undefined;
+    }
     if (this.journalFd !== undefined) fs.closeSync(this.journalFd);
     this.journalFd = undefined;
   }
@@ -2472,27 +2635,14 @@ export class RecordWorkspaceStore {
 
   /** Appends the journal line (the commit point), then updates memory and hands the commit to the engine. */
   private append(line: JournalLine, confirmed = false): void {
-    if (this.journalFd === undefined) throw new Error("The record store is closed.");
+    if (this.durability === undefined && this.journalFd === undefined) throw new Error("The record store is closed.");
+    if (this.closed) throw new Error("The record store is closed.");
     if (!confirmed) {
       const touched = touchedOf(line.ops, (rk) => this.all.get(rk));
       if (touched.length > 0) line.touched = touched;
     }
-    const buffer = Buffer.from(JSON.stringify(line) + "\n", "utf8");
-    try {
-      let written = 0;
-      while (written < buffer.length) written += fs.writeSync(this.journalFd, buffer, written, buffer.length - written);
-      fs.fsyncSync(this.journalFd);
-    } catch (error) {
-      try {
-        fs.ftruncateSync(this.journalFd, this.journalSize);
-      } catch {
-        // Opening the store again cuts an unfinished last line.
-      }
-      throw error;
-    }
-    this.journalPositions.set(line.seq, { offset: this.journalSize, length: buffer.length });
-    this.journalSize += buffer.length;
-    this.journalLines += 1;
+    if (this.durability === undefined) this.appendToFile(line);
+    else this.journalLines += 1;
     const changed = new Map<string, Set<string>>();
     const add = (mapId: string, rk: string): void => {
       let keys = changed.get(mapId);
@@ -2512,11 +2662,64 @@ export class RecordWorkspaceStore {
       }
     }
     this.applyLine(line);
+    if (this.durability) {
+      this.durability.enqueue(this.durableCommit(line));
+    } else {
+      this.engine?.enqueue(this.engineCommit(line));
+    }
     for (const [mapId, keys] of changed) this.mapChanges.append(mapId, line.seq, line.committedAt, keys);
     this.committed?.(line);
-    this.engine?.enqueue(this.engineCommit(line));
     // The commit has happened; compaction must not turn it into a failure.
-    if (this.compactAfterLines > 0 && this.journalLines >= this.compactAfterLines) this.maintain();
+    if (this.durability === undefined && this.compactAfterLines > 0 && this.journalLines >= this.compactAfterLines) this.maintain();
+  }
+
+  /** What one commit writes to Neo4j, in one transaction: the records, the journal line and the bookkeeping. */
+  private durableCommit(line: JournalLine): import("./neo4j_durability").CommitUnit {
+    const commands: Array<[string, StoredCommand]> = [];
+    if (line.commandId !== undefined) {
+      const entry = this.commands.get(line.commandId);
+      if (entry !== undefined) commands.push([line.commandId, this.storedCommand(entry)]);
+    }
+    const retired: Array<[string, string | null]> = [];
+    for (const op of line.ops) {
+      if (!op.rk.startsWith("node|")) continue;
+      const id = op.rk.slice("node|".length);
+      retired.push([id, this.retired.get(id) ?? null]);
+    }
+    const mapIds = new Set<string>();
+    if (line.mapId) mapIds.add(line.mapId);
+    if (line.newMapId) mapIds.add(line.newMapId);
+    return {
+      kind: "commit",
+      seq: line.seq,
+      workspaceId: this.workspaceId,
+      line,
+      ops: this.engineCommit(line).ops,
+      commands,
+      retired,
+      mapSeq: [...mapIds].map((mapId) => [mapId, this.mapSeq.get(mapId) ?? null]),
+    };
+  }
+
+  /** The journal file: the line is written and fsynced before the commit counts. */
+  private appendToFile(line: JournalLine): void {
+    if (this.journalFd === undefined) throw new Error("The record store is closed.");
+    const buffer = Buffer.from(JSON.stringify(line) + "\n", "utf8");
+    try {
+      let written = 0;
+      while (written < buffer.length) written += fs.writeSync(this.journalFd, buffer, written, buffer.length - written);
+      fs.fsyncSync(this.journalFd);
+    } catch (error) {
+      try {
+        fs.ftruncateSync(this.journalFd, this.journalSize);
+      } catch {
+        // Opening the store again cuts an unfinished last line.
+      }
+      throw error;
+    }
+    this.journalPositions.set(line.seq, { offset: this.journalSize, length: buffer.length });
+    this.journalSize += buffer.length;
+    this.journalLines += 1;
   }
 
   private engineCommit(line: JournalLine): EngineCommit {
@@ -2784,6 +2987,8 @@ export class RecordWorkspaceStore {
 
   private recordsAt(target: number): SnapshotRecord[] | null {
     if (target === this.currentSeq) return [...this.all.values()];
+    // On Neo4j an older state is not kept (open item in the design): a write-back on an older base is refused.
+    if (this.durability) return null;
     if (!Number.isInteger(target) || target < 0 || target > this.currentSeq) return null;
     let baseSeq = -1;
     let base: SnapshotRecord[] | null = null;
@@ -2845,6 +3050,8 @@ export class RecordWorkspaceStore {
    * Deleting the last record of a seq clears the keep-mark. The file stays until a later prune.
    */
   private noteNamedSnapshots(replaced: ReadonlyMap<string, SnapshotRecord>, ops: readonly RecordOp[]): void {
+    // On Neo4j the state of a named snapshot is not kept as an archive file (open item in the design).
+    if (this.durability) return;
     // Only a commit that writes or deletes a namedSnapshot record changes what the archive keeps.
     if (!ops.some((op) => op.rk.startsWith("namedSnapshot|"))) return;
     const kept = new Set<number>();

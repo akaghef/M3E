@@ -31,6 +31,8 @@ export interface StoreOptions {
   batchSize?: number;
   /** Database name; the server default when omitted. */
   database?: string;
+  /** Label of the store the records belong to; every `Rec` node when omitted. */
+  label?: string;
 }
 
 export interface LoadResult {
@@ -57,8 +59,8 @@ function toNumber(value: unknown): number {
   return neo4j.isInt(value) ? value.toNumber() : Number(value);
 }
 
-async function countRecords(session: Session): Promise<number> {
-  const result = await session.run(`MATCH (r:${COMMON_LABEL}) RETURN count(r) AS n`);
+async function countRecords(session: Session, L: string): Promise<number> {
+  const result = await session.run(`MATCH (r:${L}) RETURN count(r) AS n`);
   return toNumber(result.records[0].get("n"));
 }
 
@@ -81,6 +83,7 @@ function assertSameCounts(what: string, expected: Map<string, number>, actual: M
  * Each batch is its own transaction; a failure part-way leaves the batches already written.
  */
 export async function load(driver: Driver, records: SnapshotRecord[], options: StoreOptions = {}): Promise<LoadResult> {
+  const L = options.label ?? COMMON_LABEL;
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error(`Bad batch size: ${String(batchSize)}`);
 
@@ -96,7 +99,7 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
     const list = propsByKind.get(encoded.kind);
     if (list) list.push(encoded.props);
     else propsByKind.set(encoded.kind, [encoded.props]);
-    const clause = cypherLabelList(encoded.labels);
+    const clause = cypherLabelList(L === COMMON_LABEL ? encoded.labels : [...encoded.labels, L]);
     const labeled = propsByLabels.get(clause);
     if (labeled) labeled.push(encoded.props);
     else propsByLabels.set(clause, [encoded.props]);
@@ -117,11 +120,12 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
 
   const session = openSession(driver, options, true);
   try {
-    const existing = await countRecords(session);
-    if (existing > 0) throw new Error(`Refusing to load: the database already holds ${existing} records.`);
+    const existing = await countRecords(session, L);
+    if (existing > 0) throw new Error(`Refusing to load: the store already holds ${existing} records.`);
 
-    await session.run(`CREATE CONSTRAINT rec_rk IF NOT EXISTS FOR (r:${COMMON_LABEL}) REQUIRE r.rk IS UNIQUE`);
-    await session.run(`CREATE INDEX rec_id IF NOT EXISTS FOR (r:${COMMON_LABEL}) ON (r.id)`);
+    const name = L === COMMON_LABEL ? "rec" : L.toLowerCase();
+    await session.run(`CREATE CONSTRAINT ${name}_rk IF NOT EXISTS FOR (r:${L}) REQUIRE r.rk IS UNIQUE`);
+    await session.run(`CREATE INDEX ${name}_id IF NOT EXISTS FOR (r:${L}) ON (r.id)`);
     await session.run("CALL db.awaitIndexes(600)");
 
     for (const [clause, propsList] of propsByLabels) {
@@ -132,7 +136,7 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
     }
     for (const type of RELATIONSHIP_TYPES) {
       const query =
-        `UNWIND $rows AS row MATCH (a:${COMMON_LABEL} {rk: row.a}) MATCH (b:${COMMON_LABEL} {rk: row.b}) ` +
+        `UNWIND $rows AS row MATCH (a:${L} {rk: row.a}) MATCH (b:${L} {rk: row.b}) ` +
         `CREATE (a)-[:${type}]->(b)`;
       for (const rows of chunks(pairsByType.get(type) ?? [], batchSize)) {
         await session.executeWrite((tx) => tx.run(query, { rows }));
@@ -142,7 +146,7 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
     const expectedRecords = new Map<string, number>();
     for (const [kind, propsList] of propsByKind) expectedRecords.set(kind, propsList.length);
     const storedRecords = new Map<string, number>();
-    const byKind = await session.run(`MATCH (r:${COMMON_LABEL}) RETURN r.kind AS name, count(*) AS n`);
+    const byKind = await session.run(`MATCH (r:${L}) RETURN r.kind AS name, count(*) AS n`);
     for (const row of byKind.records) storedRecords.set(String(row.get("name")), toNumber(row.get("n")));
     assertSameCounts("records per kind", expectedRecords, storedRecords);
 
@@ -150,7 +154,7 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
     for (const [type, pairs] of pairsByType) expectedRelationships.set(type, pairs.length);
     const storedRelationships = new Map<string, number>();
     const byType = await session.run(
-      `MATCH (:${COMMON_LABEL})-[x]->(:${COMMON_LABEL}) RETURN type(x) AS name, count(*) AS n`,
+      `MATCH (:${L})-[x]->(:${L}) RETURN type(x) AS name, count(*) AS n`,
     );
     for (const row of byType.records) storedRelationships.set(String(row.get("name")), toNumber(row.get("n")));
     assertSameCounts("relationships per type", expectedRelationships, storedRelationships);
@@ -168,10 +172,11 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
 
 /** Reads every record back, in the canonical order of the JSON Lines form. */
 export async function dump(driver: Driver, options: StoreOptions = {}): Promise<SnapshotRecord[]> {
+  const L = options.label ?? COMMON_LABEL;
   const session = openSession(driver, options, false);
   try {
     const records: SnapshotRecord[] = [];
-    const result = session.run(`MATCH (r:${COMMON_LABEL}) RETURN properties(r) AS p`);
+    const result = session.run(`MATCH (r:${L}) RETURN properties(r) AS p`);
     for await (const row of result) records.push(decodeRecord(row.get("p") as PropertyMap));
     return sortRecords(records);
   } finally {
@@ -181,13 +186,14 @@ export async function dump(driver: Driver, options: StoreOptions = {}): Promise<
 
 /** Deletes every `Rec` node and its relationships, in batches. Returns the number of nodes deleted. */
 export async function deleteAllRecords(driver: Driver, options: StoreOptions = {}): Promise<number> {
+  const L = options.label ?? COMMON_LABEL;
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const session = openSession(driver, options, true);
   try {
     let total = 0;
     for (;;) {
       const result = await session.executeWrite((tx) =>
-        tx.run(`MATCH (r:${COMMON_LABEL}) WITH r LIMIT $limit DETACH DELETE r RETURN count(*) AS n`, {
+        tx.run(`MATCH (r:${L}) WITH r LIMIT $limit DETACH DELETE r RETURN count(*) AS n`, {
           limit: neo4j.int(batchSize),
         }),
       );
