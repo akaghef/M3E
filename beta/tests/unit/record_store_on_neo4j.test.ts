@@ -88,4 +88,22 @@ describe("record store on Neo4j", () => {
     const again = await openStore(name);
     expect(again.commitMapCommand("map_a", command(staleChanges, "edit-text", "neo4j-refused"), ISSUER)).toMatchObject({ ok: false, code: "CONFLICT" });
   });
+
+  it("writes commit after commit when each comes right after the previous one became durable", async () => {
+    const name = await newStore();
+    const store = await openStore(name);
+    let state = store.getMapRow("map_a").state as unknown as Loose;
+    const first = Object.keys(state.nodes).find((id) => id !== state.rootId) as string;
+    for (let i = 0; i < 20; i += 1) {
+      const next = clone(state);
+      next.nodes[first].text = `back to back ${i}`;
+      expect(store.commitMapCommand("map_a", command(diffState(state, next), "edit-text", `back-to-back-${i}`), ISSUER).ok).toBe(true);
+      const begun = Date.now();
+      await store.durable();
+      expect(Date.now() - begun).toBeLessThan(5000);
+      state = next;
+    }
+    const again = await (async () => { await closeStore(store); return openStore(name); })();
+    expect((again.getMapRow("map_a").state as unknown as Loose).nodes[first].text).toBe("back to back 19");
+  });
 });

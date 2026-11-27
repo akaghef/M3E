@@ -383,7 +383,13 @@ export class Neo4jDurability {
   }
 
   private pump(): Promise<void> {
-    if (!this.running) this.running = this.run().finally(() => { this.running = undefined; });
+    if (!this.running) {
+      this.running = this.run().finally(() => {
+        this.running = undefined;
+        // A unit handed in while the last run was finishing found it still running: start again.
+        if (this.queue.length > 0 && this.broken === undefined && !this.closed) void this.pump();
+      });
+    }
     return this.running;
   }
 
