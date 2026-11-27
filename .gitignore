@@ -35,7 +35,9 @@ final/data/*.sqlite
 final/data/rapid-sample.json
 final/test-results/
 
+# Share portable project settings; keep machine-local settings ignored.
 .claude/*
+!.claude/settings.json
 !.claude/skills/
 !.claude/agents/
 # Project-local skills are intentional; keep other agent-local state ignored.

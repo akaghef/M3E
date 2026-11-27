@@ -8,6 +8,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import http from "http";
+import { gzip } from "zlib";
 import { createOrreryRuntime } from "./orrery_runtime";
 import { createOrreryApi } from "./orrery_api";
 import { spawnSync, spawn, exec } from "child_process";
@@ -15,11 +16,11 @@ import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand } from "./map_commit";
 import { activeRecordStore, closeActiveRecordStoreOnSignal, localModeRemote, localModeStore, startLocalMode } from "./record_store/active";
-import { handleRecordSyncHttp } from "./sync/http";
+import { connectionFromRequest, handleRecordSyncHttp } from "./sync/http";
 import { handleLocalSyncHttp } from "./sync/local_http";
-import { accountForConnection } from "./sync/issuer";
+import { accountForConnection, withVerifiedLogin } from "./sync/issuer";
 import { enforceMinSeq } from "./sync/min_seq";
-import { allowedLogin, movedToRemote, viewerListenOptions } from "./remote_access";
+import { allowedLogin, movedToRemote, listenViewer } from "./remote_access";
 import type { MapCommand } from "../shared/map_changes";
 import { extractScopeView, ScopeViewError, SCOPE_VIEW_HEADER, type ScopeViewInfo } from "../shared/scope_view";
 import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
@@ -570,7 +571,33 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   if (res.writableEnded) return;
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(payload));
+  const body = JSON.stringify(payload);
+  // Small responses (errors, acknowledgements) are sent as before: compressing them saves
+  // nothing worth the extra round through zlib.
+  if (body.length < 32 * 1024) {
+    res.end(body);
+    return;
+  }
+  const vary = String(res.getHeader("Vary") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  if (!vary.some((value) => value === "*" || value.toLowerCase() === "accept-encoding")) vary.push("Accept-Encoding");
+  res.setHeader("Vary", vary.join(", "));
+  const encodings = String(res.req?.headers["accept-encoding"] ?? "").toLowerCase().split(",")
+    .map((item) => item.trim().split(";").map((part) => part.trim()));
+  const accepted = encodings.find(([name]) => name === "gzip") ?? encodings.find(([name]) => name === "*");
+  const quality = accepted?.slice(1).find((part) => part.startsWith("q="))?.slice(2) ?? "1";
+  if (!accepted || !(Number(quality) > 0 && Number(quality) <= 1)) {
+    res.end(body);
+    return;
+  }
+  // Compression runs off the event loop and touches only this response's bytes.
+  // Level 1: about half the CPU of the default for nearly the same size on map JSON,
+  // so a loopback read through the local server barely slows down.
+  gzip(body, { level: 1 }, (error, compressed) => {
+    if (res.destroyed || res.writableEnded) return;
+    if (error) { res.end(body); return; }
+    res.setHeader("Content-Encoding", "gzip");
+    res.end(compressed);
+  });
 }
 
 function isArtifactApiRoute(urlPath: string): boolean {
@@ -4084,7 +4111,7 @@ function startServer(): void {
 
   const server = createAppServer();
 
-  server.listen(viewerListenOptions(PORT), () => {
+  void listenViewer(server, PORT, () => {
     currentFlashJobs();
     const isFirstRun = !fs.existsSync(currentFirstRunMarker());
     const params = new URLSearchParams({ ws: WORKSPACE_ID });
@@ -4098,8 +4125,8 @@ function startServer(): void {
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : PORT;
     const url = `http://localhost:${port}/${DEFAULT_PAGE}${query}`;
-    console.log(`Viewer ready: ${url}`);
-    openBrowser(url);
+    console.log(`Viewer ready: ${typeof address === "string" ? "unix:" + address : url}`);
+    if (typeof address !== "string") openBrowser(url);
     if (isFirstRun) {
       try { fs.writeFileSync(currentFirstRunMarker(), new Date().toISOString()); } catch { /* ignore */ }
     }
@@ -4365,6 +4392,7 @@ export function createAppServer(): http.Server {
       sendJson(res, 403, { ok: false, code: "FORBIDDEN", error: "Tailscale login is not allowed." });
       return;
     }
+    return withVerifiedLogin(connectionFromRequest(req).verifiedLogin, async () => {
     instrumentRequestForPerfLog(req, res);
     if (!tailscaleGateEnabled && redirectLoopbackHost(req, res)) {
       return;
@@ -4607,6 +4635,7 @@ export function createAppServer(): http.Server {
     }
 
     sendFile(res, target);
+    });
   });
   orreryApi.attach(server);
   return server;

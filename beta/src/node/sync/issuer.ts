@@ -7,16 +7,25 @@
  * recorded in the implementation log. Callers still stamp the chosen account id.
  */
 import { createHash } from "crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { SnapshotRecord } from "../../shared/record_model/types";
 
 export const LOCAL_HUMAN_ACCOUNT_ID = "acct_local_human";
 export const SYSTEM_ACCOUNT_ID = "acct_system";
+const requestLogin = new AsyncLocalStorage<string | undefined>();
+
+/** Propagate the checked HTTP identity through viewer and MCP Command handlers. */
+export function withVerifiedLogin<T>(login: string | undefined, operation: () => T): T {
+  return requestLogin.run(login, operation);
+}
 
 export type ConnectionKind = "mcp" | "viewer" | "system";
 
 /** Who is on the other end of this connection. MCP is one Actor Instance. */
 export interface ConnectionIdentity {
   kind: ConnectionKind;
+  /** Tailscale account login, accepted by the remote's configured allow-list. */
+  verifiedLogin?: string;
   /** Actor Instance id when `kind` is `mcp`. Ignored otherwise. */
   instanceId?: string;
 }
@@ -38,6 +47,10 @@ export function accountForConnection(connection: ConnectionIdentity): AccountCho
     return { accountId: SYSTEM_ACCOUNT_ID, accountKind: "system", displayName: "server" };
   }
   if (connection.kind === "viewer") {
+    // A human on the viewer, identified by the login the remote checked. An MCP connection
+    // stays its AI agent's account even when a verified human runs it.
+    const login = connection.verifiedLogin ?? requestLogin.getStore();
+    if (login) return { accountId: login, accountKind: "human", displayName: login };
     return { accountId: LOCAL_HUMAN_ACCOUNT_ID, accountKind: "human", displayName: "local" };
   }
   const instanceId = connection.instanceId?.trim() || "anonymous";

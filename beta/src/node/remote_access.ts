@@ -1,9 +1,84 @@
 import fs from "node:fs";
 import type { ListenOptions } from "node:net";
+import net from "node:net";
+import type { Server } from "node:http";
 import path from "node:path";
 
-export function viewerListenOptions(port: number, host = process.env.M3E_HOST): ListenOptions {
+export function viewerListenOptions(port: number, host = process.env.M3E_HOST, socket = process.env.M3E_LISTEN_SOCKET): ListenOptions {
+  if (socket) return { path: socket };
   return host ? { port, host } : { port };
+}
+
+/** The same HTTP server and routes, with exactly one listener. */
+export async function listenViewer(server: Server, port: number, ready: () => void): Promise<void> {
+  const options = viewerListenOptions(port);
+  const socket = options.path;
+  if (!socket) { server.listen(options, ready); return; }
+  if (!path.isAbsolute(socket)) throw new Error("M3E_LISTEN_SOCKET must be an absolute path.");
+  try {
+    const existing = fs.lstatSync(socket);
+    if (!existing.isSocket()) throw new Error("M3E_LISTEN_SOCKET exists and is not a socket.");
+    await new Promise<void>((resolve, reject) => {
+      const probe = net.createConnection(socket);
+      probe.once("connect", () => { probe.destroy(); reject(new Error("M3E_LISTEN_SOCKET is already in use.")); });
+      probe.once("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "ECONNREFUSED" || error.code === "ENOENT") resolve();
+        else reject(error);
+      });
+    });
+    const current = fs.lstatSync(socket);
+    if (current.dev !== existing.dev || current.ino !== existing.ino) throw new Error("M3E_LISTEN_SOCKET changed during startup.");
+    fs.unlinkSync(socket);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  let owned: fs.Stats | undefined;
+  const ownsShutdown = process.listenerCount("SIGINT") === 0 && process.listenerCount("SIGTERM") === 0;
+  const cleanup = () => {
+    if (!owned) return;
+    try {
+      const current = fs.lstatSync(socket);
+      if (current.dev === owned.dev && current.ino === owned.ino) fs.unlinkSync(socket);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error(error);
+    }
+    owned = undefined;
+  };
+  const stop = () => {
+    cleanup();
+    // The record store's signal handler owns its asynchronous shutdown when present.
+    if (ownsShutdown) process.exit(0);
+  };
+  const detach = () => {
+    cleanup();
+    process.removeListener("exit", cleanup);
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
+  };
+  process.on("exit", cleanup);
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+  server.once("close", detach);
+  // Restrict the inode from its creation, not only after the listening callback.
+  const mask = process.umask(0o177);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(options, () => {
+        server.removeListener("error", reject);
+        try {
+          owned = fs.lstatSync(socket);
+          fs.chmodSync(socket, 0o600);
+          resolve();
+        } catch (error) { reject(error); }
+      });
+    });
+  } catch (error) {
+    server.close();
+    detach();
+    throw error;
+  } finally { process.umask(mask); }
+  ready();
 }
 
 /** An unset list disables the gate. A set but empty list denies all requests. */

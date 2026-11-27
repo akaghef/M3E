@@ -18,6 +18,7 @@ import { activeRecordStore, localModeStore, recordStoreDir } from "../record_sto
 import { sameSyncIdentity, type SyncIdentity } from "../record_store/sync_types";
 import type { ConnectionIdentity } from "./issuer";
 import { issuerForConnection, pushCommands } from "./push";
+import { allowedLogin } from "../remote_access";
 
 function header(req: http.IncomingMessage, name: string): string {
   const raw = req.headers[name];
@@ -27,8 +28,13 @@ function header(req: http.IncomingMessage, name: string): string {
 
 export function connectionFromRequest(req: http.IncomingMessage): ConnectionIdentity {
   const kind = header(req, "x-m3e-connection");
-  if (kind === "mcp") return { kind: "mcp", instanceId: header(req, "x-m3e-actor-instance") || "anonymous" };
-  return { kind: "viewer" };
+  const users = process.env.M3E_TAILSCALE_USERS;
+  const login = req.headers["tailscale-user-login"];
+  const verifiedLogin = !process.env.M3E_SYNC_REMOTE && users !== undefined && allowedLogin(login, users)
+    && typeof login === "string" ? login.trim() : undefined;
+  const identity = verifiedLogin ? { verifiedLogin } : {};
+  if (kind === "mcp") return { kind: "mcp", instanceId: header(req, "x-m3e-actor-instance") || "anonymous", ...identity };
+  return { kind: "viewer", ...identity };
 }
 
 export function sendSyncJson(res: http.ServerResponse, status: number, body: unknown): void {
@@ -38,21 +44,30 @@ export function sendSyncJson(res: http.ServerResponse, status: number, body: unk
   res.end(JSON.stringify(body));
 }
 
+// Transport bound, including the JSON envelope. Commands remain indivisible.
+const PUSH_BODY_BYTES = 32_000_000;
+
+class PushBodyTooLarge extends Error {
+  constructor(readonly limitBytes: number) { super(`Push body exceeds ${limitBytes} bytes.`); }
+}
+
 function readBody(req: http.IncomingMessage, limit: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on("data", (chunk: Buffer) => {
+      if (size > limit) return; // Drain without buffering; keep the connection for the 413 response.
       size += chunk.length;
       if (size > limit) {
-        reject(new Error("body too large"));
-        req.destroy();
+        chunks.length = 0;
+        reject(new PushBodyTooLarge(limit));
         return;
       }
       chunks.push(chunk);
     });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
+    req.on("aborted", () => reject(new Error("Push body was interrupted.")));
   });
 }
 
@@ -90,7 +105,12 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
         sendSyncJson(res, 415, { ok: false, code: "INVALID_COMMAND", error: "Use application/json." });
         return true;
       }
-      const body = JSON.parse(await readBody(req, 8_000_000)) as ({ commands?: unknown } & Partial<SyncIdentity>) | null;
+      const encoding = header(req, "content-encoding").toLowerCase();
+      if (encoding && encoding !== "identity") {
+        sendSyncJson(res, 415, { ok: false, code: "UNSUPPORTED_CONTENT_ENCODING", error: "Use an uncompressed JSON body." });
+        return true;
+      }
+      const body = JSON.parse(await readBody(req, PUSH_BODY_BYTES)) as ({ commands?: unknown } & Partial<SyncIdentity>) | null;
       const fenced = fence(body ?? {});
       if (fenced === undefined) return true;
       const issuer = issuerForConnection(connectionFromRequest(req), store);
@@ -136,6 +156,10 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
       : { lines, throughSeq: currentSeq }) });
   } catch (error) {
     if (!res.headersSent) {
+      if (error instanceof PushBodyTooLarge) {
+        sendSyncJson(res, 413, { ok: false, code: "PUSH_BODY_TOO_LARGE", error: error.message, limitBytes: error.limitBytes });
+        return true;
+      }
       const message = error instanceof SyntaxError ? "Invalid JSON body." : (error as Error).message || "Sync request failed.";
       sendSyncJson(res, 400, { ok: false, code: "INVALID_COMMAND", error: message });
     } else {

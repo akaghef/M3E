@@ -51,8 +51,9 @@ resume-cheatsheet.md は `<!-- runner-managed:begin -->...<!-- runner-managed:en
 
 ## settings.json
 
-`.claude/settings.local.json` に既配線済。T-2-3 で script 内容を更新したのみで、
+Git 管理対象の `.claude/settings.json` に既配線済。T-2-3 で script 内容を更新したのみで、
 hooks エントリの追加は不要。
+端末固有の絶対パスを使う agmsg hook は、Git 管理対象外の `.claude/settings.local.json` に置く。
 
 ```json
 {

@@ -357,6 +357,61 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
 - copy の来歴と provenance は、journal ではなく record の側（attribute か専用の欄）に持つ。compaction と削除で失われないようにするためである。
 - 複製は、三つのファイルを一度に写す。確定と圧縮は同期処理なので、複製の途中に確定が入らない。
 
+<a id="recovery-state-and-unapplied-commits"></a>
+
+### 6.1 【提案】復旧で戻す状態と、engine に未適用の確定
+
+本節は akaghef の確認待ちである。6 節の journal、7 節の snapshot、8.3 節の `appliedSeq` を、[同期の要件](../../.kiro/specs/rapid-persistence-redesign/sync-requirements.md) R4.5・R5.2〜R5.7・R9.1〜R9.2 に対応付ける。実装事実はコードを読んだ範囲で示す。復旧・故障注入の実行結果は **未確認**。コード参照のパスは repository root を基準とする。データファイルの置き場所は表内に明記する。
+
+#### 復旧対象と実装事実
+
+【提案】復旧の正本である snapshot と journal は、同じ workspace・履歴 ID・epoch・到達地点に対応する下表の状態を復元できるものとする。engine だけに復旧に必要な状態を置かない。索引と cache はこの入力から作り直せるものとし、ファイルを別にする場合も必要な構成要素と検証情報を snapshot が特定できる形にする（QA1）。
+
+| 復旧対象 | 現在の所在とコードで確認した事実 | 現在の snapshot + journal の復旧経路 | 復旧契約の案 |
+|---|---|---|---|
+| graph の内容 | store ディレクトリの `snapshot.jsonl` と `journal.jsonl`。snapshot の record 読み込みは `beta/src/node/record_store/store.ts:580-603`、journal の replay は同ファイル `623-640`・`2307-2339` | 保存された map・node・edge・scope・属性・Surface View・注釈等の record は復元する。Neo4j への再構築・差分適用は `beta/src/node/record_store/engine.ts:85-113`。実データでの復旧結果は未確認 | 【提案】値・ID・参照・兄弟順キー・rev と削除結果を、確定時の内容のまま戻す。現在の merge 規則による再判定はしない |
+| 権限・grant | `account.roles` と `grant` は record（`beta/src/shared/record_model/types.ts:284-291`・`324-334`）。grant の照合は capability・principal・scope・期限を使うが、付与した human の編集権は照合していない（`beta/src/node/record_store/operations.ts:380-392`）。scope の権限全体の保存場所は未確認 | 保存済みの account・grant は上記 record replay の対象。scope の権限全体とその失効の復元は未確認。grant が戻ることだけでは権限の復旧完了にならない | 【提案】Role との対応、scope の権限、grant の付与・取消・期限、付与者の権限喪失を判定する状態を戻す。権限を確認できない状態を許可として扱わない |
+| 未解決の conflict | local のデータディレクトリの `sync/conflicts.jsonl` に元の Command・拒否理由・時刻を保存し、同ファイルから読む（`beta/src/node/sync/local.ts:158-170`・`254-260`）。remote の拒否結果は次行の別ファイル | local の conflict は snapshot + journal だけでは戻らない。remote で conflict の登録・解決・依存の停止を一体として復元する経路は未確認 | 【提案】remote が登録した conflict の元の Command、対象、理由、未解決の状態、依存による停止と解決 Command との対応を戻す。local にしか無い pending・conflict は端末側の復旧入力として保全し、remote の確定済み状態と混同しない（R5.7） |
+| 再送判定に使う Command の結果 | store の成功結果はメモリの `commands`、journal、圧縮時の `commit-index.json`。直呼び出しは `(mapId, commandId)`（`beta/src/node/record_store/store.ts:376-377`・`980-1004`）、同期の成功は store 内で空の map key と commandId（同 `1199-1206`・`2296-2303`）。同期入口の確定的な拒否・no-op は store ディレクトリの `sync-rejections.jsonl` に、commandId・hash・結果を保存する（`beta/src/node/sync/push.ts:40-44`・`66-89`・`140`・`155-184`）。入口の構文拒否は記憶する分岐を通らない（同 `161-164`） | journal に残る成功は再登録する。圧縮済み成功の再送判定は別の `commit-index.json` に依存し、直近 100,000 件を保存する（`beta/src/node/record_store/store.ts:94`・`605-620`・`1598-1611`）。拒否・no-op は二つのファイルだけでは戻らず、store の `backupTo` もそれらのファイルを複製しない（同 `970-975`） | 【提案】有効な再送窓に必要な成功・no-op・確定的な拒否を、内容同一性の照合情報、元の結果、成功の seq、期限の根拠とともに戻す。キーを `(workspaceId, commandId)` とし、触った map の集合を結果と対応付ける。`CONFLICT`・`INVALID_STATE`・`INVALID_COMMAND` を含め、`ENGINE_BEHIND` は最初の結果として固定しない |
+| 世代・epoch・履歴 ID | snapshot header に `workspaceId`・`historyId`・`epoch`・`seq`（`beta/src/shared/record_model/types.ts:10-17`）。store は header を読み、欠けている historyId は生成、epoch は 1 とし、書き戻す（`beta/src/node/record_store/store.ts:585-588`・`651-661`） | header に保存された値は戻る。世代切替の履歴と、旧 remote が確定を続けられないことの復旧検証は未確認 | 【提案】通常の engine 復旧では識別と世代を維持する。remote の再構築・切替では、復旧地点、新しい履歴 ID・epoch、旧世代の fencing 成立を対応付ける。欠けた値の生成だけで復旧完了としない |
+| 端末の失効 | 保存場所は未確認。確認した snapshot の型一覧には端末失効の record が無い（`beta/src/shared/record_model/types.ts:366-386`）。workspace・履歴 ID・epoch の一致判定（`beta/src/node/record_store/sync_types.ts:4-11`）は端末ごとの失効記録ではない | 指定した record store の経路に、端末失効を戻す処理は確認できない。別経路の有無と engine 内だけの状態の有無は未確認 | 【提案】登録端末の識別と失効状態・失効の到達地点を戻し、失効した端末を復旧で有効にしない。失効を判定する情報が欠ければ復旧完了にしない |
+
+再送キーの workspace 単位化と確定的な拒否の記憶は、[実装ログ](../../.kiro/specs/rapid-persistence-redesign/implementation-log.md)の「再送の判定は map ごとで、通し番号は workspace で一本」「拒否した Command の結果を覚えていないため、前提が変わった後の再送が通る」の決定を前提とする。本節の【提案】は、それらを復旧入力へ含める保存契約である。
+
+【提案】R5.5 の消去状態も復旧対象に含める。削除済み ID の再利用を防ぐ記録と crypto-shredding の消去状態は別に扱う。前者は `commit-index.json` の `retired` と journal の delete から読む実装がある（`beta/src/node/record_store/store.ts:614-615`・`1613-1614`・`2317-2319`）が、後者の保存場所と復旧は未確認である。必要な記録の欠落を「未削除」「失効なし」「未処理」と推定しない。消去状態の具体的な契約は同期の要件 K4、復旧の被覆判定は K8 に従って確認する。
+
+#### fsync 済みで未適用の確定
+
+コードで確認した事実：`beta/src/node/record_store/store.ts:2211-2237` は journal を fsync した後、メモリへ適用し、engine の queue へ渡す。`beta/src/node/neo4j_store/apply.ts:208-220` は record 操作と `appliedSeq` 更新を同じ transaction で行う。適用失敗時は queue が再起動して再試行する（`beta/src/node/record_store/engine.ts:262-302`）。ただし受付制御は遅れが設定上限以上かの判定であり、既定は 10,000 確定（`beta/src/node/record_store/store.ts:98`・`980-982`・`1575-1576`）。store はメモリの状態から確定を作り、適用完了を待たず成功を返す（同 `1018-1031`・`2064-2088`）。これは R5.2・R5.3 の契約を実証するものではない。
+
+【提案】journal への追記と fsync が成功した確定は、engine への未適用・適用失敗・応答喪失を理由に取り消さない。journal を切り戻さず、seq を再利用せず、同じ Command を新規に確定し直さない。再生するのは確定済みの `ops` であり、権限・merge・不変条件の規則で元の Command を再審査しない。
+
+【提案】workspace ごとの検査から確定までの直列区間で、検査前に engine の `appliedSeq` と fsync 済み journal の末尾の seq を照合する。`appliedSeq < 末尾の seq` なら、1 件の遅れでも、その engine を使った新規 Command の検査・確定を開始しない。5.2 規則 6 の 10,000 件という上限は、古い状態での検査を許す条件にはしない。engine の所属・適用地点が未確認、または journal より先なら、受付を止めて整合を確認する。
+
+【提案】追いつくまでの server の挙動は QA2 で選ぶ。新規 Command に `ENGINE_BEHIND` を返して適用を再試行するか、先に適用を完了してから検査する。いずれも `ENGINE_BEHIND` を確定的な拒否として記憶せず、client は同じ commandId・内容を保全して再送できるものとする。fsync 済みの当該 Command は「確定済み・適用待ち」として識別し、新規 Command の一時的な受付拒否と区別する。確定成功の応答は、その seq までの適用完了後に返す（R5.2）。応答を待てなくても未確定とは扱わず、元の結果を照会できるものとする。
+
+【提案】適用は `appliedSeq + 1` から seq 順に行い、各確定の record 操作と `appliedSeq` 更新を同じ transaction にする。transaction の成否が不明なら engine の marker を読み直して再開位置を決める。遅れの範囲の読み出し・検証・適用の費用は、その範囲の行数と record 操作数・バイト数に比例させ、workspace・map・journal 全体を走査・複製しない（[Δ 比例の原則](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md#手間は変化分に比例させる)）。
+
+コードで確認した不足：`beta/src/node/record_store/store.ts:2263-2274` は journal 全体を読んでから必要な行を絞り、必要に応じ archive の segment も読む。`beta/src/node/record_store/engine.ts:101-105` は必要な履歴が得られないと全 record の再構築へ進む。したがって、現在の追いつき経路が遅れだけに比例するとはいえない。
+
+【提案】必要な suffix を取得できなければ新規 Command の受付を停止し、通常の追いつきの内部で全体の再構築へ置き換えない。engine 喪失等による明示の復旧では、検証済み snapshot と連続した journal から全体を再構築してよい（この処理の Δ は復旧対象全体）。必要な管理状態の被覆と適用完了を確認してから受付を再開し、欠けた可能性がある範囲は復旧地点とともに示す。
+
+#### akaghef の確認事項
+
+| ID | 決めること | 選択肢 | 推奨と、それぞれが変えるもの |
+|---|---|---|---|
+| QA1 | 拒否・no-op・conflict・権限・失効等の管理状態を、snapshot + journal の復旧入力にどう含めるか | OA1: 同じ snapshot の record と journal の行に含める。OA2: engine 非依存の別の構成要素に置き、snapshot がその範囲・到達地点・checksum を参照する | 【提案】OA1。復旧入力と整合する到達地点を一つの系列で扱える。拒否・no-op の結果を記録する行は graph の変更と区別する。OA1 は record・envelope・seq の意味と format の検討が必要。OA2 は各構成要素の原子的な公開・保存順・欠落検出の契約が必要で、単に別ファイルをコピーするだけでは足りない |
+| QA2 | engine が journal より遅れている間、新規 Command の要求をどう扱うか | OA3: `ENGINE_BEHIND` で直ちに受付を断り、適用は server が再試行する。OA4: 要求内で先に追いついてから検査する | 【提案】OA3。障害中に要求を長く保持せず、client は同じ Command を保全して再送する。OA4 は成功までの再送を減らせる一方、待機期限とその期限での一時応答が必要。どちらも遅れた状態での検査と fsync 済み確定の取り消しは禁止 |
+| QA3 | 復旧に残す Command 結果の再送窓と期限の証拠をどう定めるか | OA5: workspace の再送窓を時間で設定し、最初の結果の永続化時刻・期限を保存する。OA6: 結果を無期限に保持する | 【提案】OA5。具体的な期間・時計・期限延長時の扱いは akaghef の指定を要する。scope の履歴保持期間と独立させ、件数上限だけで有効な結果を落とさない。期限後に結果不明なら保留し、自動再実行しない（R4.5・R4.6）。OA6 は期限切れをなくすが、snapshot と復旧対象が累積する。窓が未決の間は有効な結果を削除できると解釈しない |
+
+#### 【提案】テスト観点（実装後の確認）
+
+| 観点 | 確認する結果 |
+|---|---|
+| 正常系 | 【提案】engine と再生成可能な索引を除き、承認した復旧入力だけから全表の状態を戻す。成功・no-op・確定的な拒否の同一 Command を再送して元の結果が返り、別 map でも同じ workspace の ID として照合される |
+| 境界 | 【提案】snapshot の到達地点、compaction、再送窓の期限の前後を通す。未解決 conflict、権限・端末失効、結果の照合情報が保持される。遅れの行・record・バイト数を固定して workspace と journal の大きさを変え、追いつきの読み書き対象が増えないことを確認する |
+| 失敗系 | 【提案】`0→1` の fsync 直後・適用 transaction 中・適用後の応答前に停止する。前提値 `0` の後続 Command は古い engine で検査されず、再開後は `1` に対して検査される。復旧構成要素の欠落、suffix の欠落、世代不一致では受付を再開せず、確定済みの記録を切り戻さない |
+
 ## 7. snapshot【実装済み】
 
 - workspace 一つにつき一つの、UTF-8 の JSON Lines。1 行が 1 レコード。

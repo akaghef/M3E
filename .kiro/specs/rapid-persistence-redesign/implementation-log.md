@@ -129,7 +129,7 @@
 - 対象: `beta/src/node/sync/local.ts` の `push()`、sync-requirements R8.1
 - 中身: outbox の Command は、記録した順にそのまま remote へ送られる。push の前に node を作って消すと、作成と削除の 2 件がそれぞれ remote で確定し、journal に載る。続けて行った更新も 1 件ずつ確定する。打ち消されるのは、remote の journal が snapshot に畳み込まれるときだけになる。消した node の本文は一度 remote の journal に載り、畳み込み後も archive に 90 日残る。まとめ方の案は次のとおり。まだ一度も送っていない同じ issuer の連続した Command について、record ごとに作成と削除の組は両方とも落とし、連続する更新は最初の `before` と最後の `after` の 1 件にまとめる。まとめた Command には新しい `commandId` を振る（送信済みの ID で中身を変えると `SAME_ID_DIFFERENT_CONTENT` で拒否されるため）。map の作成・削除・改名をまたいではまとめない。
 - 根拠: `push()` と `rebuild()` を読んだ。push と journal のどちらにも、まとめる処理はない。
-- 扱い: akaghef の判断待ち（remote の journal に何を記録するかが変わるため）
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。実装で解消。push の前に、まだ一度も送っていない同じ issuer の連続した Command を、中身に書いた形でまとめる（`beta/src/node/sync/outbox_squash.ts`）。送ろうとした Command には送信前に印を付けて永続化し、まとめの対象から外す。outbox の書き換えは atomic rename で行う。手間はまだ送っていない Command の数に比例する。試験は `beta/tests/unit/outbox_squash.test.ts` と `local_sync_store.test.ts`（作成と削除の取り消し、更新の集約、応答を失った後の同じ ID の再送）。設計は [local mode の設計](local-mode-design.md) 4 節。
 
 ### 2026-11-25 何も変えない Command が outbox に入り、remote へも送られる
 
@@ -213,9 +213,9 @@
 - 種類: 問題
 - 書いた agent: local モード実装
 - 対象: `beta/src/node/sync/http.ts`、[同期の要件](sync-requirements.md) K10
-- 中身: local は Command ごとに送る。push のリクエストには既存の 8,000,000 byte の上限があり、単一 Command がそれを超えると確定できず outbox に残る。
-- 根拠: push の HTTP body 上限と local の送信処理を照合した。上限超過の実送信は未確認。
-- 扱い: 未対応
+- 中身: local は同じ issuer の Command をまとめて送る。単一 Command が push の受付上限を超える場合にも、outbox を保持し、止まっている Command と理由を同期状態で確認できる必要がある。
+- 根拠: `beta/tests/unit/local_sync_store.test.ts` の `transport A1: pushes and confirms a single Command above the batch and former request caps`、`transport A2: reports PUSH_COMMAND_TOO_LARGE, preserves order and retains blocked status after restart`、`transport retries smaller batches after a proxy 413 and clears blocked status only after settlement`。A1 は 9,000,000 byte の値を単一 Command として確定し、A2 は 32,000,000 byte の本文上限超過で停止理由・後続の順序・再起動後の状態を検証する。変更前の origin/dev-beta では A1・A2 が失敗し、変更後は合格。実 HTTP handler をプロセス内で通した。socket を使う既存試験は sandbox の listen EPERM により未検証。
+- 扱い: transport の実装で解消。通常の batch は本文全体で 4,000,000 byte まで、大きい Command は単独送信し、remote は非圧縮 JSON 本文を 32,000,000 byte まで受け付ける。413 は接続破棄ではなく明示応答になり、単独送信の拒否は同期状態 API の `push.state: blocked` / `PUSH_COMMAND_TOO_LARGE` として map 名・intent・理由・Command の識別情報を保持する。後続は追い越さず、手動再試行で結果が確定すれば解除する。Command の分割と journal の変更はない。K10 の変更対象数・依存数などは未決のまま。viewer の表示追加は本変更の範囲外。
 
 
 ### 2026-11-23 Mac mini の remote は、mini 上の process からの loopback 接続で login を偽れる
@@ -225,7 +225,7 @@
 - 対象: `beta/src/node/remote_access.ts` の `allowedLogin`、`scripts/remote/README.md` のアクセス境界
 - 中身: Mac mini の M3E は 127.0.0.1 だけで待ち受け、`tailscale serve` を通った要求の `Tailscale-User-Login` を許可リストと照合する。tailnet の外から来る偽の header は serve が本物の login で上書きする。一方、mini 上で動く process（Swingby の docker 群など）は 127.0.0.1:4173 に直接つなぎ、この header を自分で付けられる。そうすると workspace 全体を読み書きできる。
 - 根拠: リハーサルで、header の無い loopback 接続が 403、serve 経由の偽 header が本物の login に置き換わることを確かめた。header を付けた loopback 接続は確かめていないが、照合が header だけを見ることはコードから分かる。
-- 扱い: akaghef の判断待ち（mini 上の process を信頼するか、unix socket や共有の秘密で serve との間を閉じるか）
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。決定は「unix socket で閉じる。tailscale serve が unix socket へ転送できない場合は、mini 上の process を信頼する」。M3E 側は実装した（`M3E_LISTEN_SOCKET`、socket は 0600、試験は `beta/tests/unit/remote_socket.test.ts`）。しかし Mac mini の Tailscale（`io.tailscale.ipn.macsys` の system extension）は、`unix:<path>` を受け付けても転送できず、`/tmp`・`/Users/Shared`・ホームの下のどの socket にも 502 を返した（2026-11-27 に mini で確かめた）。そのため決定の分岐に従い、mini は loopback の TCP のままにして、mini 上の process を信頼する。sandbox でない `tailscaled` に替えれば socket で閉じられる（`scripts/remote/README.md`）。
 
 ### 2026-11-23 remote の journal の issuer に、接続した人の login が入らない
 
@@ -234,7 +234,7 @@
 - 対象: `beta/src/node/sync/http.ts` の `connectionFromRequest`、`beta/src/node/sync/issuer.ts`
 - 中身: remote では、照合を通った login（`Tailscale-User-Login`）が分かっているが、viewer からの確定の issuer は接続の種類（viewer）の account のままで、誰が書いたかが journal に残らない。login を issuer に渡す接続点は `connectionFromRequest` である。
 - 根拠: コードを読んだ。
-- 扱い: 未対応
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。実装で解消。remote は、許可リストとの照合を通った login を、viewer からの確定の issuer に入れる。MCP からの確定の issuer は、その AI agent の account のままにする。login が無いとき（local モード、header の無い loopback）は従来どおり。新しい欄は足していない。試験は `beta/tests/unit/sync_remote_identity.test.ts` と `local_sync_store.test.ts`。
 
 ### 2026-11-23 remote の map の読み込みを圧縮しない
 
@@ -242,8 +242,8 @@
 - 書いた agent: 3 端末同期の段階 1 を進める session
 - 対象: `beta/src/node/start_viewer.ts` の map 読み込みの応答
 - 中身: 20,150 node の map（約 8 MB の JSON）を Tailscale 越しに読むと 1.2〜1.7 秒かかる。同じ map を手元の server から読むと 0.1 秒である。`Accept-Encoding: gzip` を送っても、圧縮しない応答が返る。自宅 LAN の外から DERP 経由でつなぐと、さらに遅くなりうる。
-- 根拠: リハーサルの remote と手元の server に curl で計測した。
-- 扱い: 未対応
+- 根拠: 遅延はリハーサル時の curl 計測。圧縮の回帰試験は `beta/tests/unit/local_sync_store.test.ts` の `transport B1: map load negotiates gzip and decompresses to the exact uncompressed response` と `transport B2: map load without Accept-Encoding keeps the original JSON body`。B1 は origin/dev-beta で Content-Encoding が無く失敗し、変更後は合格。B2 は前後とも合格し、ヘッダーなし・gzip;q=0 の非圧縮応答を確認する。実 map route をプロセス内で通した。Tailscale 越しの再計測はしていない。
+- 扱い: 実装で解消。map 読み込みと共通の JSON 応答 helper が Accept-Encoding を照合し、gzip を許す要求には Node.js 組み込み zlib の非同期 gzip と Content-Encoding: gzip、Vary: Accept-Encoding を返す。展開後の本文は非圧縮応答と byte 単位で同じ。ヘッダーなし・gzip を拒否した要求では従来の JSON 本文を返す。圧縮の処理量は当該応答の byte 数に比例する。
 
 ### 2026-11-22 削除した node の本文が commit-index.json に上限なく積もる
 
@@ -647,7 +647,7 @@
 - 対象: DB 仕様書 5.3 節、`beta/src/node/record_store/store.ts:616`（再送の判定）、`store.ts:1231`（確定した Command だけを登録）
 - 中身: 再送で「最初の結果」を返すのは、確定した Command だけである。拒否した Command は ID を覚えないので、拒否の後に状態が変わってから同じ ID を再送すると、今度は確定する。依頼した側から見ると、一度は拒否と返った依頼が、応答を受け取れなかった再送で黙って通る。確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）も最初の結果として持ち、同じ ID には同じ拒否を返すことを提案する。一時的な拒否（`ENGINE_BEHIND`）は除く。
 - 根拠: `store.ts:612-627` と、`this.commands.set` の 3 か所（`store.ts:438`、`1223`、`1231`）を読んだ。登録は確定の経路と読み込みの経路だけで、拒否の経路には無い。実行はしていない。
-- 扱い: 未対応
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）も最初の結果として持ち、同じ ID には同じ拒否を返す。`ENGINE_BEHIND` は除く。未実装
 
 ### 2026-11-19 再送の判定は map ごとで、通し番号は workspace で一本
 
@@ -656,7 +656,7 @@
 - 対象: DB 仕様書 5.2 節・5.3 節、`beta/src/node/record_store/store.ts:272`（`commandKey(mapId, commandId)`）
 - 中身: Command の ID は map ごとに一意とみなされる。一方、通し番号は workspace で一本で、node を別の map へ移すことも想定している。複数の map に触る Command がどの map の ID として登録されるか、同じ ID が別の map で使われたときに別の Command とみなしてよいか、が決まっていない。再送の判定のキーを workspace 単位にし、触った map は Command の中に集合として持つことを提案する。
 - 根拠: `store.ts:272`、`617` を読んだ。仕様書 5.3 節は単位を書いていない。
-- 扱い: 未対応
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。再送の判定のキーを workspace 単位にし、触った map は Command の中に集合として持つ。未実装
 
 ### 2026-11-19 兄弟順キーが同じ値の兄弟の間には、node を入れられない
 
@@ -777,7 +777,7 @@
 - 対象: DB 仕様書 6 節・8.3 節、`beta/src/node/neo4j_store/apply.ts:192`（`appliedSeq` の書き込み）
 - 中身: 復旧の正本が snapshot と journal なら、グラフの中身だけでなく、権限、未解決の conflict、Command の結果（重複排除の記録）、世代、端末の失効も、そこから戻せなければならない。Neo4j にだけ置いた状態は、指定された復旧の経路で失われる。また、journal に fsync した後、Neo4j に適用する前に止まった確定は、適用の失敗を理由に未確定へ戻せない。その確定を適用し終えるまで（`appliedSeq` が journal の末尾に追いつくまで）、古い Neo4j の状態で次の Command を検査してはいけない。どちらも今の DB 仕様書には書かれていない。
 - 根拠: GPT-6 Pro の回答（第 1 往復）の指摘を、DB 仕様書 8.3 節の「反映した位置は `appliedSeq` に持つ」と照らした。確定の処理が、検査の前に `appliedSeq` の遅れを解消しているかどうかは確かめていない（未確認）。
-- 扱い: 未対応
+- 扱い: 仕様へ【提案】として記載（[DB 仕様書 6.1 節「復旧で戻す状態と、engine に未適用の確定」](../../../docs/03_Spec/Database_Spec.md#recovery-state-and-unapplied-commits)）。akaghef の確認待ち
 
 ### 2026-11-19 journal の畳み込みがどこからも呼ばれていない
 

@@ -42,7 +42,7 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
 
 ## 4. push（手動）
 
-1. outbox の entry を順に `POST /api/sync/push` へ送る。要求には `workspaceId`・`historyId`・`epoch` を付ける。
+1. まだ送信対象にしていない同じ issuer の連続した Command を record ごとにまとめる。作成と削除は取り除き、更新は各欄の最初の `before` と最後の `after` にする。集約した Command には新しい `commandId` を振る。map の作成・削除・改名・列変更、map・issuer・actor・provenance・reason・confirm の違い、削除後の再作成は境界として元の順序を保つ。conflict・blocked は変更しない。集約後の outbox の entry を順に `POST /api/sync/push` へ送る。要求には `workspaceId`・`historyId`・`epoch` を付ける。
 2. remote は、まず要求全体の照合（R6.2）を行い、食い違えば何も確定せず要求全体を拒否する。
 3. 照合を通れば entry ごとに結果を返す（R6.3）：
    - `committed` / `no-op`（変更後の値と一致）：outbox から外す。内容は次の pull で confirmed に入る。
@@ -50,7 +50,15 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
    - 通信断・結果不明：outbox に残す。同じ `commandId` で再送する（remote は重複を検出する）。
 4. push の後に pull を行う。
 
+outbox の新しい entry は `attempted: false` を持つ。各 push の全送信対象を最初の送信前に `attempted: true` として永続化する。途中で止まって未送信になった後続も保守的に集約対象から外す。欄がない既存 entry は送信履歴不明として集約しない。送信済み・結果不明の ID と内容は再送時にも変えない。この欄は transport に送らない。集約・送信対象の記録は既存の atomic rename と fsync で outbox 全体を置き換えるため、途中停止時は完全な旧版か新版が残る。処理対象は outbox の pending とその changes だけで、workspace は読まない。
+
+集約自体は working store を書き換えない。集約後の停止で outbox の ID と working journal の ID が違っていても、基点と journal が有効なら変更された record だけを rebase する。
+
 remote 側の追加：map 単位の操作（作成・削除・改名・列）を push で受け付ける。作成済みの map への create、存在しない map への変更は conflict として返す。
+
+transport の実装では、同じ issuer が続く entry を JSON 本文（workspace と世代の照合情報を含む）4,000,000 byte までまとめ、それより大きい単一 Command は分割せず単独で送る。remote の非圧縮 JSON 本文の上限は 32,000,000 byte。上限超過は接続を破棄せず HTTP 413 `PUSH_BODY_TOO_LARGE` と `limitBytes` を返し、何も確定しない。request の `Content-Encoding` は未指定または `identity` のみを受け付ける。
+
+proxy などが batch を 413 で拒否したときは、同じ push 内の batch の上限を縮め、単一 Command でも拒否されるかを確かめる。単独でも拒否されたら、outbox と後続の順序を保持し、同期状態に `push.state: "blocked"`・`code: "PUSH_COMMAND_TOO_LARGE"`・`commandId`・map 名・intent・理由・送信 byte 数・remote が返した上限を出す。状態は `sync/remote.json` に保持し、接続確認が成功しても消さない。push は明示操作で再試行でき、対象 Command の結果が確定したら解除する。journal の記録内容は変えない。これは transport の実装上限であり、K10 の変更対象数・依存数などの未決事項を確定するものではない。
 
 ## 5. pull（手動）
 
@@ -70,7 +78,7 @@ remote 側の追加：map 単位の操作（作成・削除・改名・列）を
 
 ## 7. 同期状態（viewer）
 
-- `GET /api/sync/local/status` → `{mode: "local", remote: {origin, state: "ok" | "unreachable" | "refused"}, unsent, conflicts, confirmedSeq, lastPushAt, lastPullAt}`。remote モードの server は `{mode: "remote"}`。
+- `GET /api/sync/local/status` → `{mode: "local", remote: {origin, state: "ok" | "unreachable" | "refused"}, push: {state: "idle"} | {state: "blocked", code, commandId, mapName, intent, reason, bytes, limitBytes?}, unsent, conflicts, confirmedSeq, lastPushAt, lastPullAt}`。remote モードの server は `{mode: "remote"}`。`push` は transport の状態で、接続状態と独立する。`commandId` は診断用であり GUI の通常表示には使わない。
 - `POST /api/sync/local/push`・`POST /api/sync/local/pull` → 上の手順を実行し、結果の要約（送った件数、確定、conflict、取り込んだ行数）を返す。
 - `GET /api/sync/local/conflicts` → 保全した entry の一覧（map 名・intent・理由・時刻）。
 - viewer：toolbar に同期状態（接続状態・未送信件数・競合件数）と Push / Pull のボタン。表示に ID を出さない。

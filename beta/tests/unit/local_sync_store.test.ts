@@ -3,10 +3,12 @@ import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { closeActiveRecordStore, activeRecordStore, startLocalMode } from "../../src/node/record_store/active";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import { handleRecordSyncHttp } from "../../src/node/sync/http";
+import { aiAgentAccountId } from "../../src/node/sync/issuer";
 import { LocalSync } from "../../src/node/sync/local";
 import { DeviceOutbox, pushEnvelope } from "../../src/node/sync/outbox";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
@@ -59,6 +61,7 @@ function responseFor(
   url: URL, options: RequestInit,
   dispatch: (req: http.IncomingMessage, res: http.ServerResponse) => void,
   rewrite: (url: URL, response: any) => unknown = (_url, body) => body,
+  raw = false,
 ): Promise<Response> {
   const req = Object.assign(Readable.from(options.body ? [Buffer.from(String(options.body))] : []), {
     url: url.pathname + url.search, method: options.method ?? "GET", headers: { host: url.host, ...options.headers }, socket: { remoteAddress: "127.0.0.1" },
@@ -66,11 +69,13 @@ function responseFor(
   const headers = new Headers();
   return new Promise<Response>((resolve) => {
     const res = {
-      statusCode: 200, headersSent: false, writableEnded: false,
+      req, statusCode: 200, headersSent: false, writableEnded: false,
       setHeader(key: string, value: string) { headers.set(key, value); },
-      end(value: string) {
+      getHeader(key: string) { return headers.get(key) ?? undefined; },
+      end(value: string | Buffer) {
         this.writableEnded = true;
-        const body = rewrite(url, JSON.parse(value));
+        if (raw) { resolve(new Response(value, { status: this.statusCode, headers })); return; }
+        const body = rewrite(url, JSON.parse(String(value)));
         resolve(new Response(JSON.stringify(body), { status: this.statusCode, headers }));
       },
     };
@@ -103,6 +108,116 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test("transport A1: pushes and confirms a single Command above the batch and former request caps", async () => {
+  const a = await client();
+  const text = "大".repeat(3_000_000); // 9 MB UTF-8, beyond the former 8 MB request cap.
+  change(a.store(), text);
+  a.store().setMapColumns("map", { tags: ["after-large"] }, "human");
+  const waiting = entries("local");
+  const requests: number[] = [];
+  vi.stubGlobal("fetch", (url: URL, options: RequestInit = {}) => {
+    if (url.pathname === "/api/sync/push") requests.push(JSON.parse(String(options.body)).commands.length);
+    return serve(url, options);
+  });
+  expect(await a.push(() => {})).toMatchObject({ sent: 2, committed: 2, conflicts: 0 });
+  expect(requests).toEqual([1, 1]);
+  expect(entries("local")).toEqual([]);
+  expect(mapText(remote())).toBe(text);
+  expect(remote().journalLinesAfter(waiting[0].baseSeq)!.map((line) => line.commandId)).toEqual(waiting.map((entry) => entry.commandId));
+  expect((await a.status()).unsent).toBe(0);
+});
+
+test("transport A2: reports PUSH_COMMAND_TOO_LARGE, preserves order and retains blocked status after restart", async () => {
+  const a = await client();
+  // Keep the map's human-readable name small; the oversized value is a node detail.
+  const state = a.store().getMapRow("map").state;
+  state.nodes.root.details = "x".repeat(32_000_000);
+  expect(a.store().saveWholeMap("map", state, "human")).toMatchObject({ ok: true });
+  a.store().setMapColumns("map", { tags: ["must-wait"] }, "human");
+  const waiting = entries("local");
+  await expect(a.push(() => {})).rejects.toMatchObject({ status: 413, code: "PUSH_COMMAND_TOO_LARGE" });
+  const expected = {
+    unsent: 2, push: { state: "blocked", commandId: waiting[0].commandId,
+      mapName: waiting[0].mapName, intent: waiting[0].command.intent,
+      code: "PUSH_COMMAND_TOO_LARGE", limitBytes: 32_000_000, reason: expect.any(String) },
+  };
+  expect(await a.status()).toMatchObject(expected);
+  expect(entries("local")).toEqual(waiting.map((entry) => ({ ...entry, attempted: true })));
+  expect(remote().journalLinesAfter(waiting[0].baseSeq)).toEqual([]);
+  await a.close();
+  devices.splice(devices.indexOf(a), 1);
+  const restarted = await client();
+  expect(await restarted.status()).toMatchObject(expected);
+}, 60_000);
+
+test("transport retries smaller batches after a proxy 413 and clears blocked status only after settlement", async () => {
+  const a = await client();
+  change(a.store(), "First");
+  const state = a.store().getMapRow("map").state;
+  state.nodes.root.details = "x".repeat(3_000);
+  // Distinct actor labels keep these Commands separate; both use the local human connection.
+  expect(a.store().saveWholeMap("map", state, "human-second")).toMatchObject({ ok: true });
+  a.store().setMapColumns("map", { tags: ["last"] }, "human");
+  const waiting = entries("local");
+  let limited = true;
+  const accepted: string[] = [];
+  vi.stubGlobal("fetch", async (url: URL, options: RequestInit = {}) => {
+    if (url.pathname === "/api/sync/push") {
+      if (limited && Buffer.byteLength(String(options.body)) > 2_000) return new Response("Too large", { status: 413 });
+      accepted.push(...JSON.parse(String(options.body)).commands.map((entry: any) => entry.commandId));
+    }
+    return serve(url, options);
+  });
+  await expect(a.push(() => {})).rejects.toMatchObject({ code: "PUSH_COMMAND_TOO_LARGE" });
+  expect(accepted).toEqual([waiting[0].commandId]);
+  expect(await a.status()).toMatchObject({ unsent: 2, push: { state: "blocked", commandId: waiting[1].commandId } });
+  await expect(a.push(() => {})).rejects.toMatchObject({ code: "PUSH_COMMAND_TOO_LARGE" });
+  expect(accepted).toEqual([waiting[0].commandId]);
+  limited = false;
+  expect(await a.push(() => {})).toMatchObject({ committed: 2 });
+  expect(accepted).toEqual(waiting.map((entry) => entry.commandId));
+  expect(await a.status()).toMatchObject({ unsent: 0, push: { state: "idle" } });
+});
+
+async function rawMapResponse(acceptEncoding?: string) {
+  vi.stubEnv("M3E_DATA_DIR", path.join(temp, "viewer"));
+  vi.stubEnv("M3E_TAILSCALE_USERS", undefined);
+  const { createAppServer } = await import("../../src/node/start_viewer");
+  const app = createAppServer();
+  return responseFor(new URL("/api/maps/map", ORIGIN), {
+    headers: acceptEncoding === undefined ? {} : { "accept-encoding": acceptEncoding },
+  }, (req, res) => { app.emit("request", req, res); }, (_url, body) => body, true);
+}
+
+test("transport B1: map load negotiates gzip and decompresses to the exact uncompressed response", async () => {
+  remote().saveWholeMap("map", appState("Root".repeat(300_000)), "human");
+  const plain = await rawMapResponse();
+  const compressed = await rawMapResponse("gzip");
+  expect(compressed.status).toBe(200);
+  expect(compressed.headers.get("content-encoding")).toBe("gzip");
+  expect(compressed.headers.get("vary")).toContain("Accept-Encoding");
+  const bytes = Buffer.from(await compressed.arrayBuffer());
+  const original = Buffer.from(await plain.arrayBuffer());
+  expect(bytes.length).toBeLessThan(original.length);
+  expect(gunzipSync(bytes)).toEqual(original);
+});
+
+test("transport B2: map load without Accept-Encoding keeps the original JSON body", async () => {
+  const plain = await rawMapResponse();
+  expect(plain.status).toBe(200);
+  expect(plain.headers.get("content-encoding")).toBeNull();
+  expect(plain.headers.get("content-type")).toBe("application/json; charset=utf-8");
+  const body = await plain.text();
+  const doc = JSON.parse(body);
+  expect(body).toBe(JSON.stringify(doc));
+  expect(doc.state.nodes.root.text).toBe("Root");
+  for (const encoding of ["gzip;q=0", "br", "gzip;q=0, *;q=1"]) {
+    const refused = await rawMapResponse(encoding);
+    expect(refused.headers.get("content-encoding")).toBeNull();
+    expect(await refused.text()).toBe(body);
+  }
 });
 
 test("local content and map operations enter the outbox and converge through the remote push and pull handlers", async () => {
@@ -154,7 +269,7 @@ test("an offline edit survives reopening and a missing acknowledgement does not 
   online = true;
   transform = (url, body) => url.pathname === "/api/sync/push" ? { ...body, results: [] } : body;
   expect(await a.push(() => {})).toMatchObject({ sent: 1, committed: 0, pulled: 1 });
-  expect(entries("local")).toEqual(waiting);
+  expect(entries("local")).toEqual(waiting.map((entry) => ({ ...entry, attempted: true })));
   expect(a.conflictList()).toEqual([]);
   transform = (_url, body) => body;
   expect(await a.push(() => {})).toMatchObject({ sent: 1, committed: 1, pulled: 0 });
@@ -461,4 +576,95 @@ test("offline moves of the same node use remote confirmation order and converge 
   expect(delta).not.toBeNull();
   expect(delta!.records.some(item => item.record?.kind === "connection")).toBe(true);
   expect(entries("a")).toEqual([]); expect(entries("b")).toEqual([]);
+});
+
+test("squash: local push drops a created/deleted node without touching working state", async () => {
+  const a = await client();
+  const initial = a.store().getMapRow("map").state;
+  const next = structuredClone(initial);
+  next.nodes.root.children.push("temporary");
+  next.nodes.temporary = { id: "temporary", parentId: "root", children: [], text: "private", nodeType: "text", collapsed: false };
+  expect(a.store().saveWholeMap("map", next, "human")).toMatchObject({ ok: true });
+  expect(a.store().saveWholeMap("map", initial, "human")).toMatchObject({ ok: true });
+  const working = a.store().getMapRow("map").state;
+  const seq = remote().seq();
+  expect(await a.push(() => {})).toMatchObject({ sent: 0, committed: 0 });
+  expect(remote().seq()).toBe(seq);
+  expect(entries("local")).toEqual([]);
+  expect(a.store().getMapRow("map").state).toEqual(working);
+});
+
+test("squash: three updates push one first-before last-after Command and preserve state", async () => {
+  const a = await client();
+  change(a.store(), "one"); change(a.store(), "two"); change(a.store(), "three");
+  const oldIds = entries("local").map((entry) => entry.commandId);
+  const state = a.store().getMapRow("map").state;
+  let pushed: any[] = [];
+  vi.stubGlobal("fetch", (url: URL, options: RequestInit = {}) => {
+    if (url.pathname === "/api/sync/push") pushed = JSON.parse(String(options.body)).commands;
+    return serve(url, options);
+  });
+  expect(await a.push(() => {})).toMatchObject({ sent: 1, committed: 1 });
+  expect(pushed).toHaveLength(1);
+  expect(oldIds).not.toContain(pushed[0].commandId);
+  expect(pushed[0].command.changes[0]).toMatchObject({ before: { text: "Root" }, after: { text: "three" } });
+  expect(a.store().getMapRow("map").state).toEqual(state);
+  expect(mapText(remote())).toBe("three");
+});
+
+test("squash: lost response survives restart using delta rebase, without a workspace read", async () => {
+  const a = await client();
+  change(a.store(), "one"); change(a.store(), "two");
+  vi.stubGlobal("fetch", async (url: URL, options: RequestInit = {}) => {
+    const result = await serve(url, options);
+    if (url.pathname === "/api/sync/push") throw new Error("lost response");
+    return result;
+  });
+  await expect(a.push(() => {})).rejects.toMatchObject({ code: "REMOTE_UNREACHABLE" });
+  const pending = entries("local");
+  expect(pending).toHaveLength(1);
+  await a.close(); devices = [];
+  const fullRead = vi.spyOn(RecordWorkspaceStore.prototype, "records");
+  vi.stubGlobal("fetch", serve);
+  const restarted = await client();
+  expect(fullRead).not.toHaveBeenCalled();
+  expect(mapText(restarted.store())).toBe("two");
+  expect(entries("local")[0].commandId).toBe(pending[0].commandId);
+  expect(await restarted.push(() => {})).toMatchObject({ committed: 1 });
+  expect(remote().journalLinesAfter(0)!.filter((line) => line.commandId === pending[0].commandId)).toHaveLength(1);
+});
+
+test.each([["viewer", "beta@example.test"], ["mcp", aiAgentAccountId("client-instance")]])("verified login: %s push records %s as issuer, preserving actor", async (kind, expected) => {
+  vi.stubEnv("M3E_TAILSCALE_USERS", "beta@example.test");
+  vi.stubEnv("M3E_SYNC_REMOTE", undefined);
+  const response = await serve(new URL("/api/sync/push", ORIGIN), {
+    method: "POST", headers: { "content-type": "application/json", "tailscale-user-login": "beta@example.test", "x-m3e-connection": kind, "x-m3e-actor-instance": "client-instance" },
+    body: JSON.stringify({ ...remote().syncIdentity(), commands: [{ mapId: "map", commandId: "login-command", baseSeq: 0,
+      command: { commandId: "login-command", actor: { kind: "ai-agent", id: "untrusted-label" }, intent: "edit", changes: [{ kind: "node", key: ["root"], op: "update", before: { text: "Root" }, after: { text: "edited" } }] } }] }),
+  });
+  expect(await response.json()).toMatchObject({ results: [{ status: "committed" }] });
+  expect(remote().journalLinesAfter(0)!.at(-1)).toMatchObject({ issuer: expected, actor: { kind: "ai-agent", id: "untrusted-label" } });
+});
+
+test("verified login: direct viewer and MCP Commands inherit only their own checked request login", async () => {
+  vi.stubEnv("M3E_DATA_DIR", path.join(temp, "viewer"));
+  vi.stubEnv("M3E_SYNC_REMOTE", undefined);
+  vi.stubEnv("M3E_TAILSCALE_USERS", "beta@example.test,other@example.test");
+  const { createAppServer } = await import("../../src/node/start_viewer");
+  const app = createAppServer();
+  const call = async (route: string, body: object, login = "beta@example.test") => {
+    const response = await responseFor(new URL(route, ORIGIN), {
+      method: "POST", headers: { "content-type": "application/json", "tailscale-user-login": login }, body: JSON.stringify(body),
+    }, (req, res) => { app.emit("request", req, res); });
+    const bodyResult = await response.json();
+    expect(response.status, JSON.stringify(bodyResult)).toBe(200);
+    return bodyResult;
+  };
+  await call("/api/maps/map/commands", { commandId: "viewer-login", actor: { kind: "human", id: "actor" }, intent: "edit", changes: [{ kind: "node", key: ["root"], op: "update", before: { text: "Root" }, after: { text: "viewer" } }] });
+  const context = await call("/api/mcp/call", { name: "m3e_context", arguments: { action: "enter", target: "m3e://maps/map" } });
+  await call("/api/mcp/call", { name: "m3e_update", arguments: { kind: "content", context_id: context.context_id, target: "m3e://maps/map/nodes/root", text: "mcp" } }, "other@example.test");
+  // The viewer Command carries the human's login; the MCP Command stays its AI agent's account.
+  const [viewerIssuer, mcpIssuer] = remote().journalLinesAfter(0)!.map((line) => line.issuer);
+  expect(viewerIssuer).toBe("beta@example.test");
+  expect(mcpIssuer).toMatch(/^acct_ai_/);
 });

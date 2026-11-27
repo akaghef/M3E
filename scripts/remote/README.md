@@ -4,7 +4,7 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
 
 ## Mac mini の初回導入
 
-`swingby` でログインし、統合・検証済みの `dev-beta` がある `/Users/swingby/dev/M3E` を使う。Node.js 22 以降と npm を用意する。対象 workspace は移行済みで、`swingby` が読み書きできる `store/snapshot.jsonl` があることを確認する。同じ store を開く別のプロセスが停止しており、ポート 4173 が空いている状態で実行する。
+`swingby` でログインし、統合・検証済みの `dev-beta` がある `/Users/swingby/dev/M3E` を使う。Node.js 22 以降と npm を用意する。対象 workspace は移行済みで、`swingby` が読み書きできる `store/snapshot.jsonl` があることを確認する。同じ store を開く別のプロセスが停止している状態で実行する。
 
 以下の `data_dir` は移行済み workspace の絶対パスに、`users` は許可する実際の Tailscale ログイン名のカンマ区切りに置き換える。workspace・map の ID とラベルは Beta ランチャーの既定値を入れている。切替前の Beta で値を上書きしていた場合は、テンプレートの対応する `EnvironmentVariables` に同じ値を入れる。
 
@@ -43,14 +43,18 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
 
 LaunchAgent は `swingby` のログイン session（Mac mini は常時ログインしている）で `start_viewer.js` を直接起動し、`swingby` は sudo にパスワードが要るため LaunchDaemon にはしない。終了時は launchd が再起動する。サンプル生成とブラウザー起動を無効にし、明示した `M3E_STORE_DIR` を開けなければ起動に失敗する。
 
-`lsof` の出力でリスナーが `127.0.0.1:4173` に限られ、`curl` が 403 を返すことを確認してから Serve を設定する。Serve の出力に表示される MagicDNS 名を MacBook で使う。
+Serve は loopback の TCP へ転送する。
 
 ```sh
-lsof -nP -iTCP:4173 -sTCP:LISTEN
-curl -i http://127.0.0.1:4173/
-tailscale serve --bg --https=443 http://127.0.0.1:4173
+tailscale serve --bg http://127.0.0.1:4173
 tailscale serve status
 ```
+
+この構成では、Mac mini 上の process は 127.0.0.1:4173 に `Tailscale-User-Login` を付けて直接つなげる。akaghef は 2026-11-27 に、unix socket で閉じられない間は Mac mini 上の process を信頼すると決めた（実装ログの「Mac mini の remote は、mini 上の process からの loopback 接続で login を偽れる」）。
+
+`M3E_LISTEN_SOCKET` に絶対パスを設定すると、M3E はその unix socket だけで待ち受け、`M3E_HOST`・`M3E_PORT` にかかわらず TCP は開かない。socket の mode は 0600 で、通常終了・SIGINT・SIGTERM・server close で消え、SIGKILL や電源断で残った socket は次の起動で消える。使用中の socket、通常ファイル、symlink は上書きしない。ただし Mac mini の Tailscale（`io.tailscale.ipn.macsys` の system extension）は、`tailscale serve --bg unix:<path>` を受け付けても、どの unix socket にも転送できず 502 を返す（`/tmp`、`/Users/Shared`、ホームの下で 2026-11-27 に確かめた）。この版では socket を使わない。sandbox でない `tailscaled` に替えた場合だけ、`M3E_LISTEN_SOCKET` を LaunchAgent に足して Serve を `unix:<path>` へ向け、`lsof -nP -iTCP:4173 -sTCP:LISTEN` が何も出さないことと、MacBook から Serve 越しに開けることを確かめる。
+
+Serve の出力に表示される MagicDNS 名を MacBook で使う。
 
 tailnet の許可済みユーザーで MacBook のブラウザーから `https://<mini>.<tailnet>.ts.net/` を開き、対象 workspace が表示されることを確認する。
 
@@ -113,4 +117,6 @@ workspace を remote へ移したら、移す前の端末の workspace データ
 
 ## アクセス境界
 
-Serve を唯一の入口として維持する。Mac mini 上で実行されるプロセスは `127.0.0.1:4173` に直接接続でき、`Tailscale-User-Login` を偽装できる。許可リストは workspace 全体と既存 API に対する入口で、許可するのは `swingby` のファイルにアクセスできる範囲まで信頼するログインに限る。既存のローカルファイル API も許可済み接続から呼び出せる。scope ごとの開示制御と journal の issuer へのログイン反映は対象外。
+Serve をネットワークからの唯一の入口として維持する。TCP loopback は待ち受けないため、Mac mini 上の別ユーザーの process が 127.0.0.1:4173 に header を付けて接続する経路はなくなる。socket の所有者である `swingby` と root は socket に直接接続できるため、この二者は引き続き信頼境界の内側である。0600 は同一ユーザーの process を隔離するものではない。
+
+許可リストは workspace 全体と既存 API に対する入口で、許可するのは `swingby` のファイルにアクセスできる範囲まで信頼するログインに限る。既存のローカルファイル API も許可済み接続から呼び出せる。scope ごとの開示制御は対象外。照合した login は viewer／MCP Command の発行者アカウントの識別子として既存の journal `issuer` に記録し、`actor` は呼び出し元のラベルとして保持する。account record を作成する API は現状ないため、account record や新しい journal 欄は追加しない。許可リスト未設定・login header なし・local モードでは従来の issuer の選択を保つ。
