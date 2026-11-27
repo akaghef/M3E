@@ -46,7 +46,7 @@ NEO4J_PASSWORD="$(cat "$h/../secrets/neo4j-password")" JAVA_HOME="$h/dist/temuri
 
 ## Mac mini の初回導入
 
-`swingby` でログインし、統合・検証済みの `dev-beta` がある `/Users/swingby/dev/M3E` を使う。Node.js 22 以降と npm を用意する。対象 workspace は移行済みで、`swingby` が読み書きできる `store/snapshot.jsonl` があることを確認する。同じ store を開く別のプロセスが停止している状態で実行する。
+`swingby` でログインし、統合・検証済みの `dev-beta` がある `/Users/swingby/dev/M3E` を使う。Node.js 22 以降と npm を用意する。先に「各端末の Neo4j」の `install.sh` で mini の Neo4j を導入し、7687 が応答することを確認する。対象 workspace は Neo4j の store（名前は workspaceId）に取り込み済みで、その data directory に store を名指す `neo4j-store.json`（`{"store": "<workspaceId>"}`）があることを確認する。同じ store を開く別のプロセスが停止している状態で実行する。
 
 以下の `data_dir` は移行済み workspace の絶対パスに、`users` は許可する実際の Tailscale ログイン名のカンマ区切りに置き換える。workspace・map の ID とラベルは Beta ランチャーの既定値を入れている。切替前の Beta で値を上書きしていた場合は、テンプレートの対応する `EnvironmentVariables` に同じ値を入れる。
 
@@ -59,7 +59,7 @@ NEO4J_PASSWORD="$(cat "$h/../secrets/neo4j-password")" JAVA_HOME="$h/dist/temuri
   log_dir=/Users/swingby/Library/Logs/M3E
   node_bin=$(command -v node)
   test "$(id -un)" = swingby
-  test -s "$data_dir/store/snapshot.jsonl"
+  test -s "$data_dir/neo4j-store.json"
   cd "$checkout"
   npm --prefix beta ci
   npm --prefix beta run build
@@ -72,7 +72,6 @@ NEO4J_PASSWORD="$(cat "$h/../secrets/neo4j-password")" JAVA_HOME="$h/dist/temuri
   plutil -replace ProgramArguments -json "[\"$node_bin\",\"$checkout/beta/dist/node/start_viewer.js\"]" "$job"
   plutil -replace WorkingDirectory -string "$checkout/beta" "$job"
   plutil -replace EnvironmentVariables.M3E_DATA_DIR -string "$data_dir" "$job"
-  plutil -replace EnvironmentVariables.M3E_STORE_DIR -string "$data_dir/store" "$job"
   plutil -replace EnvironmentVariables.M3E_TAILSCALE_USERS -string "$users" "$job"
   plutil -replace EnvironmentVariables.M3E_NEO4J_PASSWORD_FILE -string "$HOME/Library/Application Support/M3E/secrets/neo4j-password" "$job"
   plutil -replace StandardOutPath -string "$log_dir/remote-beta.log" "$job"
@@ -84,7 +83,7 @@ NEO4J_PASSWORD="$(cat "$h/../secrets/neo4j-password")" JAVA_HOME="$h/dist/temuri
 )
 ```
 
-LaunchAgent は `swingby` のログイン session（Mac mini は常時ログインしている）で `start_viewer.js` を直接起動し、`swingby` は sudo にパスワードが要るため LaunchDaemon にはしない。終了時は launchd が再起動する。サンプル生成とブラウザー起動を無効にし、明示した `M3E_STORE_DIR` を開けなければ起動に失敗する。
+LaunchAgent は `swingby` のログイン session（Mac mini は常時ログインしている）で `start_viewer.js` を直接起動し、`swingby` は sudo にパスワードが要るため LaunchDaemon にはしない。終了時は launchd が再起動する。サンプル生成とブラウザー起動を無効にし、`neo4j-store.json`（または `M3E_RECORD_STORE`）が名指す store を `M3E_NEO4J_BOLT` の Neo4j で開けなければ、Neo4j が応答しない場合も含めて起動に失敗する。
 
 Serve は loopback の TCP へ転送する。
 
@@ -156,7 +155,7 @@ workspace を remote へ移したら、移す前の端末の workspace データ
 )
 ```
 
-バックアップは `/api/sync/clone` が返す `snapshotSeq` 時点の portable snapshot 全体を保存する。journal、commit index、archive は取得対象外。MacBook のスリープや tailnet 未接続が続けば、取得間隔は 1 時間を超える。復旧確認には別の空ディレクトリで `record_store_cli.js --create <dir> --from-snapshot <jsonl>` と `record_store_cli.js --verify <dir>` を使う。
+バックアップは `/api/sync/clone` が返す `snapshotSeq` 時点の portable snapshot 全体を保存する。journal、commit index、archive は取得対象外。MacBook のスリープや tailnet 未接続が続けば、取得間隔は 1 時間を超える。復旧確認は実データのない試験用 Neo4j（127.0.0.1:7688）で行う。`M3E_NEO4J_BOLT=bolt://127.0.0.1:7688` を付けて `record_store_cli.js --create <name> --from-export <jsonl>` で取り込み、`record_store_cli.js --inspect <name>` で検査し、終わったら `record_store_cli.js --drop <name>` で消す。
 
 ## アクセス境界
 

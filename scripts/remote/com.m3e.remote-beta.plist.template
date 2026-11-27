@@ -23,8 +23,6 @@
         <string>4173</string>
         <key>M3E_DATA_DIR</key>
         <string>@DATA_DIR@</string>
-        <key>M3E_STORE_DIR</key>
-        <string>@DATA_DIR@/store</string>
         <key>M3E_WORKSPACE_ID</key>
         <string>ws_REMH1Z5TFA7S93R3HA0XK58JNR</string>
         <key>M3E_WORKSPACE_LABEL</key>
