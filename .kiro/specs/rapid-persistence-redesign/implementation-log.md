@@ -704,7 +704,7 @@
 - 対象: DB 仕様書 6 節・8.3 節、`beta/src/node/neo4j_store/apply.ts:192`（`appliedSeq` の書き込み）
 - 中身: 復旧の正本が snapshot と journal なら、グラフの中身だけでなく、権限、未解決の conflict、Command の結果（重複排除の記録）、世代、端末の失効も、そこから戻せなければならない。Neo4j にだけ置いた状態は、指定された復旧の経路で失われる。また、journal に fsync した後、Neo4j に適用する前に止まった確定は、適用の失敗を理由に未確定へ戻せない。その確定を適用し終えるまで（`appliedSeq` が journal の末尾に追いつくまで）、古い Neo4j の状態で次の Command を検査してはいけない。どちらも今の DB 仕様書には書かれていない。
 - 根拠: GPT-6 Pro の回答（第 1 往復）の指摘を、DB 仕様書 8.3 節の「反映した位置は `appliedSeq` に持つ」と照らした。確定の処理が、検査の前に `appliedSeq` の遅れを解消しているかどうかは確かめていない（未確認）。
-- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。戻すべき状態と適用待ちの確定の扱いを、まず DB 仕様書に【提案】として書き、akaghef の確認の後に実装する。未対応
+- 扱い: 仕様へ【提案】として記載（[DB 仕様書 6.1 節「復旧で戻す状態と、engine に未適用の確定」](../../../docs/03_Spec/Database_Spec.md#recovery-state-and-unapplied-commits)）。akaghef の確認待ち
 
 ### 2026-11-19 journal の畳み込みがどこからも呼ばれていない
 
