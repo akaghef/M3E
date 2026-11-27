@@ -169,16 +169,18 @@ describe("neo4j store encoding", () => {
 describe("neo4j store round trip", () => {
   let driver: Driver;
   let label = "";
+  let store = "";
 
   beforeAll(() => {
     const auth = TEST_NEO4J.user !== undefined ? neo4j.auth.basic(TEST_NEO4J.user, TEST_NEO4J.password ?? "") : undefined;
     driver = neo4j.driver(TEST_NEO4J.uri, auth);
   });
   beforeEach(() => {
-    label = storeLabel(`test-${randomUUID()}`);
+    store = `test-${randomUUID()}`;
+    label = storeLabel(store);
   });
   afterEach(async () => {
-    await deleteAllRecords(driver, { batchSize: 1000, label });
+    await deleteAllRecords(driver, { batchSize: 1000, store });
   });
   afterAll(async () => {
     await driver.close();
@@ -197,23 +199,23 @@ describe("neo4j store round trip", () => {
   it("dumps a loaded snapshot byte-identically", async () => {
     const records = syntheticSnapshot();
     const expected = serializeSnapshot(records);
-    const result = await load(driver, records, { label });
+    const result = await load(driver, records, { store });
     expect(result.records).toBe(records.length);
     expect(Object.keys(result.recordCounts)).toEqual(ALL_KINDS);
 
-    const actual = serializeSnapshot(await dump(driver, { label }));
+    const actual = serializeSnapshot(await dump(driver, { store }));
     expect(actual === expected).toBe(true);
     expect(Buffer.from(actual, "utf8").equals(Buffer.from(expected, "utf8"))).toBe(true);
   }, 120000);
 
   it("round-trips with a batch size smaller than the snapshot", async () => {
     const records = syntheticSnapshot();
-    await load(driver, records, { batchSize: 3, label });
-    expect(serializeSnapshot(await dump(driver, { label })) === serializeSnapshot(records)).toBe(true);
+    await load(driver, records, { batchSize: 3, store });
+    expect(serializeSnapshot(await dump(driver, { store })) === serializeSnapshot(records)).toBe(true);
   }, 120000);
 
   it("creates relationships only to records that exist", async () => {
-    const result = await load(driver, syntheticSnapshot(), { label });
+    const result = await load(driver, syntheticSnapshot(), { store });
     expect(result.relationshipCounts).toEqual({
       ALIAS_OF: 1,
       IN: 1,
@@ -240,15 +242,15 @@ describe("neo4j store round trip", () => {
 
   it("refuses to load into a database that already holds records", async () => {
     const records = syntheticSnapshot();
-    await load(driver, records, { label });
-    await expect(load(driver, records, { label })).rejects.toThrow(/Refusing to load/);
-    expect(serializeSnapshot(await dump(driver, { label })) === serializeSnapshot(records)).toBe(true);
+    await load(driver, records, { store });
+    await expect(load(driver, records, { store })).rejects.toThrow(/Refusing to load/);
+    expect(serializeSnapshot(await dump(driver, { store })) === serializeSnapshot(records)).toBe(true);
   }, 120000);
 
   it("refuses two records with the same key before writing anything", async () => {
     const records = syntheticSnapshot();
     records.push({ kind: "node", id: "child_1", mapId: "map_a", text: "duplicate", rev: 0 });
-    await expect(load(driver, records, { label })).rejects.toThrow(/share the key/);
+    await expect(load(driver, records, { store })).rejects.toThrow(/share the key/);
     expect(await count(`MATCH (r:${label}) RETURN count(r) AS n`)).toBe(0);
   }, 120000);
 });

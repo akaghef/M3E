@@ -10,6 +10,7 @@ import neo4j from "neo4j-driver";
 import type { RecordKind, SnapshotRecord } from "../../shared/record_model/types";
 import {
   COMMON_LABEL,
+  storeLabel,
   KIND_LABELS,
   RELATIONSHIP_TYPES,
   cypherLabelList,
@@ -51,22 +52,24 @@ function toNumber(value: unknown): number {
 const REFERENCE_PROPERTIES = ["f_source", "f_target", "f_rootNodeId", "f_nodeId", "f_scopeId", "f_surfaceId", "f_mapId"];
 
 /** Constraint and indexes the incremental writes rely on. Safe to run again. */
-export async function ensureSchema(session: Session, L: string = COMMON_LABEL): Promise<void> {
-  const name = L === COMMON_LABEL ? "rec" : L.toLowerCase();
-  await session.run(`CREATE CONSTRAINT ${name}_rk IF NOT EXISTS FOR (r:${L}) REQUIRE r.rk IS UNIQUE`);
-  await session.run(`CREATE INDEX ${name}_id IF NOT EXISTS FOR (r:${L}) ON (r.id)`);
+/**
+ * Constraint and indexes the writes rely on, made once for the whole database: every record node
+ * carries the name of its store (`store`), and `(store, rk)` is unique. Safe to run again.
+ */
+export async function ensureSchema(session: Session): Promise<void> {
+  await session.run(`CREATE CONSTRAINT rec_store_rk IF NOT EXISTS FOR (r:${COMMON_LABEL}) REQUIRE (r.store, r.rk) IS UNIQUE`);
+  await session.run(`CREATE INDEX rec_store_id IF NOT EXISTS FOR (r:${COMMON_LABEL}) ON (r.store, r.id)`);
   for (const property of REFERENCE_PROPERTIES) {
-    await session.run(`CREATE INDEX ${name}_${property} IF NOT EXISTS FOR (r:${L}) ON (r.${property})`);
+    await session.run(`CREATE INDEX rec_store_${property} IF NOT EXISTS FOR (r:${COMMON_LABEL}) ON (r.store, r.${property})`);
   }
   await session.run("CALL db.awaitIndexes(600)");
 }
 
-export async function readEngineState(runner: Runner, L: string = COMMON_LABEL, store: string = DEFAULT_MARKER): Promise<EngineState> {
-  const count = await runner.run(`MATCH (r:${L}) RETURN count(r) AS n`);
+export async function readEngineState(runner: Runner, store: string = DEFAULT_MARKER): Promise<EngineState> {
+  const count = await runner.run(`MATCH (r:${COMMON_LABEL} {store: $store}) RETURN count(r) AS n`, { store });
   const markerRows = await runner.run(`MATCH (m:${MARKER_LABEL} {name: $store}) RETURN m.workspaceId AS workspaceId, m.appliedSeq AS appliedSeq LIMIT 1`, { store });
   const headerRows = await runner.run(
-    `MATCH (h:${L}:${KIND_LABELS.snapshot}) RETURN h.f_workspaceId AS workspaceId, h.f_seq AS appliedSeq LIMIT 1`,
-  );
+    `MATCH (h:${COMMON_LABEL}:${KIND_LABELS.snapshot} {store: $store}) RETURN h.f_workspaceId AS workspaceId, h.f_seq AS appliedSeq LIMIT 1`, { store });
   const read = (rows: typeof markerRows): StoreMarker | null => {
     const row = rows.records[0];
     if (!row || row.get("workspaceId") === null || row.get("appliedSeq") === null) return null;
@@ -91,7 +94,12 @@ function idOf(record: SnapshotRecord): string | undefined {
  * Applies record operations inside one transaction: deletes the record nodes of `delete`,
  * creates or replaces those of `put`, and brings the derived relationships in line.
  */
-export async function applyOps(tx: Runner, ops: RecordOp[], L: string = COMMON_LABEL): Promise<void> {
+/**
+ * Applies record operations of the store `store` inside one transaction: deletes the record nodes
+ * of `delete`, creates or replaces those of `put`, and brings the derived relationships in line.
+ */
+export async function applyOps(tx: Runner, ops: RecordOp[], store: string): Promise<void> {
+  const L = storeLabel(store);
   // The last operation on a key wins.
   const last = new Map<string, RecordOp>();
   for (const op of ops) last.set(op.rk, op);
@@ -119,13 +127,13 @@ export async function applyOps(tx: Runner, ops: RecordOp[], L: string = COMMON_L
   }
 
   if (deletes.length > 0) {
-    await tx.run(`UNWIND $rks AS rk MATCH (r:${L} {rk: rk}) DETACH DELETE r`, { rks: deletes });
+    await tx.run(`UNWIND $rks AS rk MATCH (r:${COMMON_LABEL} {store: $store, rk: rk}) DETACH DELETE r`, { rks: deletes, store });
   }
   if (puts.length === 0) return;
 
   const putRks = puts.map((put) => put.rk);
   const existing = new Set<string>();
-  const found = await tx.run(`UNWIND $rks AS rk MATCH (r:${L} {rk: rk}) RETURN rk`, { rks: putRks });
+  const found = await tx.run(`UNWIND $rks AS rk MATCH (r:${COMMON_LABEL} {store: $store, rk: rk}) RETURN rk`, { rks: putRks, store });
   for (const row of found.records) existing.add(String(row.get("rk")));
 
   const rowsByLabels = new Map<string, { labels: string[]; rows: PropertyMap[] }>();
@@ -138,16 +146,16 @@ export async function applyOps(tx: Runner, ops: RecordOp[], L: string = COMMON_L
   for (const group of rowsByLabels.values()) {
     const extra = group.labels.filter((label) => label !== COMMON_LABEL);
     await tx.run(
-      `UNWIND $rows AS row MERGE (r:${L} {rk: row.rk}) SET r = row SET r:${cypherLabelList(L === COMMON_LABEL ? extra : [COMMON_LABEL, ...extra])}`,
-      { rows: group.rows },
+      `UNWIND $rows AS row MERGE (r:${COMMON_LABEL} {store: $store, rk: row.rk}) SET r = row, r.store = $store SET r:${cypherLabelList([L, ...extra])}`,
+      { rows: group.rows, store },
     );
   }
   const wanted = new Map(puts.map((put) => [put.rk, new Set(put.labels)]));
   const replacedNow = putRks.filter((rk) => existing.has(rk));
   if (replacedNow.length > 0) {
     const labeled = await tx.run(
-      `UNWIND $rks AS rk MATCH (r:${L} {rk: rk}) RETURN r.rk AS rk, labels(r) AS labels`,
-      { rks: replacedNow },
+      `UNWIND $rks AS rk MATCH (r:${COMMON_LABEL} {store: $store, rk: rk}) RETURN r.rk AS rk, labels(r) AS labels`,
+      { rks: replacedNow, store },
     );
     const drop = new Map<string, string[]>();
     for (const row of labeled.records) {
@@ -163,7 +171,7 @@ export async function applyOps(tx: Runner, ops: RecordOp[], L: string = COMMON_L
       }
     }
     for (const [label, rks] of drop) {
-      await tx.run(`UNWIND $rks AS rk MATCH (r:${L} {rk: rk}) REMOVE r:${cypherLabelList([label])}`, { rks });
+      await tx.run(`UNWIND $rks AS rk MATCH (r:${COMMON_LABEL} {store: $store, rk: rk}) REMOVE r:${cypherLabelList([label])}`, { rks, store });
     }
   }
 
@@ -172,17 +180,17 @@ export async function applyOps(tx: Runner, ops: RecordOp[], L: string = COMMON_L
   const replaced = putRks.filter((rk) => existing.has(rk));
   if (replaced.length > 0) {
     await tx.run(
-      `UNWIND $rks AS rk MATCH (r:${L} {rk: rk})-[x]->() WHERE type(x) <> 'SOURCE' DELETE x`,
-      { rks: replaced },
+      `UNWIND $rks AS rk MATCH (r:${COMMON_LABEL} {store: $store, rk: rk})-[x]->() WHERE type(x) <> 'SOURCE' DELETE x`,
+      { rks: replaced, store },
     );
-    await tx.run(`UNWIND $rks AS rk MATCH ()-[x:SOURCE]->(r:${L} {rk: rk}) DELETE x`, { rks: replaced });
+    await tx.run(`UNWIND $rks AS rk MATCH ()-[x:SOURCE]->(r:${COMMON_LABEL} {store: $store, rk: rk}) DELETE x`, { rks: replaced, store });
   }
   for (const type of RELATIONSHIP_TYPES) {
     const rows = pairsByType.get(type);
     if (!rows || rows.length === 0) continue;
     await tx.run(
-      `UNWIND $rows AS row MATCH (a:${L} {rk: row.a}) MATCH (b:${L} {rk: row.b}) MERGE (a)-[:${type}]->(b)`,
-      { rows },
+      `UNWIND $rows AS row MATCH (a:${COMMON_LABEL} {store: $store, rk: row.a}) MATCH (b:${COMMON_LABEL} {store: $store, rk: row.b}) MERGE (a)-[:${type}]->(b)`,
+      { rows, store },
     );
   }
 
@@ -193,19 +201,19 @@ export async function applyOps(tx: Runner, ops: RecordOp[], L: string = COMMON_L
       .filter((put) => put.kind === kind && idOf(put.record) !== undefined)
       .map((put) => ({ rk: put.rk, id: idOf(put.record) }));
     if (rows.length === 0) return;
-    await tx.run(`UNWIND $rows AS row MATCH (n:${L} {rk: row.rk}) ${query}`, { rows });
+    await tx.run(`UNWIND $rows AS row MATCH (n:${COMMON_LABEL} {store: $store, rk: row.rk}) ${query}`, { rows, store });
   };
-  const all = L;
-  await reverse("node", `MATCH (c:${all}:Connection {f_source: row.id}) MERGE (n)-[:SOURCE]->(c)`);
-  await reverse("node", `MATCH (c:${all}:Connection {f_target: row.id}) MERGE (c)-[:TARGET]->(n)`);
-  await reverse("node", `MATCH (s:${all}:Scope {f_rootNodeId: row.id}) MERGE (s)-[:ROOT]->(n)`);
-  await reverse("node", `MATCH (d:${all}:Details {f_nodeId: row.id}) MERGE (d)-[:OF]->(n)`);
-  await reverse("node", `MATCH (v:${all}:NodeView {f_nodeId: row.id}) MERGE (v)-[:PLACES]->(n)`);
-  await reverse("connection", `MATCH (c:${all}:Connection {f_source: row.id, f_type: 'graphlink'}) WHERE c <> n MERGE (n)-[:SOURCE]->(c)`);
-  await reverse("connection", `MATCH (c:${all}:Connection {f_target: row.id, f_type: 'graphlink'}) WHERE c <> n MERGE (c)-[:TARGET]->(n)`);
-  await reverse("scope", `MATCH (s:${all}:Surface {f_scopeId: row.id}) MERGE (s)-[:IN]->(n)`);
-  await reverse("surface", `MATCH (v:${all}:NodeView {f_surfaceId: row.id}) MERGE (v)-[:ON]->(n)`);
-  await reverse("map", `MATCH (r:${all} {f_mapId: row.id}) WHERE NOT r:Map MERGE (r)-[:IN_MAP]->(n)`);
+  const all = COMMON_LABEL;
+  await reverse("node", `MATCH (c:${all}:Connection {store: $store, f_source: row.id}) MERGE (n)-[:SOURCE]->(c)`);
+  await reverse("node", `MATCH (c:${all}:Connection {store: $store, f_target: row.id}) MERGE (c)-[:TARGET]->(n)`);
+  await reverse("node", `MATCH (s:${all}:Scope {store: $store, f_rootNodeId: row.id}) MERGE (s)-[:ROOT]->(n)`);
+  await reverse("node", `MATCH (d:${all}:Details {store: $store, f_nodeId: row.id}) MERGE (d)-[:OF]->(n)`);
+  await reverse("node", `MATCH (v:${all}:NodeView {store: $store, f_nodeId: row.id}) MERGE (v)-[:PLACES]->(n)`);
+  await reverse("connection", `MATCH (c:${all}:Connection {store: $store, f_source: row.id, f_type: 'graphlink'}) WHERE c <> n MERGE (n)-[:SOURCE]->(c)`);
+  await reverse("connection", `MATCH (c:${all}:Connection {store: $store, f_target: row.id, f_type: 'graphlink'}) WHERE c <> n MERGE (c)-[:TARGET]->(n)`);
+  await reverse("scope", `MATCH (s:${all}:Surface {store: $store, f_scopeId: row.id}) MERGE (s)-[:IN]->(n)`);
+  await reverse("surface", `MATCH (v:${all}:NodeView {store: $store, f_surfaceId: row.id}) MERGE (v)-[:ON]->(n)`);
+  await reverse("map", `MATCH (r:${all} {store: $store, f_mapId: row.id}) WHERE NOT r:Map MERGE (r)-[:IN_MAP]->(n)`);
 }
 
 /** Applies one commit and moves the marker to its sequence number, in one transaction. */
@@ -213,12 +221,12 @@ export async function applyCommit(
   driver: Driver,
   workspaceId: string,
   commit: { seq: number; ops: RecordOp[] },
-  options: { database?: string; label?: string; store?: string } = {},
+  options: { database?: string; store: string },
 ): Promise<void> {
   const session = driver.session({ database: options.database, defaultAccessMode: neo4j.session.WRITE });
   try {
     await session.executeWrite(async (tx) => {
-      await applyOps(tx, commit.ops, options.label);
+      await applyOps(tx, commit.ops, options.store);
       await writeMarker(tx, { workspaceId, appliedSeq: commit.seq }, options.store);
     });
   } finally {

@@ -9,9 +9,9 @@
  */
 import fs from "fs";
 import path from "path";
-import { writeFileDurably } from "../record_store/store";
+import { writeFileDurably } from "./legacy_files_shim";
 import type { SyncCommand } from "../record_store/sync_types";
-import { fsyncDir } from "../record_store/journal_archive";
+import { fsyncDir } from "./legacy_files_shim";
 import type { PushResponse, PushResultItem } from "./push";
 import { squashUnsent } from "./outbox_squash";
 

@@ -1,8 +1,9 @@
 import fs from "fs";
 import path from "path";
 import type { SnapshotRecord } from "../../shared/record_model/types";
-import { fsyncDir } from "../record_store/journal_archive";
-import { assertNotLiveM3e, LOCAL_REBASE_INTENT, RecordWorkspaceStore, writeFileDurably, type JournalLine } from "../record_store/store";
+import { fsyncDir } from "./legacy_files_shim";
+import { LOCAL_REBASE_INTENT, RecordWorkspaceStore, type JournalLine } from "../record_store/store";
+import { assertNotLiveM3e, writeFileDurably } from "./legacy_files_shim";
 import { sameSyncIdentity, type SyncIdentity } from "../record_store/sync_types";
 import { accountForConnection, LOCAL_HUMAN_ACCOUNT_ID } from "./issuer";
 import { appendJsonLine, DeviceOutbox, pushEnvelope, readDurableLines, settlePushResults, type OutboxEntry, type OutboxRejection } from "./outbox";

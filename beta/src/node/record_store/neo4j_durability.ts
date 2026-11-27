@@ -217,7 +217,7 @@ export class Neo4jDurability {
   private async ensureSchema(): Promise<void> {
     const session = this.session(true);
     try {
-      await ensureSchema(session, this.label);
+      await ensureSchema(session);
       await session.run(`CREATE CONSTRAINT journal_store_seq IF NOT EXISTS FOR (j:${JOURNAL}) REQUIRE (j.store, j.seq) IS UNIQUE`);
       await session.run(`CREATE CONSTRAINT result_store_id IF NOT EXISTS FOR (c:${RESULT}) REQUIRE (c.store, c.commandId) IS UNIQUE`);
       await session.run(`CREATE CONSTRAINT retired_store_id IF NOT EXISTS FOR (r:${RETIRED}) REQUIRE (r.store, r.id) IS UNIQUE`);
@@ -229,7 +229,7 @@ export class Neo4jDurability {
   }
 
   private async load(): Promise<LoadedStore | null> {
-    const records = await dump(this.driver, { database: this.database, label: this.label });
+    const records = await dump(this.driver, { database: this.database, store: this.store });
     if (records.length === 0) return null;
     const session = this.session(false);
     try {
@@ -258,7 +258,7 @@ export class Neo4jDurability {
     try {
       if (loaded !== null) throw new Error(`The Neo4j store ${store} already exists.`);
       const { load } = await import("../neo4j_store/store");
-      await load(durability.driver, input.records, { database: durability.database, label: durability.label });
+      await load(durability.driver, input.records, { database: durability.database, store });
       const session = durability.session(true);
       try {
         const chunk = <T,>(items: T[]): T[][] => {
@@ -294,7 +294,7 @@ export class Neo4jDurability {
       const session = driver.session({ database: connection.database, defaultAccessMode: neo4j.session.WRITE });
       try {
         for (const query of [
-          `MATCH (r:${label}) WITH r LIMIT 10000 DETACH DELETE r RETURN count(*) AS n`,
+          `MATCH (r:Rec {store: $store}) WITH r LIMIT 10000 DETACH DELETE r RETURN count(*) AS n`,
           `MATCH (j:${JOURNAL} {store: $store}) WITH j LIMIT 10000 DELETE j RETURN count(*) AS n`,
           `MATCH (c:${RESULT} {store: $store}) WITH c LIMIT 10000 DELETE c RETURN count(*) AS n`,
           `MATCH (r:${RETIRED} {store: $store}) WITH r LIMIT 10000 DELETE r RETURN count(*) AS n`,
@@ -399,7 +399,7 @@ export class Neo4jDurability {
       await tx.run(`UNWIND $ids AS id MATCH (c:${RESULT} {store: $store, commandId: id}) DELETE c`, { store, ids: unit.commandIds });
       return;
     }
-    await applyOps(tx, unit.ops, this.label);
+    await applyOps(tx, unit.ops, this.store);
     await tx.run(`CREATE (j:${JOURNAL} {store: $store, seq: $seq, line: $line})`, {
       store, seq: neo4j.int(unit.seq), line: JSON.stringify(unit.line),
     });
@@ -450,8 +450,10 @@ export class Neo4jDurability {
     const session = this.session(false);
     try {
       const result = await session.run(
-        `MATCH (r:${this.label}) WHERE r.f_mapId = $mapId OR (r.kind = 'map' AND r.id = $mapId) OR r.kind = 'extensionDef' RETURN properties(r) AS p`,
-        { mapId },
+        `MATCH (r:Rec {store: $store, f_mapId: $mapId}) RETURN properties(r) AS p
+         UNION ALL MATCH (r:Rec {store: $store, id: $mapId}) WHERE r.kind = 'map' RETURN properties(r) AS p
+         UNION ALL MATCH (r:Rec:ExtensionDef {store: $store}) RETURN properties(r) AS p`,
+        { mapId, store: this.store },
       );
       return result.records.map((row) => decodeRecord(row.get("p") as never));
     } finally {

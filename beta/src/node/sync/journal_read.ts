@@ -5,8 +5,9 @@
  */
 import fs from "fs";
 import path from "path";
-import { SNAPSHOT_FILE, JOURNAL_FILE, type JournalLine } from "../record_store/store";
-import { archiveDir, readArchive } from "../record_store/journal_archive";
+import { type JournalLine } from "../record_store/store";
+import { SNAPSHOT_FILE, JOURNAL_FILE } from "./legacy_files_shim";
+
 
 export interface JournalSuffix {
   lines: JournalLine[];
