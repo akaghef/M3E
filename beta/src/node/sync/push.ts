@@ -5,17 +5,12 @@
  *
  * Success is the store's result, which returns after the journal fsync.
  * The same commandId returns the first result. The store remembers a committed
- * Command. A deterministic rejection or a no-op is remembered beside the store
- * (`sync-rejections.jsonl`), because neither produces a journal commit.
- * `baseSeq` is accepted and not used: an old-base move is still CAS, not LWW.
+ * Command, deterministic rejection and no-op. The store owns durability and backup
+ * of results without a journal commit. `baseSeq` is accepted by this transport.
  */
-import { createHash } from "crypto";
-import fs from "fs";
-import path from "path";
 import type { MapCommand } from "../../shared/map_changes";
-import { syncHash, type RecordWorkspaceStore } from "../record_store/store";
+import type { RecordWorkspaceStore } from "../record_store/store";
 import type { SyncCommand, SyncMapOperation } from "../record_store/sync_types";
-import { appendJsonLine, readDurableLines } from "./outbox";
 import { accountForConnection, type ConnectionIdentity } from "./issuer";
 
 export type PushStatus = "committed" | "rejected" | "duplicate" | "no-op" | "conflict";
@@ -35,58 +30,6 @@ export interface PushResponse {
 interface PushItem {
   commandId: string;
   payload: SyncCommand;
-}
-
-interface Remembered {
-  commandId: string;
-  hash: string;
-  result: PushResultItem;
-}
-
-const memory = new Map<string, Map<string, Remembered>>();
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item === undefined ? null : item)).join(",")}]`;
-  if (typeof value === "object" && value !== null) {
-    const source = value as Record<string, unknown>;
-    const parts: string[] = [];
-    for (const key of Object.keys(source).sort()) {
-      if (source[key] === undefined) continue;
-      parts.push(`${JSON.stringify(key)}:${canonicalJson(source[key])}`);
-    }
-    return `{${parts.join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-function contentHash(changes: unknown): string {
-  return createHash("sha256").update(canonicalJson(changes), "utf8").digest("hex");
-}
-
-function rejectionFile(storeDir: string): string {
-  return path.join(storeDir, "sync-rejections.jsonl");
-}
-
-function rejections(storeDir: string): Map<string, Remembered> {
-  let known = memory.get(storeDir);
-  if (known) return known;
-  known = new Map();
-  const file = rejectionFile(storeDir);
-  if (fs.existsSync(file)) {
-    for (const row of readDurableLines<Remembered>(file, (item) => {
-      const row = item as Partial<Remembered> | null;
-      return !!row && typeof row.commandId === "string" && typeof row.hash === "string" && !!row.result;
-    }, true)) known.set(row.commandId, row);
-  }
-  memory.set(storeDir, known);
-  return known;
-}
-
-function remember(storeDir: string, row: Remembered): void {
-  const known = rejections(storeDir);
-  if (known.has(row.commandId)) return;
-  appendJsonLine(rejectionFile(storeDir), row);
-  known.set(row.commandId, row);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,8 +80,6 @@ function isItem(value: PushItem | PushResultItem): value is PushItem {
   return "payload" in value;
 }
 
-const REMEMBERED = new Set(["CONFLICT", "INVALID_STATE", "INVALID_COMMAND", "SAME_ID_DIFFERENT_CONTENT"]);
-
 function fromStore(commandId: string, result: { ok: true; seq: number; replayed: boolean; noOp?: true } | { ok: false; code: string; message?: string }, fenced: boolean): PushResultItem {
   if (result.ok) {
     if (result.noOp) return { commandId, status: "no-op", seq: result.seq };
@@ -152,7 +93,7 @@ function fromStore(commandId: string, result: { ok: true; seq: number; replayed:
   return item;
 }
 
-export function pushCommands(store: RecordWorkspaceStore, storeDir: string, commands: unknown, issuer: string, fenced = false): PushResponse {
+export function pushCommands(store: RecordWorkspaceStore, _storeDir: string, commands: unknown, issuer: string, fenced = false): PushResponse {
   if (!Array.isArray(commands)) {
     return { results: [{ commandId: "", status: "rejected", code: "INVALID_COMMAND", message: "commands must be a list." }] };
   }
@@ -165,22 +106,10 @@ export function pushCommands(store: RecordWorkspaceStore, storeDir: string, comm
     }
     const { payload } = parsed;
     const sync = fenced || payload.mapOp !== undefined;
-    const hash = sync ? syncHash(payload) : contentHash(payload.command.changes);
-    const prior = rejections(storeDir).get(parsed.commandId);
-    if (prior) {
-      results.push(prior.hash === hash ? prior.result : {
-        commandId: parsed.commandId,
-        status: "rejected",
-        code: "SAME_ID_DIFFERENT_CONTENT",
-        message: `Command ${parsed.commandId} was already refused with different changes.`,
-      });
-      continue;
-    }
     const committed = sync
       ? store.commitSyncCommand(payload, issuer)
       : store.commitMapCommand(payload.mapId, payload.command, issuer);
     const item = fromStore(parsed.commandId, committed, sync);
-    if (item.status === "no-op" || (!committed.ok && REMEMBERED.has(committed.code))) remember(storeDir, { commandId: parsed.commandId, hash, result: item });
     results.push(item);
   }
   return { results };

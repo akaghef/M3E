@@ -377,6 +377,8 @@ export class LocalSync {
     let base: number;
     try {
       // A no-op leaves no line, so every pending Command is forgotten, not only those with a commit.
+      // resetRecords forgets tentative successes, never deterministic refusals. Remote refusals
+      // stay in conflicts.jsonl and pending() excludes them, including after restart/rebuild.
       const forget = [...this.committedSinceBase, ...pending.map((entry) => ({ mapId: entry.mapId, commandId: entry.commandId, newMapId: entry.mapOp === "rename" ? entry.newMapId : undefined }))];
       base = this.working.resetRecords(rks, (rk) => this.confirmed.record(rk), forget);
       this.track(this.working);

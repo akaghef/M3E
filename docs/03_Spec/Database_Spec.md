@@ -286,8 +286,12 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 
 ### 5.3 再送【実装済み】
 
-- 確定済みの ID と同じ ID の Command には、最初の結果を返す。
-- 同じ ID で中身が違う Command は拒否する。中身は、変更の一覧の正規化した JSON の sha256 で比べる。
+- Command の ID は workspace 内で一意である。再送の判定は map ごとに分けず、触った map の集合を結果とともに保持する。map の改名で過去の Command のキーを振り直さない。
+- 同じ ID・同じ中身の Command には、最初の確定結果、確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）、または no-op を返す。状態が変わっても拒否を再評価しない。一時的な `ENGINE_BEHIND` は記憶せず、追いついた後の再送を受ける。
+- 同じ ID で中身が違う Command は `SAME_ID_DIFFERENT_CONTENT` で拒否する。最初の結果が拒否でも同じである。変更の一覧の正規化した JSON の sha256 で比べ、同期の Command は対象 map と map 操作を含む payload の hash も照合する。
+- journal に確定を作らない結果は、store 所有の `sync-rejections.jsonl` に追記し、fsync 後に返す。`backupTo` はこのファイルも含める。journal の 1 行は引き続き 1 回の確定であり、拒否は書かない。結果のファイルは起動時に一度だけ読み、読込みはファイル量に比例する。稼働中の再送判定は commandId の Map lookup であり、記憶した件数に対して O(1) である。
+- local の working store の rebase は、remote が未回答の Command を replay するため、ローカルの成功・no-op の記憶を外す。忘却した ID と journal 上の位置も結果のファイルへ追記する。確定的な拒否は忘れない。remote の拒否は local の `conflicts.jsonl` に保持し、outbox と replay の対象から除く。
+- 既存 journal に異なる map の同じ commandId があれば、全行のデータを適用したうえで、再送の結果だけは最初のものを保持する。衝突件数を起動時の警告に出す。
 - 【決定】基準が journal の圧縮より古い Command は、状態を取り直させてから受ける。
 
 Undo は、逆向きの Command を出すことで行う。

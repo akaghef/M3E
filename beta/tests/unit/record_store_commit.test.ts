@@ -263,9 +263,9 @@ describe("record store: retries and conflicts", () => {
     expect(refused).toMatchObject({ ok: false, code: "SAME_ID_DIFFERENT_CONTENT", conflicts: [] });
     expect(store.seq()).toBe(first.seq);
     expect(nodesOf(stateOf(store)).leaf.text).toBe("once");
-    // The same id on another map is another command.
+    // Command ids are unique across the workspace.
     const onB = diffState(stateOf(store, "map_b"), { ...stateOf(store, "map_b"), linearPanelWidth: 10 });
-    expect(ok(store.commitMapCommand("map_b", command(onB, "edit", "same-id"), ISSUER)).replayed).toBe(false);
+    expect(store.commitMapCommand("map_b", command(onB, "edit", "same-id"), ISSUER)).toMatchObject({ ok: false, code: "SAME_ID_DIFFERENT_CONTENT" });
   });
 
   it("rejects a command whose before values are stale, field by field", () => {

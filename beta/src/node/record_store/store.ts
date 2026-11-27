@@ -11,6 +11,9 @@
 // snapshot it wrote. The snapshot stays a plain portable snapshot. Compaction moves the replaced
 // journal and snapshot into `archive/` instead of discarding them (journal_archive.ts).
 //
+// `sync-rejections.jsonl` holds deterministic refusals/no-ops and local rebase invalidations.
+// It is owned and backed up by this store; it never contributes a journal commit.
+//
 // Specs: .kiro/specs/rapid-persistence-redesign/snapshot-format.md and post-migration-spec.md 9-12.
 
 import { createHash, randomUUID } from "crypto";
@@ -89,10 +92,13 @@ import {
 import { MapRecordChanges } from "./map_changes";
 
 import type { SyncCommand, SyncIdentity, SyncMapOperation } from "./sync_types";
+import { appendJsonLine, readDurableLines } from "../sync/outbox";
 
 export const SNAPSHOT_FILE = "snapshot.jsonl";
 export const JOURNAL_FILE = "journal.jsonl";
 export const COMMIT_INDEX_FILE = "commit-index.json";
+/** Store-owned results that have no journal commit, plus local rebase invalidations. */
+export const COMMAND_RESULTS_FILE = "sync-rejections.jsonl";
 /** Command ids kept by `compact()` for idempotent retries: the most recent ones, up to this many. */
 export const COMMAND_INDEX_RETAIN = 100000;
 /** Journal lines after the snapshot that make the store compact (after a commit, and on open). */
@@ -222,7 +228,23 @@ interface CommandEntry {
   seq: number;
   hash: string;
   canonicalHash?: string;
+  syncHash?: string;
+  mapIds: Set<string>;
+  result?: CommitResult;
 }
+
+type StoredCommandEntry = Omit<CommandEntry, "mapIds"> & { mapIds: string[] };
+type CommandResultLine = { afterSeq: number } & (
+  { commandId: string; entry: StoredCommandEntry } | { forget: string[] }
+);
+/** The old push file did not record a sequence or maps. Its hash is preserved verbatim. */
+interface LegacyCommandResult {
+  commandId: string;
+  hash: string;
+  result: { status: string; seq?: number; code?: CommitFailure["code"]; message?: string };
+}
+
+const REMEMBERED_REJECTIONS = new Set(["CONFLICT", "INVALID_STATE", "INVALID_COMMAND"]);
 
 type Dict = Record<string, unknown>;
 
@@ -377,10 +399,6 @@ function activityNodeIds(ops: readonly RecordOp[], before: (rk: string) => Snaps
 /** Intent of the journal line a local working store writes when it is rebased onto the confirmed state. */
 export const LOCAL_REBASE_INTENT = "local-rebase";
 
-function commandKey(mapId: string, commandId: string): string {
-  return `${mapId}\u0000${commandId}`;
-}
-
 function commandShape(command: MapCommand): string | null {
   if (typeof command.commandId !== "string" || !command.commandId.trim()) return "commandId is required.";
   if (!command.actor || !ACTORS.has(command.actor.kind) || typeof command.actor.id !== "string" || !command.actor.id.trim()) return "actor is required.";
@@ -502,6 +520,7 @@ export class RecordWorkspaceStore {
   private readonly retired = new Map<string, string>();
   private readonly mapSeq = new Map<string, number>();
   private readonly commands = new Map<string, CommandEntry>();
+  private commandCollisions = 0;
   private currentSeq = 0;
   /** Commit the snapshot file holds; the journal holds everything after it. */
   private snapshotSeq = 0;
@@ -617,23 +636,48 @@ export class RecordWorkspaceStore {
     this.snapshotSeq = seq;
 
     const indexPath = path.join(dir, COMMIT_INDEX_FILE);
+    let hasCommandIndex = false;
     if (fs.existsSync(indexPath)) {
       const index = JSON.parse(fs.readFileSync(indexPath, "utf8")) as {
         mapSeq?: Record<string, number>;
         commands?: Array<[string, string, number, string, string?]>;
+        commandResults?: Array<[string, StoredCommandEntry]>;
         snapshot?: { seq: number; sha256: string };
         retired?: Record<string, string>;
       };
+      hasCommandIndex = index.commandResults !== undefined || index.commands !== undefined;
       this.snapshotSum = index.snapshot;
       for (const [id, body] of Object.entries(index.retired ?? {})) {
         if (typeof body === "string") this.retired.set(id, body);
       }
       for (const [mapId, value] of Object.entries(index.mapSeq ?? {})) this.mapSeq.set(mapId, value);
+      for (const [commandId, entry] of index.commandResults ?? []) {
+        if (entry.seq <= this.snapshotSeq) this.indexCommand(commandId, { ...entry, mapIds: new Set(entry.mapIds) });
+      }
       for (const [mapId, commandId, commandSeq, hash, canonicalHash] of index.commands ?? []) {
-        this.commands.set(commandKey(mapId, commandId), { seq: commandSeq, hash, canonicalHash });
+        if (commandSeq > this.snapshotSeq) continue; // An index installed before its snapshot; the journal still carries it.
+        const entry = { seq: commandSeq, hash, canonicalHash, mapIds: new Set(mapId ? [mapId] : []),
+          ...(mapId === "" ? { syncHash: hash } : {}) };
+        this.indexCommand(commandId, entry);
       }
     }
 
+    const resultsPath = path.join(dir, COMMAND_RESULTS_FILE);
+    const results = fs.existsSync(resultsPath) ? readDurableLines<CommandResultLine | LegacyCommandResult>(
+      resultsPath, row => this.validResultLine(row), true,
+    ) : [];
+    // Merge the side file with journal positions. A local rebase forgets only results that
+    // existed then, never a later replay of the same id. Read each file once on open.
+    let resultPosition = 0;
+    const loadResultsThrough = (through: number): void => {
+      while (resultPosition < results.length) {
+        const row = results[resultPosition];
+        if ("afterSeq" in row && row.afterSeq > through) break;
+        this.loadResultLine(row);
+        resultPosition += 1;
+      }
+    };
+    loadResultsThrough(this.snapshotSeq);
     if (!fs.existsSync(journalPath)) fs.writeFileSync(journalPath, "");
     const journal = readJournal(journalPath);
     this.journalPositions = journal.positions;
@@ -645,7 +689,8 @@ export class RecordWorkspaceStore {
       lastSeq = line.seq;
       if (line.seq <= this.snapshotSeq) {
         // Already in the snapshot (a compaction that did not get to empty the journal).
-        this.indexLine(line);
+        // Its index is authoritative: replaying old receipts here could undo a local forget.
+        if (!hasCommandIndex) this.indexLine(line);
         continue;
       }
       if (line.seq !== this.currentSeq + 1) {
@@ -653,7 +698,11 @@ export class RecordWorkspaceStore {
       }
       this.applyLine(line);
       this.journalLines += 1;
+      loadResultsThrough(line.seq);
     }
+    loadResultsThrough(this.currentSeq);
+    if (resultPosition !== results.length) throw new Error("Command results are ahead of the journal.");
+    if (this.commandCollisions > 0) console.warn(`[record-store] legacy commandId collisions: ${this.commandCollisions}; kept first results; all journal data replayed.`);
     if (journal.goodLength < journal.size) fs.truncateSync(journalPath, journal.goodLength);
     this.journalFd = fs.openSync(journalPath, "a");
     this.journalSize = journal.goodLength;
@@ -879,10 +928,14 @@ export class RecordWorkspaceStore {
         ops.push({ op: "put", rk, record: wanted });
       }
     }
-    for (const item of forget) {
-      this.commands.delete(commandKey(item.mapId, item.commandId));
-      this.commands.delete(commandKey("", item.commandId));
-      if (item.newMapId !== undefined) this.commands.delete(commandKey(item.newMapId, item.commandId));
+    const ids = [...new Set(forget.map(item => item.commandId))].filter(id => {
+      const known = this.commands.get(id);
+      return known !== undefined && known.result?.ok !== false;
+    });
+    if (ids.length > 0) {
+      const row: CommandResultLine = { afterSeq: this.currentSeq, forget: ids };
+      appendJsonLine(path.join(this.dir, COMMAND_RESULTS_FILE), row);
+      this.loadResultLine(row);
     }
     const line: JournalLine = { seq: this.currentSeq + 1, issuer: "system", committedAt: this.now(), mapId: "", intent: LOCAL_REBASE_INTENT, ops };
     this.appendTracked(line);
@@ -950,9 +1003,9 @@ export class RecordWorkspaceStore {
   }
 
   /** The journal line of a Command committed under this id, from the journal or the archive; null when neither holds it. */
-  committedCommand(mapId: string, commandId: string): JournalLine | null {
-    const known = this.commands.get(commandKey(mapId, commandId));
-    if (!known) return null;
+  committedCommand(_mapId: string, commandId: string): JournalLine | null {
+    const known = this.commands.get(commandId);
+    if (!known || known.result) return null;
     const inJournal = this.readPosition(path.join(this.dir, JOURNAL_FILE), this.journalPositions.get(known.seq));
     if (inJournal) return inJournal;
     for (const entry of readArchive(this.dir, this.now())) {
@@ -976,7 +1029,8 @@ export class RecordWorkspaceStore {
   }
 
   /**
-   * Copies `snapshot.jsonl`, `journal.jsonl` and, when it exists, `commit-index.json` into
+   * Copies `snapshot.jsonl`, `journal.jsonl` and, when present, `commit-index.json` and
+   * `sync-rejections.jsonl` into
    * `targetDir` (created; must be empty or absent). Nothing is compacted. The copy is taken in one
    * synchronous step: commits and compaction are synchronous too, so no commit can fall between
    * the files, and the journal copy ends at the last complete commit line. The directory can be
@@ -1011,30 +1065,96 @@ export class RecordWorkspaceStore {
     copy(COMMIT_INDEX_FILE);
     copy(SNAPSHOT_FILE);
     copy(JOURNAL_FILE, this.journalSize);
+    copy(COMMAND_RESULTS_FILE);
+    fsyncDir(targetDir);
     return copied;
   }
 
   // ---------------------------------------------------------------- commits
 
+  private commandResult(entry: CommandEntry): CommitResult {
+    if (entry.result) return jsonClone(entry.result);
+    return { ok: true, savedAt: this.committedAtOf(entry.seq), seq: entry.seq, replayed: true };
+  }
+
+  /** O(1) in the remembered set. Journal data is always replayed even on a legacy collision. */
+  private indexCommand(id: string, entry: CommandEntry): void {
+    const prior = this.commands.get(id);
+    if (!prior) { this.commands.set(id, entry); return; }
+    if (prior.seq === entry.seq && !prior.result && !entry.result) {
+      // Old indexes held separate map and sync keys for the same journal line.
+      for (const mapId of entry.mapIds) prior.mapIds.add(mapId);
+      if (entry.mapIds.size > 0) { prior.hash = entry.hash; prior.canonicalHash = entry.canonicalHash; }
+      prior.syncHash ??= entry.syncHash;
+      return;
+    }
+    this.commandCollisions += 1;
+    if (entry.seq < prior.seq) this.commands.set(id, entry);
+  }
+
+  private rememberResult(id: string, content: Pick<CommandEntry, "hash" | "syncHash" | "mapIds">, result: CommitResult): void {
+    if (!id.trim() || this.commands.has(id)) return;
+    if (result.ok ? !result.noOp : !REMEMBERED_REJECTIONS.has(result.code)) return;
+    const entry: StoredCommandEntry = { ...content, mapIds: [...content.mapIds], seq: this.currentSeq, result: jsonClone(result) };
+    const row: CommandResultLine = { afterSeq: this.currentSeq, commandId: id, entry };
+    appendJsonLine(path.join(this.dir, COMMAND_RESULTS_FILE), row);
+    this.loadResultLine(row);
+  }
+
+  private validResultLine(value: unknown): boolean {
+    if (!isPlain(value)) return false;
+    if (hasOwn(value, "afterSeq")) {
+      if (!Number.isInteger(value.afterSeq) || (value.afterSeq as number) < 0) return false;
+      if (Array.isArray(value.forget)) return value.forget.every(id => typeof id === "string");
+      const entry = value.entry;
+      return typeof value.commandId === "string" && isPlain(entry) && typeof entry.hash === "string"
+        && Number.isInteger(entry.seq) && Array.isArray(entry.mapIds) && entry.mapIds.every(id => typeof id === "string")
+        && isPlain(entry.result) && typeof entry.result.ok === "boolean";
+    }
+    return typeof value.commandId === "string" && typeof value.hash === "string" && isPlain(value.result)
+      && (value.result.status === "no-op" || value.result.status === "rejected" || value.result.status === "conflict");
+  }
+
+  private loadResultLine(row: CommandResultLine | LegacyCommandResult): void {
+    if (!("afterSeq" in row)) {
+      const result: CommitResult = row.result.status === "no-op"
+        ? { ok: true, seq: row.result.seq ?? 0, savedAt: this.committedAtOf(row.result.seq ?? 0), replayed: false, noOp: true }
+        : { ok: false, code: row.result.code ?? "INVALID_COMMAND", conflicts: [], current: null,
+          ...(row.result.message !== undefined ? { message: row.result.message } : {}) };
+      if (!this.commands.has(row.commandId)) this.commands.set(row.commandId, {
+        seq: row.result.seq ?? 0, hash: row.hash, syncHash: row.hash, mapIds: new Set(), result,
+      });
+    } else if ("forget" in row) {
+      for (const id of row.forget) {
+        const known = this.commands.get(id);
+        if (known && known.seq <= row.afterSeq && known.result?.ok !== false) this.commands.delete(id);
+      }
+    } else if (!this.commands.has(row.commandId)) {
+      this.commands.set(row.commandId, { ...row.entry, mapIds: new Set(row.entry.mapIds) });
+    }
+  }
+
   commitMapCommand(mapId: string, command: MapCommand, issuer: string, expectedRevision?: string, sync?: { hash: string; create: boolean }): CommitResult {
     this.assertOpen();
-    if (this.engineTooFarBehind()) return this.engineBehind();
     if (!command || typeof command !== "object" || typeof command.commandId !== "string") {
       return this.failure("INVALID_COMMAND", null, "Command must be an object with a commandId.");
     }
-    const entry = this.maps.get(mapId);
-    // 1. A command id seen before: the first result again, or a refusal when the content differs.
-    const known = this.commands.get(commandKey(mapId, command.commandId));
+    const hash = hashChanges(command.changes);
+    const known = this.commands.get(command.commandId);
     if (known) {
-      if (known.hash === hashChanges(command.changes) || known.canonicalHash === hashChanges(command.changes)) {
-        return { ok: true, savedAt: this.committedAtOf(known.seq), seq: known.seq, replayed: true };
+      if (known.hash === hash || known.canonicalHash === hash) {
+        return this.commandResult(known);
       }
-      return this.failure(
-        "SAME_ID_DIFFERENT_CONTENT",
-        entry ? this.currentOf(entry) : null,
-        `Command ${command.commandId} was already committed with different changes.`,
-      );
+      return this.failure("SAME_ID_DIFFERENT_CONTENT", null, "The Command ID was already used with different content.");
     }
+    const result = this.commitNewMapCommand(mapId, command, issuer, expectedRevision, sync);
+    this.rememberResult(command.commandId, { hash, syncHash: sync?.hash, mapIds: new Set([mapId]) }, result);
+    return result;
+  }
+
+  private commitNewMapCommand(mapId: string, command: MapCommand, issuer: string, expectedRevision?: string, sync?: { hash: string; create: boolean }): CommitResult {
+    if (this.engineTooFarBehind()) return this.engineBehind();
+    const entry = this.maps.get(mapId);
     if (!entry && !sync?.create) return this.failure("NOT_FOUND", null);
     if (entry && sync?.create) return this.failure("CONFLICT", this.currentOf(entry), "The map already exists.");
     const shape = commandShape(command);
@@ -1238,12 +1358,14 @@ export class RecordWorkspaceStore {
 
   syncReceipt(payload: SyncCommand): CommitResult | undefined {
     const { command } = payload;
-    const known = this.commands.get(commandKey("", command.commandId));
+    const known = this.commands.get(command.commandId);
     if (known === undefined) return undefined;
-    if (known.hash !== syncHash(payload)) {
+    const same = known.syncHash !== undefined ? known.syncHash === syncHash(payload)
+      : payload.mapOp === undefined && (known.hash === hashChanges(command.changes) || known.canonicalHash === hashChanges(command.changes));
+    if (!same) {
       return this.failure("SAME_ID_DIFFERENT_CONTENT", null, "The Command ID was already used with different content.");
     }
-    return { ok: true, seq: known.seq, savedAt: this.committedAtOf(known.seq), replayed: true };
+    return this.commandResult(known);
   }
 
   /** Validates a pending Command against the current state, for push and working-store replay. */
@@ -1251,6 +1373,15 @@ export class RecordWorkspaceStore {
     this.assertOpen();
     const prior = this.syncReceipt(payload);
     if (prior !== undefined) return prior;
+    const result = this.commitNewSyncCommand(payload, issuer);
+    this.rememberResult(payload.command.commandId, {
+      hash: payload.mapOp === undefined || payload.mapOp === "create" ? hashChanges(payload.command.changes) : syncHash(payload),
+      syncHash: syncHash(payload), mapIds: new Set(payload.mapOp === "rename" ? [payload.mapId, payload.newMapId] : [payload.mapId]),
+    }, result);
+    return result;
+  }
+
+  private commitNewSyncCommand(payload: SyncCommand, issuer: string): CommitResult {
     const { command, mapId, mapOp } = payload;
     const shape = commandShape(command);
     if (shape) return this.failure("INVALID_COMMAND", null, shape);
@@ -1640,18 +1771,16 @@ export class RecordWorkspaceStore {
 
   /** `commit-index.json`. `retired` is omitted when empty, so an index without it keeps its shape. */
   private commitIndexText(snapshot: { seq: number; sha256: string }): string {
-    const commands = [...this.commands.entries()]
+    const commandResults = [...this.commands.entries()]
+      .filter(([, value]) => value.result === undefined)
       .sort((a, b) => a[1].seq - b[1].seq)
       .slice(-COMMAND_INDEX_RETAIN)
-      .map(([key, value]) => {
-        const cut = key.indexOf("\u0000");
-        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash, ...(value.canonicalHash ? [value.canonicalHash] : [])];
-      });
+      .map(([key, value]) => [key, { ...value, mapIds: [...value.mapIds] }]);
     const body: Dict = {
       format: 1,
       seq: this.currentSeq,
       mapSeq: Object.fromEntries(this.mapSeq),
-      commands,
+      commandResults,
       snapshot,
     };
     if (this.retired.size > 0) {
@@ -2466,32 +2595,32 @@ export class RecordWorkspaceStore {
   }
 
   /** Bookkeeping a journal line carries besides its record operations. */
-  private indexLine(line: JournalLine): void {
+  private indexLine(line: JournalLine, touchedMaps?: Set<string>): void {
     if (line.intent === LOCAL_REBASE_INTENT) return;
     if (line.mapOp === "delete") {
       this.mapSeq.delete(line.mapId);
     } else if (line.mapOp === "rename" && line.newMapId !== undefined) {
       this.mapSeq.delete(line.mapId);
       this.mapSeq.set(line.newMapId, line.seq);
-      const prefix = commandKey(line.mapId, "");
-      for (const [key, value] of [...this.commands]) {
-        if (!key.startsWith(prefix)) continue;
-        this.commands.delete(key);
-        this.commands.set(commandKey(line.newMapId, key.slice(prefix.length)), value);
-      }
     } else if (line.mapOp !== "columns" && !(line.mapOp === undefined && line.commandId === undefined && line.intent === "set-map-columns")) {
       // A commit that only sets row columns is not a change of the map's content. (The second
       // test reads journals written before such lines were marked.)
       this.mapSeq.set(line.mapId, line.seq);
     }
-    if (line.commandId !== undefined && line.syncHash !== undefined) {
-      this.commands.set(commandKey("", line.commandId), { seq: line.seq, hash: line.syncHash });
-    }
-    if (line.commandId !== undefined && (line.mapOp === undefined || line.mapOp === "create")) {
-      this.commands.set(commandKey(line.mapId, line.commandId), {
+    if (line.commandId !== undefined) {
+      const mapIds = touchedMaps ?? new Set<string>();
+      mapIds.add(line.mapId);
+      if (line.newMapId) mapIds.add(line.newMapId);
+      for (const op of line.ops) if (op.op === "put") {
+        const record = op.record as SnapshotRecord;
+        if (record.kind === "map") mapIds.add(record.id);
+        else if ("mapId" in record && typeof record.mapId === "string") mapIds.add(record.mapId);
+      }
+      this.indexCommand(line.commandId, {
         seq: line.seq,
-        hash: line.changesHash ?? hashChanges(line.changes),
+        hash: line.changesHash ?? (line.mapOp && line.mapOp !== "create" ? line.syncHash : undefined) ?? hashChanges(line.changes),
         canonicalHash: line.changesHash && line.changesHash !== hashChanges(line.changes) ? hashChanges(line.changes) : undefined,
+        syncHash: line.syncHash, mapIds,
       });
     }
   }
@@ -2508,11 +2637,18 @@ export class RecordWorkspaceStore {
 
   /** Applies a committed journal line to the record set in memory. */
   private applyLine(line: JournalLine): void {
+    const touchedMaps = new Set<string>();
     for (const op of line.ops) {
       const before = this.all.get(op.rk);
       const after = op.op === "put" ? op.record as SnapshotRecord : undefined;
       const mapIds = new Set<string>();
-      for (const record of [before, after]) if (record && "mapId" in record && typeof record.mapId === "string") mapIds.add(record.mapId);
+      for (const record of [before, after]) {
+        if (record?.kind === "map") touchedMaps.add(record.id);
+        if (record && "mapId" in record && typeof record.mapId === "string") {
+          mapIds.add(record.mapId);
+          touchedMaps.add(record.mapId);
+        }
+      }
       for (const id of mapIds) this.guardIndexes.get(id)?.update(before, after);
       if (before !== undefined && SHARED_ID_KINDS.has(before.kind)) {
         const id = (before as { id: string }).id;
@@ -2542,7 +2678,7 @@ export class RecordWorkspaceStore {
     const commit: CommitRecord = { kind: "commit", seq: line.seq, committedAt: line.committedAt, issuer: line.issuer };
     this.all.set(recordRk(commit), commit);
     this.currentSeq = line.seq;
-    this.indexLine(line);
+    this.indexLine(line, touchedMaps);
   }
 
   /** Copies one extensionDef into every map and drops cached state, so a later save does not write the old definition back. */

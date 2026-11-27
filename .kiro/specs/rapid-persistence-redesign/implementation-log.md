@@ -333,7 +333,7 @@
 - 対象: format2-requirements.md R3.17、DB 仕様書 5.3、`beta/src/node/sync/push.ts`、`beta/src/node/record_store/store.ts` の `commitMapCommand`
 - 中身: 成功した Command の再送は store が `(mapId, commandId)` で最初の結果を返す。workspace 全体の commandId ではない。拒否は store が覚えないので、同期入口が `sync-rejections.jsonl` に書く。この file は store の backup に含まれない。
 - 根拠: `commandKey` は mapId と commandId である。`backupTo` は snapshot、journal、commit index を写し、`sync-rejections.jsonl` を写さない。
-- 扱い: 未対応
+- 扱い: 実装で解消（2026-11-27、Command の再送の修正）。store が `sync-rejections.jsonl` を所有し、拒否・no-op を fsync してから返す。push 独自の記憶を廃止し、`backupTo` に同じファイルを含める。既存の push の行も読める。journal の意味は変えない。再起動と backup の再読込みは `record_store_resend.test.ts` で確認した。
 
 ### 2026-11-22 SQLite には minSeq が待つ applied seq が無い
 
@@ -647,7 +647,7 @@
 - 対象: DB 仕様書 5.3 節、`beta/src/node/record_store/store.ts:616`（再送の判定）、`store.ts:1231`（確定した Command だけを登録）
 - 中身: 再送で「最初の結果」を返すのは、確定した Command だけである。拒否した Command は ID を覚えないので、拒否の後に状態が変わってから同じ ID を再送すると、今度は確定する。依頼した側から見ると、一度は拒否と返った依頼が、応答を受け取れなかった再送で黙って通る。確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）も最初の結果として持ち、同じ ID には同じ拒否を返すことを提案する。一時的な拒否（`ENGINE_BEHIND`）は除く。
 - 根拠: `store.ts:612-627` と、`this.commands.set` の 3 か所（`store.ts:438`、`1223`、`1231`）を読んだ。登録は確定の経路と読み込みの経路だけで、拒否の経路には無い。実行はしていない。
-- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）も最初の結果として持ち、同じ ID には同じ拒否を返す。`ENGINE_BEHIND` は除く。未実装
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）も最初の結果として持ち、同じ ID には同じ拒否を返す。`ENGINE_BEHIND` は除く。実装で解消（Command の再送の修正）。`commitMapCommand` と `commitSyncCommand` は最初の拒否を store の結果表に保持する。結果のファイルは JSON Lines で `{afterSeq, commandId, entry}`（entry は hash、mapIds の集合、seq、結果）を追記する。local rebase の成功・no-op の忘却は `{afterSeq, forget}` を追記し、起動時に journal の位置と合わせて再生する。compaction が index・snapshot の設置途中で止まっても、snapshot 以前の journal から忘却済みの結果を復活させない。確定的な拒否は忘れず、remote の拒否は既存の conflicts に残して replay から除く。`record_store_resend.test.ts` の初期10試験は基点 a2fb3fb で全件失敗、修正後は通過。`ENGINE_BEHIND` から同じ Command を再送する既存試験も通過した。DB 仕様書 5.3 へ反映。
 
 ### 2026-11-19 再送の判定は map ごとで、通し番号は workspace で一本
 
@@ -656,7 +656,7 @@
 - 対象: DB 仕様書 5.2 節・5.3 節、`beta/src/node/record_store/store.ts:272`（`commandKey(mapId, commandId)`）
 - 中身: Command の ID は map ごとに一意とみなされる。一方、通し番号は workspace で一本で、node を別の map へ移すことも想定している。複数の map に触る Command がどの map の ID として登録されるか、同じ ID が別の map で使われたときに別の Command とみなしてよいか、が決まっていない。再送の判定のキーを workspace 単位にし、触った map は Command の中に集合として持つことを提案する。
 - 根拠: `store.ts:272`、`617` を読んだ。仕様書 5.3 節は単位を書いていない。
-- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。再送の判定のキーを workspace 単位にし、触った map は Command の中に集合として持つ。未実装
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。再送の判定のキーを workspace 単位にし、触った map は Command の中に集合として持つ。実装で解消（Command の再送の修正）。workspace の commandId を Map のキーとし、結果に mapIds の Set を持つ。compact の index は `commandResults` に集合を配列として保存し、旧 `commands` も読める。map 改名時の過去の Command の全走査と再キー化を削除した。journal と結果ファイルは起動時に一度ずつ読む。既存 journal / index の ID 衝突は最初の結果を残し、全データを適用して件数を警告する。旧 push の拒否行には map が記録されていないため、その行の集合は空のまま保持する。試験は `record_store_resend.test.ts`。DB 仕様書 5.3 へ反映。
 
 ### 2026-11-19 兄弟順キーが同じ値の兄弟の間には、node を入れられない
 

@@ -298,6 +298,28 @@ test("no-op and rejected commands settle independently and a conflict retains th
   expect((await client("b")).conflictList()).toMatchObject([{ entry: loser }]);
 });
 
+test("resend decisions: a remote refusal stays out of replay after rebase, restart and restoration of its before value", async () => {
+  let device = await client();
+  change(device.store(), "pending");
+  const [original] = entries("local");
+  change(remote(), "other");
+  expect(await device.push(() => {})).toMatchObject({ conflicts: 1 });
+  expect(entries("local")).toEqual([]);
+  change(remote(), "Root"); // The original Command would now be valid against the current state.
+  await device.pull(() => {});
+  await device.close();
+  device = await client();
+  expect(device.conflictList()).toMatchObject([{ entry: original, code: "CONFLICT" }]);
+  expect(await device.push(() => {})).toMatchObject({ sent: 0, committed: 0 });
+  expect(mapText(device.store())).toBe("Root");
+  const envelope = pushEnvelope(original);
+  const result = await serve(new URL("/api/sync/push", ORIGIN), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+    ...remote().syncIdentity(), commands: [envelope],
+  }) });
+  expect(await result.json()).toMatchObject({ results: [{ code: "CONFLICT" }] });
+  expect(mapText(remote())).toBe("Root");
+});
+
 test("an invalid suffix keeps the working store intact, an interrupted rebase recovers by a rebuild, and replay failures remain inspectable", async () => {
   const a = await client();
   const working = path.join(temp, "local/store");
