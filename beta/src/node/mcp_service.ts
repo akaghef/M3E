@@ -9,7 +9,8 @@ import type { AppState, SavedMap, TreeNode } from "../shared/types";
 import { parseMapPath, resolveNodePath } from "../shared/path_resolve";
 import { parseIndentedTextToNodes } from "./indented_text_parser";
 import { RapidMvpModel } from "./rapid_mvp";
-import { commitMapCommand, readCommittedCommand, type StoredCommand } from "./map_commit";
+import { awaitDurableCommit, commitMapCommand, readCommittedCommand, type StoredCommand } from "./map_commit";
+import { storedCommandFromLine } from "./record_store/legacy_api";
 import { diffState } from "../shared/map_changes";
 import { activeRecordStore } from "./record_store/active";
 import type { NodeChoice } from "./record_store/bands";
@@ -43,6 +44,10 @@ type Context = {
   /** Sequence numbers of this participation's own commits: a record it rewrote is still what it read. */
   ownSeqs: Set<number>;
 };
+const WRITE_TOOLS = new Set(["m3e_create", "m3e_update", "m3e_delete"]);
+/** Command lines read from Neo4j before a synchronous mutation, keyed by map id and command id. */
+type PrefetchedCommand = Map<string, StoredCommand | null>;
+
 export interface M3eMcpServiceOptions {
   dbPath: () => string;
   feedbackDir: () => string;
@@ -189,7 +194,20 @@ function scopePayload(state: AppState | undefined, selected: Set<string>): Scope
 /** Session-local participation around the existing Rapid Core and SQLite storage. */
 export class M3eMcpService {
   private readonly contexts = new Map<string, Context>();
+  /** Set only for the synchronous `call` that follows a Neo4j prefetch. Absent means "not prefetched". */
+  private prefetchedCommands: PrefetchedCommand | null = null;
   constructor(private readonly options: M3eMcpServiceOptions) {}
+
+  private commandKey(mapId: string, commandId: string): string {
+    return `${mapId}\0${commandId}`;
+  }
+
+  /** `undefined` when this call did not prefetch. `null` when Neo4j has no such Command. */
+  private prefetchedCommand(mapId: string, commandId: string): StoredCommand | null | undefined {
+    const cache = this.prefetchedCommands;
+    if (!cache) return undefined;
+    return cache.get(this.commandKey(mapId, commandId)) ?? null;
+  }
 
   private context(id: unknown): Context {
     const key = str(id, "context_id", 100);
@@ -386,6 +404,7 @@ export class M3eMcpService {
    * attached, the engine have applied it. `call` stays synchronous and does not wait.
    */
   async callAsync(tool: string, input: unknown): Promise<any> {
+    const store = activeRecordStore();
     if (tool === "m3e_get" && input !== null && typeof input === "object") {
       const minSeq = (input as Args).minSeq;
       if (minSeq !== undefined) {
@@ -393,10 +412,11 @@ export class M3eMcpService {
           return { ok: false, error: { code: "INVALID_ARGUMENT", message: "minSeq must be a non-negative integer." } };
         }
         if (minSeq > 0) {
-          const store = activeRecordStore();
           if (!store) {
             return { ok: false, error: { code: MIN_SEQ_TIMEOUT_CODE, message: "minSeq waits on the record store, which is not open." } };
           }
+          const held = await awaitDurableCommit(store);
+          if (!held.ok) return { ok: false, error: { code: held.code, message: held.error } };
           const waited = await waitForAppliedSeq(store, minSeq, minSeqTimeoutMs());
           if (!waited.ok) {
             return { ok: false, error: { code: MIN_SEQ_TIMEOUT_CODE, message: "Applied sequence has not reached minSeq." } };
@@ -404,7 +424,39 @@ export class M3eMcpService {
         }
       }
     }
-    return this.call(tool, input);
+    const writes = WRITE_TOOLS.has(tool);
+    this.prefetchedCommands = null;
+    if (writes && store && input !== null && typeof input === "object") {
+      const args = input as Args;
+      const commandId = typeof args.command_id === "string" ? args.command_id : undefined;
+      const contextId = typeof args.context_id === "string" ? args.context_id : undefined;
+      const focus = contextId ? this.contexts.get(contextId)?.focus : undefined;
+      const cache: PrefetchedCommand = new Map();
+      if (commandId && focus) {
+        let line: Awaited<ReturnType<typeof store.readCommittedCommand>>;
+        try {
+          line = await store.readCommittedCommand(focus.mapId, commandId);
+        } catch (error) {
+          if ((error as { code?: string }).code === "DATABASE_UNAVAILABLE") {
+            return { ok: false, error: { code: "DATABASE_UNAVAILABLE", message: (error as Error).message } };
+          }
+          throw error;
+        }
+        cache.set(this.commandKey(focus.mapId, commandId), storedCommandFromLine(focus.mapId, line));
+      }
+      this.prefetchedCommands = cache;
+    }
+    let result: ReturnType<M3eMcpService["call"]>;
+    try {
+      result = this.call(tool, input);
+    } finally {
+      this.prefetchedCommands = null;
+    }
+    if (writes && store && result?.ok) {
+      const held = await awaitDurableCommit(store);
+      if (!held.ok) return { ok: false, error: { code: held.code, message: held.error } };
+    }
+    return result;
   }
   call(tool: string, input: unknown): any {
     let context: Context | undefined;
@@ -511,7 +563,8 @@ export class M3eMcpService {
     const mapId = context.focus.mapId;
     const commandId = optionalCommandId(args.command_id);
     if (commandId) {
-      const prior = readCommittedCommand(this.options.dbPath(), mapId, commandId);
+      const cached = this.prefetchedCommand(mapId, commandId);
+      const prior = cached !== undefined ? cached : readCommittedCommand(this.options.dbPath(), mapId, commandId);
       if (prior) return this.replayedMutation(context, mapId, prior);
     }
     let current: SavedMap;
@@ -701,7 +754,8 @@ export class M3eMcpService {
       fail("INVALID_STATE", (committed as { message?: string }).message ?? "The requested operation violates the Core invariants.");
     }
     if (committed.replayed) {
-      const prior = readCommittedCommand(this.options.dbPath(), mapId, sentCommandId);
+      const cached = this.prefetchedCommand(mapId, sentCommandId);
+      const prior = cached !== undefined ? cached : readCommittedCommand(this.options.dbPath(), mapId, sentCommandId);
       if (prior) return this.replayedMutation(context, mapId, prior);
     }
     context.ownSeqs.add(committed.seq);

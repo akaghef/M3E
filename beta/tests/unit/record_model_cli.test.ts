@@ -46,7 +46,7 @@ describe("snapshot CLI", () => {
 
   it("writes the snapshot, prints counts, and restores it as JSON", () => {
     const db = path.join(dir, "data.sqlite");
-    const out = path.join(dir, "out", "snapshot.jsonl");
+    const out = path.join(dir, "out", "records.jsonl");
     writeDb(db, [{ id: "m2", state: goodState }, { id: "m1", state: goodState }]);
     const before = fs.readFileSync(db);
     const run = io();

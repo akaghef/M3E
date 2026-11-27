@@ -3,8 +3,8 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
+import { serializeSnapshot } from "../shared/record_model/jsonl";
 import { activeRecordStore } from "./record_store/active";
-import { COMMIT_INDEX_FILE, JOURNAL_FILE, SNAPSHOT_FILE } from "./record_store/store";
 
 /**
  * SQLite snapshot backup module.
@@ -16,10 +16,13 @@ import { COMMIT_INDEX_FILE, JOURNAL_FILE, SNAPSHOT_FILE } from "./record_store/s
  */
 
 const BACKUP_SUFFIX = ".sqlite";
-/** Record store backups are directories: `M3E_records_<YYYYMMDD_HHmmss>` (a `_<n>` follows when the name is taken). */
+/** Record store backups are export directories: `M3E_records_<YYYYMMDD_HHmmss>` (a `_<n>` follows when the name is taken). */
 const RECORD_BACKUP_PREFIX = "M3E_records_";
 const RECORD_BACKUP_PATTERN = /^M3E_records_\d{8}_\d{6}(_\d+)?$/;
-const RECORD_BACKUP_FILES = new Set([SNAPSHOT_FILE, JOURNAL_FILE, COMMIT_INDEX_FILE]);
+/** An export, not a store. Nothing opens this directory as a store. */
+const EXPORT_RECORDS = "records.jsonl";
+const EXPORT_JOURNAL_HEAD = "journal-head.json";
+const RECORD_BACKUP_FILES = new Set([EXPORT_RECORDS, EXPORT_JOURNAL_HEAD]);
 
 const DEFAULT_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const DEFAULT_MAX_GENERATIONS = 10;
@@ -50,14 +53,19 @@ function ensureDir(dir: string): void {
 export async function createBackup(dbPath: string, backupDir: string): Promise<string> {
   const store = activeRecordStore();
   if (store) {
-    // Record store (M3E_STORE_DIR): the maps are in its snapshot and journal, not in the SQLite file.
-    // The store copies the pair in one step, so the copy is one consistent commit.
+    // A store on Neo4j is backed up by an export of its records and journal head.
+    // The directory is the wire format of that export. It is not a store.
+    await store.durable();
     ensureDir(backupDir);
     const base = path.join(backupDir, `${RECORD_BACKUP_PREFIX}${formatTimestamp(new Date())}`);
     let target = base;
     for (let n = 2; fs.existsSync(target); n += 1) target = `${base}_${n}`;
-    const files = store.backupTo(target);
-    console.log(`[backup] Created: ${target} (${files.join(", ")}) at commit ${store.seq()}`);
+    fs.mkdirSync(target);
+    const records = serializeSnapshot(store.records());
+    const head = `${JSON.stringify({ seq: store.seq(), ...store.syncIdentity() })}\n`;
+    fs.writeFileSync(path.join(target, EXPORT_RECORDS), records, "utf8");
+    fs.writeFileSync(path.join(target, EXPORT_JOURNAL_HEAD), head, "utf8");
+    console.log(`[backup] Exported: ${target} at commit ${store.seq()}`);
     return target;
   }
   ensureDir(backupDir);

@@ -12,7 +12,7 @@ import { isGraphLinkAttributes } from "../shared/graph_link_attributes";
 import { scopedLaneSettings } from "../shared/lane_view";
 import { activeRecordStore } from "./record_store/active";
 import {
-  storeDeleteMap, storeDuplicateMap, storeListMaps, storeLoadSavedMap, storeRenameMap, storeSaveMap,
+  storeDeleteMap, storeDuplicateMap, storeListMaps, storeLoadSavedMap, storeLoadSavedMapFromDatabase, storeRenameMap, storeSaveMap,
   storeSaveMapIfUnchanged, storeSetMapColumns,
 } from "./record_store/legacy_api";
 
@@ -1231,15 +1231,11 @@ class RapidMvpModel {
     scopeId: string,
     depth?: number,
   ): ScopedReadResult {
-    let model: RapidMvpModel;
-    try {
-      model = RapidMvpModel.loadFromSqlite(dbPath, mapId);
-    } catch (err) {
-      // bubble as standard error — callers distinguish map-not-found at the handler level
-      throw err;
-    }
+    return RapidMvpModel.scopedRead(RapidMvpModel.loadFromSqlite(dbPath, mapId).toJSON(), mapId, scopeId, depth);
+  }
 
-    const state = model.toJSON();
+  /** The scope slice of an already loaded map. `savedAt` on the slice is the read time, as before. */
+  static scopedRead(state: AppState, mapId: string, scopeId: string, depth?: number): ScopedReadResult {
     const ids = RapidMvpModel.collectSubtreeIds(state, scopeId, depth);
     if (!ids) {
       return {
@@ -1600,6 +1596,13 @@ class RapidMvpModel {
     }
 
     return model;
+  }
+
+  /** Display read of one map. On Neo4j the records come from a query; otherwise the same load as before. */
+  static async loadSavedMapForDisplay(dbPath: string, mapId = "default"): Promise<SavedMap> {
+    const store = activeRecordStore();
+    if (store?.onNeo4j()) return storeLoadSavedMapFromDatabase(store, mapId);
+    return RapidMvpModel.loadSavedMapFromSqlite(dbPath, mapId);
   }
 
   static loadSavedMapFromSqlite(dbPath: string, mapId = "default"): SavedMap {

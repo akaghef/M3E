@@ -14,7 +14,7 @@ import { createOrreryApi } from "./orrery_api";
 import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
-import { commitMapCommand } from "./map_commit";
+import { awaitDurableCommit, commitMapCommand } from "./map_commit";
 import { activeRecordStore, closeActiveRecordStoreOnSignal, localModeRemote, localModeStore, startLocalMode } from "./record_store/active";
 import { connectionFromRequest, handleRecordSyncHttp } from "./sync/http";
 import { handleLocalSyncHttp } from "./sync/local_http";
@@ -256,7 +256,8 @@ async function handleMcpApi(req: http.IncomingMessage, res: http.ServerResponse,
         return true;
       }
       const result = await mcpService.callAsync(body.name, body.arguments);
-      sendJson(res, result.ok ? 200 : 400, result);
+      const unavailable = !result.ok && result.error?.code === "DATABASE_UNAVAILABLE";
+      sendJson(res, result.ok ? 200 : unavailable ? 503 : 400, result);
       return true;
     }
     if ((url.pathname === "/api/mcp/events" || url.pathname === "/api/mcp/events/stream") && req.method === "GET") {
@@ -565,6 +566,17 @@ function openBrowser(url: string): void {
   }
   // Open default browser on Windows.
   exec(`start "" "${url}"`);
+}
+
+/** The response of a store commit. 503 and no saved body when the database did not take it. */
+async function answerAfterCommit(res: http.ServerResponse, status: number, payload: unknown): Promise<boolean> {
+  const held = await awaitDurableCommit(activeRecordStore());
+  if (!held.ok) {
+    sendJson(res, 503, { ok: false, code: held.code, error: held.error });
+    return false;
+  }
+  sendJson(res, status, payload);
+  return true;
 }
 
 function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
@@ -1264,7 +1276,7 @@ async function handleHomeApi(
       }
       const id = newDocId();
       RapidMvpModel.createMap(currentSqliteDbPath(), id, label && label.length > 0 ? label : "Untitled");
-      sendJson(res, 200, { ok: true, id });
+      await answerAfterCommit(res, 200, { ok: true, id });
       return true;
     }
 
@@ -1275,7 +1287,7 @@ async function handleHomeApi(
       }
       const newId = newDocId();
       RapidMvpModel.duplicateMap(currentSqliteDbPath(), route.mapId, newId);
-      sendJson(res, 200, { ok: true, id: newId });
+      await answerAfterCommit(res, 200, { ok: true, id: newId });
       return true;
     }
 
@@ -1310,7 +1322,7 @@ async function handleHomeApi(
         }
         throw err;
       }
-      sendJson(res, 200, { ok: true });
+      await answerAfterCommit(res, 200, { ok: true });
       return true;
     }
 
@@ -1324,7 +1336,7 @@ async function handleHomeApi(
         }
         throw err;
       }
-      sendJson(res, 200, { ok: true });
+      await answerAfterCommit(res, 200, { ok: true });
       return true;
     }
 
@@ -1359,7 +1371,7 @@ async function handleHomeApi(
         }
         throw err;
       }
-      sendJson(res, 200, { ok: true });
+      await answerAfterCommit(res, 200, { ok: true });
       return true;
     }
 
@@ -1389,7 +1401,7 @@ async function handleHomeApi(
         }
         throw err;
       }
-      sendJson(res, 200, { ok: true, pinned });
+      await answerAfterCommit(res, 200, { ok: true, pinned });
       return true;
     }
 
@@ -1404,7 +1416,7 @@ async function handleHomeApi(
           }
           throw err;
         }
-        sendJson(res, 200, { ok: true });
+        await answerAfterCommit(res, 200, { ok: true });
         return true;
       }
 
@@ -1436,7 +1448,7 @@ async function handleHomeApi(
         sendHomeError(res, 400, "INVALID_BODY", (err as Error).message || "Invalid vaultPath.");
         return true;
       }
-      sendJson(res, 200, { ok: true });
+      await answerAfterCommit(res, 200, { ok: true });
       return true;
     }
 
@@ -1484,7 +1496,7 @@ async function handleHomeApi(
       const id = newDocId();
       const model = RapidMvpModel.fromJSON(state);
       model.saveToSqlite(currentSqliteDbPath(), id);
-      sendJson(res, 200, { ok: true, id });
+      await answerAfterCommit(res, 200, { ok: true, id });
       return true;
     }
 
@@ -1530,7 +1542,7 @@ async function handleHomeApi(
       const model = RapidMvpModel.fromJSON(state);
       model.saveToSqlite(currentSqliteDbPath(), id);
       RapidMvpModel.setMapSource(currentSqliteDbPath(), id, { kind: "obsidian", path: vaultPath });
-      sendJson(res, 200, { ok: true, id });
+      await answerAfterCommit(res, 200, { ok: true, id });
       return true;
     }
 
@@ -1550,7 +1562,7 @@ async function handleHomeApi(
         }
         throw err;
       }
-      sendJson(res, 200, { ok: true });
+      await answerAfterCommit(res, 200, { ok: true });
       return true;
     }
 
@@ -1619,7 +1631,7 @@ async function handleBackupApi(
     }
     model.saveToSqlite(currentSqliteDbPath(), route.mapId);
     const savedAt = new Date().toISOString();
-    sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, mapId: route.mapId, savedAt });
+    await answerAfterCommit(res, 200, { ok: true, restored: true, backupId: route.backupId, mapId: route.mapId, savedAt });
     return;
   }
 
@@ -1740,7 +1752,7 @@ async function handleLinearNoteApi(
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
     incrementMapVersion();
     broadcastMapUpdate(mapId, savedAt, sourceTabId);
-    sendJson(res, 200, { ok: true, scopeId, savedAt });
+    await answerAfterCommit(res, 200, { ok: true, scopeId, savedAt });
     return;
   }
 
@@ -1767,7 +1779,7 @@ async function handleLinearNoteApi(
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
     incrementMapVersion();
     broadcastMapUpdate(mapId, savedAt, sourceTabId);
-    sendJson(res, 200, { ok: true, scopeId, savedAt, removed: true });
+    await answerAfterCommit(res, 200, { ok: true, scopeId, savedAt, removed: true });
     return;
   }
 
@@ -2009,7 +2021,7 @@ async function handleFlashApi(
         // Save updated model
         model.saveToSqlite(currentSqliteDbPath(), draft.mapId);
 
-        sendJson(res, 200, {
+        await answerAfterCommit(res, 200, {
           ok: true,
           committedNodeIds: result.committedNodeIds,
           parentId: result.parentId,
@@ -2096,6 +2108,12 @@ async function handleVaultApi(
           sendSseEvent(res, "vault-import-progress", progress);
         },
       });
+      const held = await awaitDurableCommit(activeRecordStore());
+      if (!held.ok) {
+        sendSseEvent(res, "vault-import-error", { ok: false, code: held.code, error: held.error });
+        res.end();
+        return;
+      }
       broadcastMapUpdate(result.mapId, result.savedAt, null);
       sendSseEvent(res, "vault-import-complete", {
         mapId: result.mapId,
@@ -2220,6 +2238,12 @@ async function handleBlueprintApi(
           sendSseEvent(res, "blueprint-import-progress", progress);
         },
       });
+      const held = await awaitDurableCommit(activeRecordStore());
+      if (!held.ok) {
+        sendSseEvent(res, "blueprint-import-error", { ok: false, code: held.code, error: held.error });
+        res.end();
+        return;
+      }
       broadcastMapUpdate(result.mapId, result.savedAt, null);
       sendSseEvent(res, "blueprint-import-complete", {
         mapId: result.mapId,
@@ -2370,7 +2394,7 @@ async function handleLinkApi(
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
       const link = model.state.links?.[linkId];
-      sendJson(res, 200, { ok: true, link });
+      await answerAfterCommit(res, 200, { ok: true, link });
       return;
     }
 
@@ -2390,7 +2414,7 @@ async function handleLinkApi(
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
-      sendJson(res, 200, { ok: true });
+      await answerAfterCommit(res, 200, { ok: true });
       return;
     }
   } catch (err) {
@@ -2473,7 +2497,7 @@ function buildLayoutSnapshot(state: AppState, scopeId: string | null, direction:
   };
 }
 
-function handleLayoutSnapshotApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): boolean {
+async function handleLayoutSnapshotApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<boolean> {
   if (req.method !== "GET") {
     sendJson(res, 405, { ok: false, error: "Method not allowed." });
     return true;
@@ -2486,7 +2510,7 @@ function handleLayoutSnapshotApi(req: http.IncomingMessage, res: http.ServerResp
     return true;
   }
   try {
-    const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
+    const savedDoc = await RapidMvpModel.loadSavedMapForDisplay(currentSqliteDbPath(), mapId);
     const snapshot = buildLayoutSnapshot(savedDoc.state, url.searchParams.get("scope"), direction);
     sendJson(res, 200, {
       ok: true,
@@ -2544,14 +2568,14 @@ function buildEdgePortSnapshot(state: AppState, scopeId: string | null): {
   return { source: "createAppServer", snapshots };
 }
 
-function handleEdgePortSnapshotApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): boolean {
+async function handleEdgePortSnapshotApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<boolean> {
   if (req.method !== "GET") {
     sendJson(res, 405, { ok: false, error: "Method not allowed." });
     return true;
   }
   const url = new URL(req.url ?? "/", "http://localhost");
   try {
-    const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
+    const savedDoc = await RapidMvpModel.loadSavedMapForDisplay(currentSqliteDbPath(), mapId);
     sendJson(res, 200, {
       ok: true,
       mapId,
@@ -2572,19 +2596,9 @@ function scopeViewHeader(req: http.IncomingMessage): string | null {
 }
 
 /** GET /api/maps/<id>?scope=<nodeId>&view=scope: only the nodes that belong to that scope. */
-function sendScopeView(res: http.ServerResponse, mapId: string, scopeId: string): void {
+async function sendScopeView(res: http.ServerResponse, mapId: string, scopeId: string): Promise<void> {
   try {
-    // Record store: cut the scope out of the state the store holds. extractScopeView only reads
-    // its input and copies what it returns, so the whole map is not copied for one scope.
-    const store = activeRecordStore();
-    const direct = store?.hasMap(mapId)
-      ? store.readState(mapId, (held, savedAt) => (savedAt ? { savedAt, ...extractScopeView(held, scopeId) } : null))
-      : null;
-    if (direct) {
-      sendJson(res, 200, { version: 1, savedAt: direct.savedAt, state: direct.state, scopeView: direct.view });
-      return;
-    }
-    const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
+    const savedDoc = await RapidMvpModel.loadSavedMapForDisplay(currentSqliteDbPath(), mapId);
     const { state, view } = extractScopeView(savedDoc.state, scopeId);
     sendJson(res, 200, { version: savedDoc.version, savedAt: savedDoc.savedAt, state, scopeView: view });
   } catch (err) {
@@ -2665,7 +2679,7 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
     broadcastMapUpdate(mapId, result.savedAt, sourceTabId);
     if (!result.replayed) handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
-    sendJson(res, 200, {
+    await answerAfterCommit(res, 200, {
       ok: true,
       savedAt: result.savedAt,
       seq: result.seq,
@@ -2701,7 +2715,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
     }
     try {
       if (scopeParam && scopeParam.trim().length > 0 && url.searchParams.get("view") === "scope") {
-        sendScopeView(res, mapId, scopeParam.trim());
+        await sendScopeView(res, mapId, scopeParam.trim());
         return true;
       }
       if (scopeParam && scopeParam.trim().length > 0) {
@@ -2718,7 +2732,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
           }
           depth = Math.floor(n);
         }
-        const result = RapidMvpModel.readScopedState(currentSqliteDbPath(), mapId, scopeId, depth);
+        const displayed = await RapidMvpModel.loadSavedMapForDisplay(currentSqliteDbPath(), mapId);
+        const displayedModel = RapidMvpModel.fromJSON(displayed.state);
+        const displayedErrors = displayedModel.validate();
+        if (displayedErrors.length > 0) throw new Error(`Invalid model after load: ${displayedErrors.join(" | ")}`);
+        const result = RapidMvpModel.scopedRead(displayedModel.toJSON(), mapId, scopeId, depth);
         if (!result.ok) {
           sendJson(res, 404, { ok: false, error: result.error });
           return true;
@@ -2735,7 +2753,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         });
         return true;
       }
-      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
+      const savedDoc = await RapidMvpModel.loadSavedMapForDisplay(currentSqliteDbPath(), mapId);
       sendJson(res, 200, savedDoc);
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
@@ -2801,7 +2819,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         }
         const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
         broadcastMapUpdate(mapId, result.savedAt, sourceTabId);
-        sendJson(res, 200, {
+        await answerAfterCommit(res, 200, {
           ok: true,
           savedAt: result.savedAt,
           mapId: mapId,
@@ -2859,7 +2877,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
               if (!liveWrite) {
                 handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
               }
-              sendJson(res, 200, {
+              await answerAfterCommit(res, 200, {
                 ok: true,
                 savedAt,
                 mapId: mapId,
@@ -2897,7 +2915,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
       if (!liveWrite) {
         handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
       }
-      sendJson(res, 200, {
+      await answerAfterCommit(res, 200, {
         ok: true,
         savedAt,
         mapId: mapId,
@@ -3456,7 +3474,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
       handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
-      sendJson(res, 200, {
+      await answerAfterCommit(res, 200, {
         ok: true,
         mapId: route.mapId,
         parentNodeId,
@@ -3559,7 +3577,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
       handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
-      sendJson(res, 200, {
+      await answerAfterCommit(res, 200, {
         ok: true,
         mapId: route.mapId,
         workspaceId,
@@ -3707,7 +3725,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
       handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
-      sendJson(res, 200, {
+      await answerAfterCommit(res, 200, {
         ok: true,
         kind: "cas-pn-generate",
         mapId: route.mapId,
@@ -4368,8 +4386,10 @@ async function handleCollabApi(
             const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
             const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
             broadcastMapUpdate(mapId, savedAt, sourceTabId);
+            await answerAfterCommit(res, 200, result);
+          } else {
+            sendJson(res, 200, result);
           }
-          sendJson(res, 200, result);
         }
       } catch (err) {
         sendJson(res, 500, { ok: false, error: (err as Error).message || "Push failed." });
@@ -4576,13 +4596,13 @@ export function createAppServer(): http.Server {
 
     const layoutSnapshotMapId = parseLayoutSnapshotRoute(req.url ?? "/");
     if (layoutSnapshotMapId !== null) {
-      handleLayoutSnapshotApi(req, res, layoutSnapshotMapId);
+      await handleLayoutSnapshotApi(req, res, layoutSnapshotMapId);
       return;
     }
 
     const edgePortSnapshotMapId = parseEdgePortSnapshotRoute(req.url ?? "/");
     if (edgePortSnapshotMapId !== null) {
-      handleEdgePortSnapshotApi(req, res, edgePortSnapshotMapId);
+      await handleEdgePortSnapshotApi(req, res, edgePortSnapshotMapId);
       return;
     }
 

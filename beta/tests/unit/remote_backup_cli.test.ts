@@ -13,6 +13,7 @@ import { handleRecordSyncHttp } from "../../src/node/sync/http";
 import { backupRemoteClone } from "../../src/node/sync/remote_backup_cli";
 import { serializeSnapshot } from "../../src/shared/record_model/jsonl";
 import { richState, snapshotOf } from "./record_store_helpers";
+import { dropTestStores, testStoreName, TEST_NEO4J } from "./neo4j_test_store";
 
 let root: string;
 let backupDir: string;
@@ -49,6 +50,7 @@ afterEach(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
   await closeActiveRecordStore();
+  await dropTestStores();
   vi.unstubAllEnvs();
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -68,9 +70,16 @@ it("writes a restorable clone using the built CLI and prunes to the newest K gen
   expect(fs.statSync(file).mode & 0o777).toBe(0o600);
   expect(fs.readdirSync(backupDir).sort()).toEqual([newer, path.basename(file), unrelated].sort());
 
-  const restoredDir = path.join(root, "restored");
-  expect(await recordStoreCli(["--create", restoredDir, "--from-snapshot", file])).toBe(0);
-  expect(await recordStoreCli(["--verify", restoredDir])).toBe(0);
+  if (!process.env.M3E_TEST_NEO4J_BOLT || /:7687\b/.test(TEST_NEO4J.uri)) {
+    throw new Error("M3E_TEST_NEO4J_BOLT must name the disposable test Neo4j.");
+  }
+  vi.stubEnv("M3E_NEO4J_BOLT", TEST_NEO4J.uri);
+  delete process.env.M3E_NEO4J_USER;
+  delete process.env.M3E_NEO4J_PASSWORD;
+  delete process.env.M3E_NEO4J_DATABASE;
+  const restored = testStoreName();
+  expect(await recordStoreCli(["--create", restored, "--from-export", file])).toBe(0);
+  expect(await recordStoreCli(["--inspect", restored])).toBe(0);
 });
 
 it("keeps 48 generations by default", async () => {

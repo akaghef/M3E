@@ -1,9 +1,7 @@
 /**
- * A read that names `minSeq` waits until both the journal and the storage engine
- * have applied that seq. The commit response itself does not wait: the commit point
- * is the journal fsync (format2 R3.9). Waiting is this read's job.
- *
- * The timeout code is `ENGINE_BEHIND`.
+ * A read that names `minSeq` waits until the journal and the storage engine have
+ * applied that seq, and until those commits are in the database. The timeout code
+ * is `ENGINE_BEHIND`. A database that cannot be written is `DATABASE_UNAVAILABLE`.
  */
 import { activeRecordStore } from "../record_store/active";
 
@@ -55,6 +53,14 @@ export async function enforceMinSeq(raw: string | null): Promise<MinSeqGate | Mi
     // SQLite mode has no workspace applied seq. Zero asks for nothing.
     if (minSeq === 0) return { ok: true };
     return { ok: false, status: 503, body: { ok: false, code: MIN_SEQ_TIMEOUT_CODE, error: "minSeq waits on the record store, which is not open." } };
+  }
+  try {
+    await store.durable();
+  } catch (error) {
+    if ((error as { code?: string }).code === "DATABASE_UNAVAILABLE") {
+      return { ok: false, status: 503, body: { ok: false, code: "DATABASE_UNAVAILABLE", error: (error as Error).message } };
+    }
+    throw error;
   }
   const waited = await waitForAppliedSeq(store, minSeq);
   if (!waited.ok) {
