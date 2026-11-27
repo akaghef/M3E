@@ -3,7 +3,6 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import { serializeSnapshot } from "../shared/record_model/jsonl";
 import { activeRecordStore } from "./record_store/active";
 
 /**
@@ -53,20 +52,8 @@ function ensureDir(dir: string): void {
 export async function createBackup(dbPath: string, backupDir: string): Promise<string> {
   const store = activeRecordStore();
   if (store) {
-    // A store on Neo4j is backed up by an export of its records and journal head.
-    // The directory is the wire format of that export. It is not a store.
-    await store.durable();
-    ensureDir(backupDir);
-    const base = path.join(backupDir, `${RECORD_BACKUP_PREFIX}${formatTimestamp(new Date())}`);
-    let target = base;
-    for (let n = 2; fs.existsSync(target); n += 1) target = `${base}_${n}`;
-    fs.mkdirSync(target);
-    const records = serializeSnapshot(store.records());
-    const head = `${JSON.stringify({ seq: store.seq(), ...store.syncIdentity() })}\n`;
-    fs.writeFileSync(path.join(target, EXPORT_RECORDS), records, "utf8");
-    fs.writeFileSync(path.join(target, EXPORT_JOURNAL_HEAD), head, "utf8");
-    console.log(`[backup] Exported: ${target} at commit ${store.seq()}`);
-    return target;
+    // A workspace on Neo4j has no copy in its data directory: the database is backed up outside it.
+    throw new Error("This workspace lives in Neo4j; it is backed up outside the data directory, not by the server.");
   }
   ensureDir(backupDir);
 

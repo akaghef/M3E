@@ -15,7 +15,7 @@ import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { awaitDurableCommit, commitMapCommand } from "./map_commit";
-import { activeRecordStore, closeActiveRecordStoreOnSignal, localModeRemote, localModeStore, startLocalMode } from "./record_store/active";
+import { activeRecordStore, closeActiveRecordStoreOnSignal, localModeStore, openActiveRecordStore } from "./record_store/active";
 import { connectionFromRequest, handleRecordSyncHttp } from "./sync/http";
 import { handleLocalSyncHttp } from "./sync/local_http";
 import { accountForConnection, withVerifiedLogin } from "./sync/issuer";
@@ -4150,8 +4150,10 @@ function startServer(): void {
     }
     // Startup backup + periodic auto-backup
     const BACKUP_DIR = path.join(currentDataDir(), "backups");
-    // In store mode the backup is a copy of the record store, whether or not a SQLite file exists.
-    if (activeRecordStore() || fs.existsSync(currentSqliteDbPath())) {
+    // A workspace on Neo4j is backed up outside its data directory (the remote's hourly export, the
+    // database's own backup); the server writes no copy of it here. The SQLite backup is for
+    // workspaces still on SQLite.
+    if (!activeRecordStore() && fs.existsSync(currentSqliteDbPath())) {
       const maxGen = Number(process.env.M3E_BACKUP_MAX_GENERATIONS) || 10;
       createBackup(currentSqliteDbPath(), BACKUP_DIR)
         .then(() => { pruneOldBackups(BACKUP_DIR, maxGen); })
@@ -4417,6 +4419,16 @@ export function createAppServer(): http.Server {
     if (!tailscaleGateEnabled && redirectLoopbackHost(req, res)) {
       return;
     }
+    // On Neo4j nothing is served or accepted while the database does not answer: one round trip first.
+    const databaseStore = activeRecordStore();
+    if (databaseStore && (req.url ?? "").startsWith("/api/")) {
+      try {
+        await databaseStore.reachable();
+      } catch (error) {
+        sendJson(res, 503, { ok: false, code: "DATABASE_UNAVAILABLE", error: (error as Error).message });
+        return;
+      }
+    }
     if (await handleMcpApi(req, res, tailscaleGateEnabled)) return;
     if (await handleLocalSyncHttp(req, res, (mapIds) => {
       for (const mapId of mapIds) broadcastMapUpdate(mapId, "", null, true);
@@ -4667,13 +4679,12 @@ if (require.main === module) {
     console.error(`[M3E] This workspace lives on a remote M3E now: ${remote}. Not starting on the local copy in ${currentDataDir()}.`);
     process.exit(1);
   }
-  if (localModeRemote()) {
-    void startLocalMode().then(startServer).catch((error) => {
-      console.error("[M3E] Local mode startup failed:", error);
-      process.exitCode = 1;
-    });
-  } else {
-    if (process.env.M3E_SKIP_SAMPLE_GENERATION !== "1") runSampleGeneration();
+  // The store opens from Neo4j before the server listens; while Neo4j does not answer this waits.
+  void openActiveRecordStore().then(() => {
+    if (!activeRecordStore() && process.env.M3E_SKIP_SAMPLE_GENERATION !== "1") runSampleGeneration();
     startServer();
-  }
+  }).catch((error) => {
+    console.error("[M3E] Store startup failed:", error);
+    process.exitCode = 1;
+  });
 }
