@@ -17,10 +17,8 @@
     <true/>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>M3E_HOST</key>
-        <string>127.0.0.1</string>
-        <key>M3E_PORT</key>
-        <string>4173</string>
+        <key>M3E_LISTEN_SOCKET</key>
+        <string>@SOCKET_PATH@</string>
         <key>M3E_DATA_DIR</key>
         <string>@DATA_DIR@</string>
         <key>M3E_STORE_DIR</key>

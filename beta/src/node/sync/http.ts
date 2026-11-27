@@ -19,6 +19,7 @@ import { sameSyncIdentity, type SyncIdentity } from "../record_store/sync_types"
 import type { ConnectionIdentity } from "./issuer";
 import { pullSince } from "./journal_read";
 import { issuerForConnection, pushCommands } from "./push";
+import { allowedLogin } from "../remote_access";
 
 function header(req: http.IncomingMessage, name: string): string {
   const raw = req.headers[name];
@@ -28,8 +29,13 @@ function header(req: http.IncomingMessage, name: string): string {
 
 export function connectionFromRequest(req: http.IncomingMessage): ConnectionIdentity {
   const kind = header(req, "x-m3e-connection");
-  if (kind === "mcp") return { kind: "mcp", instanceId: header(req, "x-m3e-actor-instance") || "anonymous" };
-  return { kind: "viewer" };
+  const users = process.env.M3E_TAILSCALE_USERS;
+  const login = req.headers["tailscale-user-login"];
+  const verifiedLogin = !process.env.M3E_SYNC_REMOTE && users !== undefined && allowedLogin(login, users)
+    && typeof login === "string" ? login.trim() : undefined;
+  const identity = verifiedLogin ? { verifiedLogin } : {};
+  if (kind === "mcp") return { kind: "mcp", instanceId: header(req, "x-m3e-actor-instance") || "anonymous", ...identity };
+  return { kind: "viewer", ...identity };
 }
 
 export function sendSyncJson(res: http.ServerResponse, status: number, body: unknown): void {

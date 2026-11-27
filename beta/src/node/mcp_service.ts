@@ -851,9 +851,12 @@ export class M3eMcpService {
 
 export function mcpRequestAllowed(req: http.IncomingMessage, tailscaleAuthenticated = false): boolean {
   const address = req.socket.remoteAddress;
+  // A unix-socket peer has no address: it is a process on this machine, like loopback
+  // (the remote listens on a socket that only tailscale serve and the owner can reach).
+  const unixPeer = address === undefined && !req.socket.destroyed;
   if (address && address !== "127.0.0.1" && address !== "::1" && address !== "::ffff:127.0.0.1") return false;
   try {
-    if (tailscaleAuthenticated && address && req.headers.host && !/[\s/@\\?#]/.test(req.headers.host)) {
+    if (tailscaleAuthenticated && (address || unixPeer) && req.headers.host && !/[\s/@\\?#]/.test(req.headers.host)) {
       const serve = new URL(`https://${req.headers.host}`);
       if (isTailscaleHttpsOrigin(serve)) return !req.headers.origin || req.headers.origin === serve.origin;
     }

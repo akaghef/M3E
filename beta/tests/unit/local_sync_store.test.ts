@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { closeActiveRecordStore, activeRecordStore, startLocalMode } from "../../src/node/record_store/active";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import { handleRecordSyncHttp } from "../../src/node/sync/http";
+import { aiAgentAccountId } from "../../src/node/sync/issuer";
 import { LocalSync } from "../../src/node/sync/local";
 import { DeviceOutbox, pushEnvelope } from "../../src/node/sync/outbox";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
@@ -143,7 +144,7 @@ test("transport A2: reports PUSH_COMMAND_TOO_LARGE, preserves order and retains 
       code: "PUSH_COMMAND_TOO_LARGE", limitBytes: 32_000_000, reason: expect.any(String) },
   };
   expect(await a.status()).toMatchObject(expected);
-  expect(entries("local")).toEqual(waiting);
+  expect(entries("local")).toEqual(waiting.map((entry) => ({ ...entry, attempted: true })));
   expect(remote().journalLinesAfter(waiting[0].baseSeq)).toEqual([]);
   await a.close();
   devices.splice(devices.indexOf(a), 1);
@@ -156,7 +157,8 @@ test("transport retries smaller batches after a proxy 413 and clears blocked sta
   change(a.store(), "First");
   const state = a.store().getMapRow("map").state;
   state.nodes.root.details = "x".repeat(3_000);
-  expect(a.store().saveWholeMap("map", state, "human")).toMatchObject({ ok: true });
+  // Distinct actor labels keep these Commands separate; both use the local human connection.
+  expect(a.store().saveWholeMap("map", state, "human-second")).toMatchObject({ ok: true });
   a.store().setMapColumns("map", { tags: ["last"] }, "human");
   const waiting = entries("local");
   let limited = true;
@@ -267,7 +269,7 @@ test("an offline edit survives reopening and a missing acknowledgement does not 
   online = true;
   transform = (url, body) => url.pathname === "/api/sync/push" ? { ...body, results: [] } : body;
   expect(await a.push(() => {})).toMatchObject({ sent: 1, committed: 0, pulled: 1 });
-  expect(entries("local")).toEqual(waiting);
+  expect(entries("local")).toEqual(waiting.map((entry) => ({ ...entry, attempted: true })));
   expect(a.conflictList()).toEqual([]);
   transform = (_url, body) => body;
   expect(await a.push(() => {})).toMatchObject({ sent: 1, committed: 1, pulled: 0 });
@@ -512,4 +514,95 @@ test("a start resumes past a pending Command that left no commit because it was 
   expect(activeDirectory(working)).toBe(directory);
   expect(mapText(again.store())).toBe("After the no-op");
   expect(entries("noop").map((entry) => entry.commandId)).toContain("noop-1");
+});
+
+test("squash: local push drops a created/deleted node without touching working state", async () => {
+  const a = await client();
+  const initial = a.store().getMapRow("map").state;
+  const next = structuredClone(initial);
+  next.nodes.root.children.push("temporary");
+  next.nodes.temporary = { id: "temporary", parentId: "root", children: [], text: "private", nodeType: "text", collapsed: false };
+  expect(a.store().saveWholeMap("map", next, "human")).toMatchObject({ ok: true });
+  expect(a.store().saveWholeMap("map", initial, "human")).toMatchObject({ ok: true });
+  const working = a.store().getMapRow("map").state;
+  const seq = remote().seq();
+  expect(await a.push(() => {})).toMatchObject({ sent: 0, committed: 0 });
+  expect(remote().seq()).toBe(seq);
+  expect(entries("local")).toEqual([]);
+  expect(a.store().getMapRow("map").state).toEqual(working);
+});
+
+test("squash: three updates push one first-before last-after Command and preserve state", async () => {
+  const a = await client();
+  change(a.store(), "one"); change(a.store(), "two"); change(a.store(), "three");
+  const oldIds = entries("local").map((entry) => entry.commandId);
+  const state = a.store().getMapRow("map").state;
+  let pushed: any[] = [];
+  vi.stubGlobal("fetch", (url: URL, options: RequestInit = {}) => {
+    if (url.pathname === "/api/sync/push") pushed = JSON.parse(String(options.body)).commands;
+    return serve(url, options);
+  });
+  expect(await a.push(() => {})).toMatchObject({ sent: 1, committed: 1 });
+  expect(pushed).toHaveLength(1);
+  expect(oldIds).not.toContain(pushed[0].commandId);
+  expect(pushed[0].command.changes[0]).toMatchObject({ before: { text: "Root" }, after: { text: "three" } });
+  expect(a.store().getMapRow("map").state).toEqual(state);
+  expect(mapText(remote())).toBe("three");
+});
+
+test("squash: lost response survives restart using delta rebase, without a workspace read", async () => {
+  const a = await client();
+  change(a.store(), "one"); change(a.store(), "two");
+  vi.stubGlobal("fetch", async (url: URL, options: RequestInit = {}) => {
+    const result = await serve(url, options);
+    if (url.pathname === "/api/sync/push") throw new Error("lost response");
+    return result;
+  });
+  await expect(a.push(() => {})).rejects.toMatchObject({ code: "REMOTE_UNREACHABLE" });
+  const pending = entries("local");
+  expect(pending).toHaveLength(1);
+  await a.close(); devices = [];
+  const fullRead = vi.spyOn(RecordWorkspaceStore.prototype, "records");
+  vi.stubGlobal("fetch", serve);
+  const restarted = await client();
+  expect(fullRead).not.toHaveBeenCalled();
+  expect(mapText(restarted.store())).toBe("two");
+  expect(entries("local")[0].commandId).toBe(pending[0].commandId);
+  expect(await restarted.push(() => {})).toMatchObject({ committed: 1 });
+  expect(remote().journalLinesAfter(0)!.filter((line) => line.commandId === pending[0].commandId)).toHaveLength(1);
+});
+
+test.each([["viewer", "beta@example.test"], ["mcp", aiAgentAccountId("client-instance")]])("verified login: %s push records %s as issuer, preserving actor", async (kind, expected) => {
+  vi.stubEnv("M3E_TAILSCALE_USERS", "beta@example.test");
+  vi.stubEnv("M3E_SYNC_REMOTE", undefined);
+  const response = await serve(new URL("/api/sync/push", ORIGIN), {
+    method: "POST", headers: { "content-type": "application/json", "tailscale-user-login": "beta@example.test", "x-m3e-connection": kind, "x-m3e-actor-instance": "client-instance" },
+    body: JSON.stringify({ ...remote().syncIdentity(), commands: [{ mapId: "map", commandId: "login-command", baseSeq: 0,
+      command: { commandId: "login-command", actor: { kind: "ai-agent", id: "untrusted-label" }, intent: "edit", changes: [{ kind: "node", key: ["root"], op: "update", before: { text: "Root" }, after: { text: "edited" } }] } }] }),
+  });
+  expect(await response.json()).toMatchObject({ results: [{ status: "committed" }] });
+  expect(remote().journalLinesAfter(0)!.at(-1)).toMatchObject({ issuer: expected, actor: { kind: "ai-agent", id: "untrusted-label" } });
+});
+
+test("verified login: direct viewer and MCP Commands inherit only their own checked request login", async () => {
+  vi.stubEnv("M3E_DATA_DIR", path.join(temp, "viewer"));
+  vi.stubEnv("M3E_SYNC_REMOTE", undefined);
+  vi.stubEnv("M3E_TAILSCALE_USERS", "beta@example.test,other@example.test");
+  const { createAppServer } = await import("../../src/node/start_viewer");
+  const app = createAppServer();
+  const call = async (route: string, body: object, login = "beta@example.test") => {
+    const response = await responseFor(new URL(route, ORIGIN), {
+      method: "POST", headers: { "content-type": "application/json", "tailscale-user-login": login }, body: JSON.stringify(body),
+    }, (req, res) => { app.emit("request", req, res); });
+    const bodyResult = await response.json();
+    expect(response.status, JSON.stringify(bodyResult)).toBe(200);
+    return bodyResult;
+  };
+  await call("/api/maps/map/commands", { commandId: "viewer-login", actor: { kind: "human", id: "actor" }, intent: "edit", changes: [{ kind: "node", key: ["root"], op: "update", before: { text: "Root" }, after: { text: "viewer" } }] });
+  const context = await call("/api/mcp/call", { name: "m3e_context", arguments: { action: "enter", target: "m3e://maps/map" } });
+  await call("/api/mcp/call", { name: "m3e_update", arguments: { kind: "content", context_id: context.context_id, target: "m3e://maps/map/nodes/root", text: "mcp" } }, "other@example.test");
+  // The viewer Command carries the human's login; the MCP Command stays its AI agent's account.
+  const [viewerIssuer, mcpIssuer] = remote().journalLinesAfter(0)!.map((line) => line.issuer);
+  expect(viewerIssuer).toBe("beta@example.test");
+  expect(mcpIssuer).toMatch(/^acct_ai_/);
 });

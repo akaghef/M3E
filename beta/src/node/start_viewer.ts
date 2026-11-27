@@ -15,11 +15,11 @@ import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand } from "./map_commit";
 import { activeRecordStore, closeActiveRecordStoreOnSignal, localModeRemote, localModeStore, startLocalMode } from "./record_store/active";
-import { handleRecordSyncHttp } from "./sync/http";
+import { connectionFromRequest, handleRecordSyncHttp } from "./sync/http";
 import { handleLocalSyncHttp } from "./sync/local_http";
-import { accountForConnection } from "./sync/issuer";
+import { accountForConnection, withVerifiedLogin } from "./sync/issuer";
 import { enforceMinSeq } from "./sync/min_seq";
-import { allowedLogin, movedToRemote, viewerListenOptions } from "./remote_access";
+import { allowedLogin, movedToRemote, listenViewer } from "./remote_access";
 import type { MapCommand } from "../shared/map_changes";
 import { extractScopeView, ScopeViewError, SCOPE_VIEW_HEADER, type ScopeViewInfo } from "../shared/scope_view";
 import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
@@ -4088,7 +4088,7 @@ function startServer(): void {
 
   const server = createAppServer();
 
-  server.listen(viewerListenOptions(PORT), () => {
+  void listenViewer(server, PORT, () => {
     currentFlashJobs();
     const isFirstRun = !fs.existsSync(currentFirstRunMarker());
     const params = new URLSearchParams({ ws: WORKSPACE_ID });
@@ -4102,8 +4102,8 @@ function startServer(): void {
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : PORT;
     const url = `http://localhost:${port}/${DEFAULT_PAGE}${query}`;
-    console.log(`Viewer ready: ${url}`);
-    openBrowser(url);
+    console.log(`Viewer ready: ${typeof address === "string" ? "unix:" + address : url}`);
+    if (typeof address !== "string") openBrowser(url);
     if (isFirstRun) {
       try { fs.writeFileSync(currentFirstRunMarker(), new Date().toISOString()); } catch { /* ignore */ }
     }
@@ -4369,6 +4369,7 @@ export function createAppServer(): http.Server {
       sendJson(res, 403, { ok: false, code: "FORBIDDEN", error: "Tailscale login is not allowed." });
       return;
     }
+    return withVerifiedLogin(connectionFromRequest(req).verifiedLogin, async () => {
     instrumentRequestForPerfLog(req, res);
     if (!tailscaleGateEnabled && redirectLoopbackHost(req, res)) {
       return;
@@ -4611,6 +4612,7 @@ export function createAppServer(): http.Server {
     }
 
     sendFile(res, target);
+    });
   });
   orreryApi.attach(server);
   return server;

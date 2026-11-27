@@ -56,7 +56,7 @@
 - 対象: `beta/src/node/sync/local.ts` の `push()`、sync-requirements R8.1
 - 中身: outbox の Command は、記録した順にそのまま remote へ送られる。push の前に node を作って消すと、作成と削除の 2 件がそれぞれ remote で確定し、journal に載る。続けて行った更新も 1 件ずつ確定する。打ち消されるのは、remote の journal が snapshot に畳み込まれるときだけになる。消した node の本文は一度 remote の journal に載り、畳み込み後も archive に 90 日残る。まとめ方の案は次のとおり。まだ一度も送っていない同じ issuer の連続した Command について、record ごとに作成と削除の組は両方とも落とし、連続する更新は最初の `before` と最後の `after` の 1 件にまとめる。まとめた Command には新しい `commandId` を振る（送信済みの ID で中身を変えると `SAME_ID_DIFFERENT_CONTENT` で拒否されるため）。map の作成・削除・改名をまたいではまとめない。
 - 根拠: `push()` と `rebuild()` を読んだ。push と journal のどちらにも、まとめる処理はない。
-- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。push の前に、まだ送っていない同じ issuer の連続した Command を、中身の項に書いた形でまとめる。未実装
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。実装で解消。push の前に、まだ一度も送っていない同じ issuer の連続した Command を、中身に書いた形でまとめる（`beta/src/node/sync/outbox_squash.ts`）。送ろうとした Command には送信前に印を付けて永続化し、まとめの対象から外す。outbox の書き換えは atomic rename で行う。手間はまだ送っていない Command の数に比例する。試験は `beta/tests/unit/outbox_squash.test.ts` と `local_sync_store.test.ts`（作成と削除の取り消し、更新の集約、応答を失った後の同じ ID の再送）。設計は [local mode の設計](local-mode-design.md) 4 節。
 
 ### 2026-11-25 何も変えない Command が outbox に入り、remote へも送られる
 
@@ -152,7 +152,7 @@
 - 対象: `beta/src/node/remote_access.ts` の `allowedLogin`、`scripts/remote/README.md` のアクセス境界
 - 中身: Mac mini の M3E は 127.0.0.1 だけで待ち受け、`tailscale serve` を通った要求の `Tailscale-User-Login` を許可リストと照合する。tailnet の外から来る偽の header は serve が本物の login で上書きする。一方、mini 上で動く process（Swingby の docker 群など）は 127.0.0.1:4173 に直接つなぎ、この header を自分で付けられる。そうすると workspace 全体を読み書きできる。
 - 根拠: リハーサルで、header の無い loopback 接続が 403、serve 経由の偽 header が本物の login に置き換わることを確かめた。header を付けた loopback 接続は確かめていないが、照合が header だけを見ることはコードから分かる。
-- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。serve と M3E の間を unix socket で閉じる。tailscale serve が unix socket へ転送できない場合は、mini 上の process を信頼するとして、その旨をこの項に書く。未実装
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。実装で解消（mini への適用は別の手順）。`M3E_LISTEN_SOCKET` を指定すると、TCP の port を開かずに、その unix socket だけで待ち受ける。socket は所有者だけが読み書きできる（0600）。起動時には古い socket を消し、終了時にも消す。tailscale serve からは `tailscale serve --bg unix:<path>` で転送する。手順は `scripts/remote/README.md`。同じ OS ユーザーと root の process は、この境界の内側にいる。試験は `beta/tests/unit/remote_socket.test.ts`。
 
 ### 2026-11-23 remote の journal の issuer に、接続した人の login が入らない
 
@@ -161,7 +161,7 @@
 - 対象: `beta/src/node/sync/http.ts` の `connectionFromRequest`、`beta/src/node/sync/issuer.ts`
 - 中身: remote では、照合を通った login（`Tailscale-User-Login`）が分かっているが、viewer からの確定の issuer は接続の種類（viewer）の account のままで、誰が書いたかが journal に残らない。login を issuer に渡す接続点は `connectionFromRequest` である。
 - 根拠: コードを読んだ。
-- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。照合を通った login を issuer に入れる。未実装
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。実装で解消。remote は、許可リストとの照合を通った login を、viewer からの確定の issuer に入れる。MCP からの確定の issuer は、その AI agent の account のままにする。login が無いとき（local モード、header の無い loopback）は従来どおり。新しい欄は足していない。試験は `beta/tests/unit/sync_remote_identity.test.ts` と `local_sync_store.test.ts`。
 
 ### 2026-11-23 remote の map の読み込みを圧縮しない
 

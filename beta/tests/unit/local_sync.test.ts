@@ -343,7 +343,7 @@ describe("local sync with isolated viewer processes", () => {
     await edit(local, "main-root", "Accepted but unknown");
     const pending = outbox(dir);
     expect(await push(local)).toMatchObject({ sent: 1, committed: 0, confirmedSeq: start + 1 });
-    expect(outbox(dir)).toEqual(pending);
+    expect(outbox(dir)).toEqual(pending.map((entry) => ({ ...entry, attempted: true })));
     expect((await status(local)).unsent).toBe(1);
     hideResult = false;
     expect(await push(local)).toMatchObject({ sent: 1, committed: 1, confirmedSeq: start + 1 });

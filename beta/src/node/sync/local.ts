@@ -418,7 +418,7 @@ export class LocalSync {
         next += 1;
         return true;
       });
-      if (!lines || !delta || !matched || !sameSyncIdentity(store.syncIdentity(), this.confirmed.syncIdentity())) {
+      if (!lines || !delta || !sameSyncIdentity(store.syncIdentity(), this.confirmed.syncIdentity())) {
         void store.close();
         return false;
       }
@@ -431,7 +431,8 @@ export class LocalSync {
         this.committedSinceBase.push({ mapId: line.mapId, commandId: line.commandId!, newMapId: line.newMapId });
       }
       // A Command written to the outbox before a stop that came before its local commit.
-      this.replay(store, expected.slice(next));
+      if (matched) this.replay(store, expected.slice(next));
+      else this.pendingChanged = true; // A squash changed IDs; rebase only the tracked delta.
       this.captureInto(store);
       if (delta.length > 0 || this.pendingChanged) this.rebase(delta);
       return true;
@@ -548,7 +549,11 @@ export class LocalSync {
   push(notify: (mapIds: string[]) => void) {
     return this.ordered(async () => {
       await this.probe();
+      const protectedIds = new Set(this.conflicts.keys());
+      if (this.metadata.pushBlocked) protectedIds.add(this.metadata.pushBlocked.commandId);
+      if (this.outbox.squash(protectedIds)) this.pendingChanged = true;
       const pending = this.outbox.list().filter((entry) => !this.conflicts.has(entry.commandId));
+      this.outbox.markAttempted(new Set(pending.map((entry) => entry.commandId)));
       let sent = 0;
       let committed = 0;
       let noOp = 0;

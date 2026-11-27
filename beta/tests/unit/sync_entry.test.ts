@@ -375,7 +375,7 @@ describe("sync HTTP, issuer, and outbox", () => {
     const first = DeviceOutbox.open(file);
     first.append({ commandId: "out-1", baseSeq: 0, mapId: MAP, command: commandOf(state, step, "out-1") });
     first.append({ commandId: "out-2", baseSeq: 0, mapId: MAP, command: commandOf(step, done, "out-2") });
-    first.append({ commandId: "out-3", baseSeq: 0, mapId: MAP, command: commandOf(old, stale, "out-3") });
+    first.append({ commandId: "out-3", baseSeq: 0, mapId: MAP, command: commandOf(old, stale, "out-3", "another-client") });
 
     const reopened = DeviceOutbox.open(file);
     expect(reopened.list().map((entry) => entry.commandId)).toEqual(["out-1", "out-2", "out-3"]);
@@ -418,7 +418,8 @@ describe("sync HTTP, issuer, and outbox", () => {
     const archived = await call("GET", "/api/sync/pull?after=0");
     expect(archived.body.reclone).toBeUndefined();
     expect(archived.body.lines.some((line: { commandId?: string }) => line.commandId === "cmd-a")).toBe(true);
-    expect(archived.body.lines.some((line: { commandId?: string }) => line.commandId === "out-2")).toBe(true);
+    // out-1 and out-2 were squashed into one Command before push; out-4 was pushed alone.
+    expect(archived.body.lines.some((line: { commandId?: string }) => line.commandId === "out-4")).toBe(true);
 
     await stopServer(running);
     const pruning = RecordWorkspaceStore.open(storeDir);

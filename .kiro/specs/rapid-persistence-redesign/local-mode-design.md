@@ -37,13 +37,17 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
 
 ## 4. push（手動）
 
-1. outbox の entry を順に `POST /api/sync/push` へ送る。要求には `workspaceId`・`historyId`・`epoch` を付ける。
+1. まだ送信対象にしていない同じ issuer の連続した Command を record ごとにまとめる。作成と削除は取り除き、更新は各欄の最初の `before` と最後の `after` にする。集約した Command には新しい `commandId` を振る。map の作成・削除・改名・列変更、map・issuer・actor・provenance・reason・confirm の違い、削除後の再作成は境界として元の順序を保つ。conflict・blocked は変更しない。集約後の outbox の entry を順に `POST /api/sync/push` へ送る。要求には `workspaceId`・`historyId`・`epoch` を付ける。
 2. remote は、まず要求全体の照合（R6.2）を行い、食い違えば何も確定せず要求全体を拒否する。
 3. 照合を通れば entry ごとに結果を返す（R6.3）：
    - `committed` / `no-op`（変更後の値と一致）：outbox から外す。内容は次の pull で confirmed に入る。
    - `conflict` / `rejected`：outbox から外し、`sync/conflicts.jsonl` に理由と一緒に移す。黙って捨てない。
    - 通信断・結果不明：outbox に残す。同じ `commandId` で再送する（remote は重複を検出する）。
 4. push の後に pull を行う。
+
+outbox の新しい entry は `attempted: false` を持つ。各 push の全送信対象を最初の送信前に `attempted: true` として永続化する。途中で止まって未送信になった後続も保守的に集約対象から外す。欄がない既存 entry は送信履歴不明として集約しない。送信済み・結果不明の ID と内容は再送時にも変えない。この欄は transport に送らない。集約・送信対象の記録は既存の atomic rename と fsync で outbox 全体を置き換えるため、途中停止時は完全な旧版か新版が残る。処理対象は outbox の pending とその changes だけで、workspace は読まない。
+
+集約自体は working store を書き換えない。集約後の停止で outbox の ID と working journal の ID が違っていても、基点と journal が有効なら変更された record だけを rebase する。
 
 remote 側の追加：map 単位の操作（作成・削除・改名・列）を push で受け付ける。作成済みの map への create、存在しない map への変更は conflict として返す。
 

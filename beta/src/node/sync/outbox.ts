@@ -13,6 +13,7 @@ import { writeFileDurably } from "../record_store/store";
 import type { SyncCommand } from "../record_store/sync_types";
 import { fsyncDir } from "../record_store/journal_archive";
 import type { PushResponse, PushResultItem } from "./push";
+import { squashUnsent } from "./outbox_squash";
 
 export type OutboxEntry = SyncCommand & {
   commandId: string;
@@ -20,6 +21,8 @@ export type OutboxEntry = SyncCommand & {
   createdAt: string;
   mapName?: string;
   issuer?: string;
+  /** false is durable proof of never being sent; absent legacy values are unknown. */
+  attempted?: boolean;
 };
 
 export interface OutboxRejection {
@@ -60,7 +63,7 @@ export class DeviceOutbox {
     if (!input.commandId.trim()) throw new Error("commandId is required.");
     if (!input.mapId.trim()) throw new Error("mapId is required.");
     if (!Number.isInteger(input.baseSeq) || input.baseSeq < 0) throw new Error("baseSeq must be a non-negative integer.");
-    const entry: OutboxEntry = { ...input, createdAt: input.createdAt ?? new Date().toISOString() };
+    const entry: OutboxEntry = { ...input, attempted: false, createdAt: input.createdAt ?? new Date().toISOString() };
     appendJsonLine(this.filePath, entry);
     return entry;
   }
@@ -70,13 +73,34 @@ export class DeviceOutbox {
     return readDurableLines<OutboxEntry>(this.filePath, isEntry);
   }
 
+  squash(protectedIds: ReadonlySet<string> = new Set()): boolean {
+    const before = this.list();
+    const after = squashUnsent(before, protectedIds);
+    if (before.length === after.length && before.every((entry, i) => entry === after[i])) return false;
+    writeFileDurably(this.filePath, after.map((entry) => JSON.stringify(entry) + "\n").join(""));
+    return true;
+  }
+
+  /** Freeze the complete push selection before any network I/O, once per push (O(pending)). */
+  markAttempted(commandIds: ReadonlySet<string>): void {
+    const entries = this.list();
+    let changed = false;
+    for (const entry of entries) if (commandIds.has(entry.commandId) && entry.attempted === false) {
+      entry.attempted = true;
+      changed = true;
+    }
+    if (changed) writeFileDurably(this.filePath, entries.map((entry) => JSON.stringify(entry) + "\n").join(""));
+  }
+
   /**
    * Push the waiting Commands in order. Remove each one the remote committed,
    * duplicated, or rejected. Anything still unknown stays in the file.
    */
   async drain(send: (entries: OutboxEntry[]) => Promise<PushResponse>): Promise<DrainReport> {
+    this.squash();
     const pending = this.list();
     if (pending.length === 0) return { rejected: [] };
+    this.markAttempted(new Set(pending.map((entry) => entry.commandId)));
     const response = await send(pending);
     if (!response || !Array.isArray(response.results)) throw new Error("The push response has no results.");
     const { rejected, done } = settlePushResults(pending, response.results);
@@ -159,7 +183,7 @@ export function appendJsonLine(file: string, value: unknown): void {
   fsyncDir(path.dirname(file));
 }
 
-export function pushEnvelope({ commandId, baseSeq, createdAt: _at, issuer: _issuer, mapName: _name, ...payload }: OutboxEntry) {
+export function pushEnvelope({ commandId, baseSeq, createdAt: _at, issuer: _issuer, mapName: _name, attempted: _attempted, ...payload }: OutboxEntry) {
   return { commandId, baseSeq, ...payload };
 }
 

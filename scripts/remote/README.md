@@ -4,7 +4,7 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
 
 ## Mac mini の初回導入
 
-`swingby` でログインし、統合・検証済みの `dev-beta` がある `/Users/swingby/dev/M3E` を使う。Node.js 22 以降と npm を用意する。対象 workspace は移行済みで、`swingby` が読み書きできる `store/snapshot.jsonl` があることを確認する。同じ store を開く別のプロセスが停止しており、ポート 4173 が空いている状態で実行する。
+`swingby` でログインし、統合・検証済みの `dev-beta` がある `/Users/swingby/dev/M3E` を使う。Node.js 22 以降と npm を用意する。対象 workspace は移行済みで、`swingby` が読み書きできる `store/snapshot.jsonl` があることを確認する。同じ store を開く別のプロセスが停止している状態で実行する。
 
 以下の `data_dir` は移行済み workspace の絶対パスに、`users` は許可する実際の Tailscale ログイン名のカンマ区切りに置き換える。workspace・map の ID とラベルは Beta ランチャーの既定値を入れている。切替前の Beta で値を上書きしていた場合は、テンプレートの対応する `EnvironmentVariables` に同じ値を入れる。
 
@@ -15,13 +15,15 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
   data_dir='/absolute/path/to/migrated/workspace'
   users='you@example.com'
   log_dir=/Users/swingby/Library/Logs/M3E
+  socket_dir=/Users/swingby/.m3e
+  socket_path="$socket_dir/remote-beta.sock"
   node_bin=$(command -v node)
   test "$(id -un)" = swingby
   test -s "$data_dir/store/snapshot.jsonl"
   cd "$checkout"
   npm --prefix beta ci
   npm --prefix beta run build
-  install -d -m 700 "$log_dir"
+  install -d -m 700 "$log_dir" "$socket_dir"
 
   job=$(mktemp)
   trap 'unlink "$job"' EXIT
@@ -32,6 +34,7 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
   plutil -replace EnvironmentVariables.M3E_DATA_DIR -string "$data_dir" "$job"
   plutil -replace EnvironmentVariables.M3E_STORE_DIR -string "$data_dir/store" "$job"
   plutil -replace EnvironmentVariables.M3E_TAILSCALE_USERS -string "$users" "$job"
+  plutil -replace EnvironmentVariables.M3E_LISTEN_SOCKET -string "$socket_path" "$job"
   plutil -replace StandardOutPath -string "$log_dir/remote-beta.log" "$job"
   plutil -replace StandardErrorPath -string "$log_dir/remote-beta.err.log" "$job"
   plutil -lint "$job"
@@ -43,14 +46,25 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
 
 LaunchAgent は `swingby` のログイン session（Mac mini は常時ログインしている）で `start_viewer.js` を直接起動し、`swingby` は sudo にパスワードが要るため LaunchDaemon にはしない。終了時は launchd が再起動する。サンプル生成とブラウザー起動を無効にし、明示した `M3E_STORE_DIR` を開けなければ起動に失敗する。
 
-`lsof` の出力でリスナーが `127.0.0.1:4173` に限られ、`curl` が 403 を返すことを確認してから Serve を設定する。Serve の出力に表示される MagicDNS 名を MacBook で使う。
+`M3E_LISTEN_SOCKET` を設定すると、その unix socket だけを待ち受け、`M3E_HOST`・`M3E_PORT` にかかわらず TCP は開かない。socket は作成時から所有者だけがアクセスでき、待受完了時の mode は 0600。通常終了・SIGINT・SIGTERM・server close で削除する。SIGKILL や電源断で残った stale socket は次回起動時に削除する。使用中の socket、通常ファイル、symlink は上書きしない。親ディレクトリは所有者専用の 0700 とし、macOS の socket path 長制限を避けるため短い絶対パスを使う。
+
+既存の LaunchAgent を切り替える場合は先に `launchctl bootout "gui/$(id -u)/com.m3e.remote-beta"` で止め、上記テンプレートを再生成して bootstrap する。旧 TCP proxy 設定を使っている Serve は socket へ切り替える。以下の確認で TCP 応答が残るなら別プロセスの待受を調べ、切替完了とはしない。
 
 ```sh
-lsof -nP -iTCP:4173 -sTCP:LISTEN
-curl -i http://127.0.0.1:4173/
-tailscale serve --bg --https=443 http://127.0.0.1:4173
+socket_path=/Users/swingby/.m3e/remote-beta.sock
+stat -f '%Lp' "$socket_path"  # 600
+lsof -nP -iTCP:4173 -sTCP:LISTEN  # 出力なし
+if curl --noproxy '*' --connect-timeout 2 -sS http://127.0.0.1:4173/; then
+  echo 'TCP が応答しています。切替未完了。'
+  exit 1
+fi
+# 許可リストのため header なしは 403。socket の到達確認。
+curl --unix-socket "$socket_path" -i http://localhost/
+tailscale serve --bg unix:"$socket_path"
 tailscale serve status
 ```
+
+Serve の出力に表示される MagicDNS 名を MacBook で使う。
 
 tailnet の許可済みユーザーで MacBook のブラウザーから `https://<mini>.<tailnet>.ts.net/` を開き、対象 workspace が表示されることを確認する。
 
@@ -113,4 +127,6 @@ workspace を remote へ移したら、移す前の端末の workspace データ
 
 ## アクセス境界
 
-Serve を唯一の入口として維持する。Mac mini 上で実行されるプロセスは `127.0.0.1:4173` に直接接続でき、`Tailscale-User-Login` を偽装できる。許可リストは workspace 全体と既存 API に対する入口で、許可するのは `swingby` のファイルにアクセスできる範囲まで信頼するログインに限る。既存のローカルファイル API も許可済み接続から呼び出せる。scope ごとの開示制御と journal の issuer へのログイン反映は対象外。
+Serve をネットワークからの唯一の入口として維持する。TCP loopback は待ち受けないため、Mac mini 上の別ユーザーの process が 127.0.0.1:4173 に header を付けて接続する経路はなくなる。socket の所有者である `swingby` と root は socket に直接接続できるため、この二者は引き続き信頼境界の内側である。0600 は同一ユーザーの process を隔離するものではない。
+
+許可リストは workspace 全体と既存 API に対する入口で、許可するのは `swingby` のファイルにアクセスできる範囲まで信頼するログインに限る。既存のローカルファイル API も許可済み接続から呼び出せる。scope ごとの開示制御は対象外。照合した login は viewer／MCP Command の発行者アカウントの識別子として既存の journal `issuer` に記録し、`actor` は呼び出し元のラベルとして保持する。account record を作成する API は現状ないため、account record や新しい journal 欄は追加しない。許可リスト未設定・login header なし・local モードでは従来の issuer の選択を保つ。
