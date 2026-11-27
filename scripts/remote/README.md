@@ -15,15 +15,13 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
   data_dir='/absolute/path/to/migrated/workspace'
   users='you@example.com'
   log_dir=/Users/swingby/Library/Logs/M3E
-  socket_dir=/Users/swingby/.m3e
-  socket_path="$socket_dir/remote-beta.sock"
   node_bin=$(command -v node)
   test "$(id -un)" = swingby
   test -s "$data_dir/store/snapshot.jsonl"
   cd "$checkout"
   npm --prefix beta ci
   npm --prefix beta run build
-  install -d -m 700 "$log_dir" "$socket_dir"
+  install -d -m 700 "$log_dir"
 
   job=$(mktemp)
   trap 'unlink "$job"' EXIT
@@ -34,7 +32,6 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
   plutil -replace EnvironmentVariables.M3E_DATA_DIR -string "$data_dir" "$job"
   plutil -replace EnvironmentVariables.M3E_STORE_DIR -string "$data_dir/store" "$job"
   plutil -replace EnvironmentVariables.M3E_TAILSCALE_USERS -string "$users" "$job"
-  plutil -replace EnvironmentVariables.M3E_LISTEN_SOCKET -string "$socket_path" "$job"
   plutil -replace StandardOutPath -string "$log_dir/remote-beta.log" "$job"
   plutil -replace StandardErrorPath -string "$log_dir/remote-beta.err.log" "$job"
   plutil -lint "$job"
@@ -46,23 +43,16 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
 
 LaunchAgent は `swingby` のログイン session（Mac mini は常時ログインしている）で `start_viewer.js` を直接起動し、`swingby` は sudo にパスワードが要るため LaunchDaemon にはしない。終了時は launchd が再起動する。サンプル生成とブラウザー起動を無効にし、明示した `M3E_STORE_DIR` を開けなければ起動に失敗する。
 
-`M3E_LISTEN_SOCKET` を設定すると、その unix socket だけを待ち受け、`M3E_HOST`・`M3E_PORT` にかかわらず TCP は開かない。socket は作成時から所有者だけがアクセスでき、待受完了時の mode は 0600。通常終了・SIGINT・SIGTERM・server close で削除する。SIGKILL や電源断で残った stale socket は次回起動時に削除する。使用中の socket、通常ファイル、symlink は上書きしない。親ディレクトリは所有者専用の 0700 とし、macOS の socket path 長制限を避けるため短い絶対パスを使う。
-
-既存の LaunchAgent を切り替える場合は先に `launchctl bootout "gui/$(id -u)/com.m3e.remote-beta"` で止め、上記テンプレートを再生成して bootstrap する。旧 TCP proxy 設定を使っている Serve は socket へ切り替える。以下の確認で TCP 応答が残るなら別プロセスの待受を調べ、切替完了とはしない。
+Serve は loopback の TCP へ転送する。
 
 ```sh
-socket_path=/Users/swingby/.m3e/remote-beta.sock
-stat -f '%Lp' "$socket_path"  # 600
-lsof -nP -iTCP:4173 -sTCP:LISTEN  # 出力なし
-if curl --noproxy '*' --connect-timeout 2 -sS http://127.0.0.1:4173/; then
-  echo 'TCP が応答しています。切替未完了。'
-  exit 1
-fi
-# 許可リストのため header なしは 403。socket の到達確認。
-curl --unix-socket "$socket_path" -i http://localhost/
-tailscale serve --bg unix:"$socket_path"
+tailscale serve --bg http://127.0.0.1:4173
 tailscale serve status
 ```
+
+この構成では、Mac mini 上の process は 127.0.0.1:4173 に `Tailscale-User-Login` を付けて直接つなげる。akaghef は 2026-11-27 に、unix socket で閉じられない間は Mac mini 上の process を信頼すると決めた（実装ログの「Mac mini の remote は、mini 上の process からの loopback 接続で login を偽れる」）。
+
+`M3E_LISTEN_SOCKET` に絶対パスを設定すると、M3E はその unix socket だけで待ち受け、`M3E_HOST`・`M3E_PORT` にかかわらず TCP は開かない。socket の mode は 0600 で、通常終了・SIGINT・SIGTERM・server close で消え、SIGKILL や電源断で残った socket は次の起動で消える。使用中の socket、通常ファイル、symlink は上書きしない。ただし Mac mini の Tailscale（`io.tailscale.ipn.macsys` の system extension）は、`tailscale serve --bg unix:<path>` を受け付けても、どの unix socket にも転送できず 502 を返す（`/tmp`、`/Users/Shared`、ホームの下で 2026-11-27 に確かめた）。この版では socket を使わない。sandbox でない `tailscaled` に替えた場合だけ、`M3E_LISTEN_SOCKET` を LaunchAgent に足して Serve を `unix:<path>` へ向け、`lsof -nP -iTCP:4173 -sTCP:LISTEN` が何も出さないことと、MacBook から Serve 越しに開けることを確かめる。
 
 Serve の出力に表示される MagicDNS 名を MacBook で使う。
 

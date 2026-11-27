@@ -152,7 +152,7 @@
 - 対象: `beta/src/node/remote_access.ts` の `allowedLogin`、`scripts/remote/README.md` のアクセス境界
 - 中身: Mac mini の M3E は 127.0.0.1 だけで待ち受け、`tailscale serve` を通った要求の `Tailscale-User-Login` を許可リストと照合する。tailnet の外から来る偽の header は serve が本物の login で上書きする。一方、mini 上で動く process（Swingby の docker 群など）は 127.0.0.1:4173 に直接つなぎ、この header を自分で付けられる。そうすると workspace 全体を読み書きできる。
 - 根拠: リハーサルで、header の無い loopback 接続が 403、serve 経由の偽 header が本物の login に置き換わることを確かめた。header を付けた loopback 接続は確かめていないが、照合が header だけを見ることはコードから分かる。
-- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。実装で解消（mini への適用は別の手順）。`M3E_LISTEN_SOCKET` を指定すると、TCP の port を開かずに、その unix socket だけで待ち受ける。socket は所有者だけが読み書きできる（0600）。起動時には古い socket を消し、終了時にも消す。tailscale serve からは `tailscale serve --bg unix:<path>` で転送する。手順は `scripts/remote/README.md`。同じ OS ユーザーと root の process は、この境界の内側にいる。試験は `beta/tests/unit/remote_socket.test.ts`。
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。決定は「unix socket で閉じる。tailscale serve が unix socket へ転送できない場合は、mini 上の process を信頼する」。M3E 側は実装した（`M3E_LISTEN_SOCKET`、socket は 0600、試験は `beta/tests/unit/remote_socket.test.ts`）。しかし Mac mini の Tailscale（`io.tailscale.ipn.macsys` の system extension）は、`unix:<path>` を受け付けても転送できず、`/tmp`・`/Users/Shared`・ホームの下のどの socket にも 502 を返した（2026-11-27 に mini で確かめた）。そのため決定の分岐に従い、mini は loopback の TCP のままにして、mini 上の process を信頼する。sandbox でない `tailscaled` に替えれば socket で閉じられる（`scripts/remote/README.md`）。
 
 ### 2026-11-23 remote の journal の issuer に、接続した人の login が入らない
 
