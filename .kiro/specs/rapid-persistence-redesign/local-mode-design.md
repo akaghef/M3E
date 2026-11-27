@@ -47,6 +47,10 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
 
 remote 側の追加：map 単位の操作（作成・削除・改名・列）を push で受け付ける。作成済みの map への create、存在しない map への変更は conflict として返す。
 
+transport の実装では、同じ issuer が続く entry を JSON 本文（workspace と世代の照合情報を含む）4,000,000 byte までまとめ、それより大きい単一 Command は分割せず単独で送る。remote の非圧縮 JSON 本文の上限は 32,000,000 byte。上限超過は接続を破棄せず HTTP 413 `PUSH_BODY_TOO_LARGE` と `limitBytes` を返し、何も確定しない。request の `Content-Encoding` は未指定または `identity` のみを受け付ける。
+
+proxy などが batch を 413 で拒否したときは、同じ push 内の batch の上限を縮め、単一 Command でも拒否されるかを確かめる。単独でも拒否されたら、outbox と後続の順序を保持し、同期状態に `push.state: "blocked"`・`code: "PUSH_COMMAND_TOO_LARGE"`・`commandId`・map 名・intent・理由・送信 byte 数・remote が返した上限を出す。状態は `sync/remote.json` に保持し、接続確認が成功しても消さない。push は明示操作で再試行でき、対象 Command の結果が確定したら解除する。journal の記録内容は変えない。これは transport の実装上限であり、K10 の変更対象数・依存数などの未決事項を確定するものではない。
+
 ## 5. pull（手動）
 
 1. `GET /api/sync/pull?after=<confirmedSeq>` に `workspaceId`・`historyId`・`epoch` を付けて要求する。応答も同じ三つを返し、local は食い違えば取り込まない。
@@ -65,7 +69,7 @@ remote 側の追加：map 単位の操作（作成・削除・改名・列）を
 
 ## 7. 同期状態（viewer）
 
-- `GET /api/sync/local/status` → `{mode: "local", remote: {origin, state: "ok" | "unreachable" | "refused"}, unsent, conflicts, confirmedSeq, lastPushAt, lastPullAt}`。remote モードの server は `{mode: "remote"}`。
+- `GET /api/sync/local/status` → `{mode: "local", remote: {origin, state: "ok" | "unreachable" | "refused"}, push: {state: "idle"} | {state: "blocked", code, commandId, mapName, intent, reason, bytes, limitBytes?}, unsent, conflicts, confirmedSeq, lastPushAt, lastPullAt}`。remote モードの server は `{mode: "remote"}`。`push` は transport の状態で、接続状態と独立する。`commandId` は診断用であり GUI の通常表示には使わない。
 - `POST /api/sync/local/push`・`POST /api/sync/local/pull` → 上の手順を実行し、結果の要約（送った件数、確定、conflict、取り込んだ行数）を返す。
 - `GET /api/sync/local/conflicts` → 保全した entry の一覧（map 名・intent・理由・時刻）。
 - viewer：toolbar に同期状態（接続状態・未送信件数・競合件数）と Push / Pull のボタン。表示に ID を出さない。

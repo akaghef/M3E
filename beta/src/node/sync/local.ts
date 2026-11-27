@@ -13,6 +13,7 @@ interface RemoteMetadata extends SyncIdentity {
   confirmedSeq: number;
   lastPushAt: string | null;
   lastPullAt: string | null;
+  pushBlocked?: PushBlocked;
   /**
    * The working store at `workingSeq` holds what the confirmed store holds at `confirmedSeq`;
    * every working commit after it is a pending Command, in outbox order.
@@ -32,8 +33,19 @@ interface Conflict extends OutboxRejection {
 
 type RemoteState = "ok" | "unreachable" | "refused";
 
+interface PushBlocked {
+  state: "blocked";
+  code: "PUSH_COMMAND_TOO_LARGE";
+  commandId: string;
+  mapName: string;
+  intent: string;
+  reason: string;
+  bytes: number;
+  limitBytes?: number;
+}
+
 export class LocalSyncError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) { super(message); }
+  constructor(readonly status: number, readonly code: string, message: string, readonly limitBytes?: number) { super(message); }
 }
 
 function identityOf(body: Partial<SyncIdentity>): SyncIdentity {
@@ -100,6 +112,13 @@ async function request<T>(url: URL, options?: RequestInit): Promise<T> {
   if (GATEWAY_DOWN.has(response.status)) {
     throw new LocalSyncError(503, "REMOTE_UNREACHABLE", "The remote could not be reached.");
   }
+  if (response.status === 413) {
+    // Proxies may return HTML instead of the remote's JSON error.
+    const refusal = await response.json().catch(() => null) as { limitBytes?: unknown } | null;
+    const limit = refusal?.limitBytes;
+    throw new LocalSyncError(413, "PUSH_BODY_TOO_LARGE", "The remote refused the push body size.",
+      typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0 ? limit : undefined);
+  }
   try {
     body = await response.json() as typeof body;
   } catch (error) {
@@ -115,7 +134,7 @@ async function request<T>(url: URL, options?: RequestInit): Promise<T> {
   return body;
 }
 
-/** Request body size for one push, below the remote's 8,000,000-byte limit. */
+/** Target request size, not a Command limit: a larger Command travels alone. */
 const PUSH_BATCH_BYTES = 4_000_000;
 
 function pushHeaders(entry: OutboxEntry): Record<string, string> {
@@ -470,9 +489,12 @@ export class LocalSync {
     return this.ordered(async () => {
       try { await this.probe(); } catch { /* reflected in remoteState */ }
       const { confirmedSeq, lastPushAt, lastPullAt } = this.metadata;
+      const pending = this.pending();
+      const blocked = this.metadata.pushBlocked;
       return {
         mode: "local", remote: { origin: this.origin, state: this.remoteState },
-        unsent: this.outbox.list().filter((entry) => !this.conflicts.has(entry.commandId)).length,
+        unsent: pending.length,
+        push: blocked && pending.some((entry) => entry.commandId === blocked.commandId) ? blocked : { state: "idle" },
         conflicts: this.conflicts.size, confirmedSeq, lastPushAt, lastPullAt,
       };
     });
@@ -533,6 +555,10 @@ export class LocalSync {
       let conflicts = 0;
       const identity = identityOf(this.metadata);
       const done = new Set<string>();
+      // Reuse each serialized batch envelope for byte counting and sending.
+      // Include the fence, JSON punctuation and UTF-8 bytes.
+      const prefix = JSON.stringify(identity).slice(0, -1) + ',"commands":[';
+      let batchLimit = PUSH_BATCH_BYTES;
       try {
         // One request carries a run of Commands from one issuer: the remote takes a list,
         // commits it in order and answers each Command, and the issuer is read from the headers.
@@ -540,18 +566,43 @@ export class LocalSync {
           const headers = pushHeaders(pending[start]!);
           const key = JSON.stringify(headers);
           const batch: OutboxEntry[] = [];
-          let bytes = 0;
+          const envelopes: string[] = [];
+          let bytes = Buffer.byteLength(prefix) + 2;
           for (let i = start; i < pending.length; i += 1) {
             const entry = pending[i]!;
-            const size = Buffer.byteLength(JSON.stringify(pushEnvelope(entry)), "utf8");
-            if (batch.length > 0 && (JSON.stringify(pushHeaders(entry)) !== key || bytes + size > PUSH_BATCH_BYTES)) break;
+            const envelope = JSON.stringify(pushEnvelope(entry));
+            const size = Buffer.byteLength(envelope, "utf8") + (batch.length > 0 ? 1 : 0);
+            if (batch.length > 0 && (JSON.stringify(pushHeaders(entry)) !== key || bytes + size > batchLimit)) break;
             batch.push(entry);
+            envelopes.push(envelope);
             bytes += size;
+            if (bytes >= batchLimit) break;
           }
-          const response = await this.remote<SyncIdentity & { results: PushResultItem[] }>(new URL("/api/sync/push", this.origin), {
-            method: "POST", headers, body: JSON.stringify({ ...identity, commands: batch.map(pushEnvelope) }),
-          });
+          let response: SyncIdentity & { results: PushResultItem[] };
+          try {
+            response = await this.remote(new URL("/api/sync/push", this.origin), {
+              method: "POST", headers, body: prefix + envelopes.join(",") + "]}",
+            });
+          } catch (error) {
+            if (!(error instanceof LocalSyncError) || error.status !== 413) throw error;
+            if (batch.length > 1) {
+              // A proxy/older remote may have a smaller cap. Reduce batches before attributing
+              // the failure to one Command. The threshold only shrinks within this push.
+              batchLimit = Math.max(1, Math.min(Math.floor(bytes / 2), error.limitBytes ?? Infinity));
+              continue;
+            }
+            const entry = batch[0]!;
+            const mapName = entry.mapName || "Map";
+            const reason = `${mapName}: ${entry.command.intent} — ${bytes} bytes; `
+              + (error.limitBytes ? `remote limit ${error.limitBytes} bytes.` : "remote or proxy returned HTTP 413.");
+            this.metadata.pushBlocked = {
+              state: "blocked", code: "PUSH_COMMAND_TOO_LARGE", commandId: entry.commandId,
+              mapName, intent: entry.command.intent, reason, bytes, limitBytes: error.limitBytes,
+            };
+            throw new LocalSyncError(413, "PUSH_COMMAND_TOO_LARGE", reason, error.limitBytes);
+          }
           const result = settlePushResults(batch, Array.isArray(response.results) ? response.results : []);
+          if (this.metadata.pushBlocked && result.done.has(this.metadata.pushBlocked.commandId)) this.metadata.pushBlocked = undefined;
           this.preserve(result.rejected);
           for (const id of result.done) done.add(id);
           sent += batch.length;
@@ -566,6 +617,7 @@ export class LocalSync {
         // Re-read on removal so a local commit made during an HTTP request is retained.
         this.outbox.remove(done);
         if (done.size > 0) this.pendingChanged = true;
+        this.persistMetadata();
       }
       this.metadata.lastPushAt = new Date().toISOString();
       this.persistMetadata();

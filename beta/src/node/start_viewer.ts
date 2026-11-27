@@ -7,6 +7,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import http from "http";
+import { gzip } from "zlib";
 import { createOrreryRuntime } from "./orrery_runtime";
 import { createOrreryApi } from "./orrery_api";
 import { spawnSync, spawn, exec } from "child_process";
@@ -547,7 +548,25 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   if (res.writableEnded) return;
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(payload));
+  const body = JSON.stringify(payload);
+  const vary = String(res.getHeader("Vary") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  if (!vary.some((value) => value === "*" || value.toLowerCase() === "accept-encoding")) vary.push("Accept-Encoding");
+  res.setHeader("Vary", vary.join(", "));
+  const encodings = String(res.req?.headers["accept-encoding"] ?? "").toLowerCase().split(",")
+    .map((item) => item.trim().split(";").map((part) => part.trim()));
+  const accepted = encodings.find(([name]) => name === "gzip") ?? encodings.find(([name]) => name === "*");
+  const quality = accepted?.slice(1).find((part) => part.startsWith("q="))?.slice(2) ?? "1";
+  if (!accepted || !(Number(quality) > 0 && Number(quality) <= 1)) {
+    res.end(body);
+    return;
+  }
+  // Compression runs off the event loop and touches only this response's bytes.
+  gzip(body, (error, compressed) => {
+    if (res.destroyed || res.writableEnded) return;
+    if (error) { res.end(body); return; }
+    res.setHeader("Content-Encoding", "gzip");
+    res.end(compressed);
+  });
 }
 
 function isArtifactApiRoute(urlPath: string): boolean {

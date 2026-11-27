@@ -140,9 +140,9 @@
 - 種類: 問題
 - 書いた agent: local モード実装
 - 対象: `beta/src/node/sync/http.ts`、[同期の要件](sync-requirements.md) K10
-- 中身: local は Command ごとに送る。push のリクエストには既存の 8,000,000 byte の上限があり、単一 Command がそれを超えると確定できず outbox に残る。
-- 根拠: push の HTTP body 上限と local の送信処理を照合した。上限超過の実送信は未確認。
-- 扱い: 未対応
+- 中身: local は同じ issuer の Command をまとめて送る。単一 Command が push の受付上限を超える場合にも、outbox を保持し、止まっている Command と理由を同期状態で確認できる必要がある。
+- 根拠: `beta/tests/unit/local_sync_store.test.ts` の `transport A1: pushes and confirms a single Command above the batch and former request caps`、`transport A2: reports PUSH_COMMAND_TOO_LARGE, preserves order and retains blocked status after restart`、`transport retries smaller batches after a proxy 413 and clears blocked status only after settlement`。A1 は 9,000,000 byte の値を単一 Command として確定し、A2 は 32,000,000 byte の本文上限超過で停止理由・後続の順序・再起動後の状態を検証する。変更前の origin/dev-beta では A1・A2 が失敗し、変更後は合格。実 HTTP handler をプロセス内で通した。socket を使う既存試験は sandbox の listen EPERM により未検証。
+- 扱い: transport の実装で解消。通常の batch は本文全体で 4,000,000 byte まで、大きい Command は単独送信し、remote は非圧縮 JSON 本文を 32,000,000 byte まで受け付ける。413 は接続破棄ではなく明示応答になり、単独送信の拒否は同期状態 API の `push.state: blocked` / `PUSH_COMMAND_TOO_LARGE` として map 名・intent・理由・Command の識別情報を保持する。後続は追い越さず、手動再試行で結果が確定すれば解除する。Command の分割と journal の変更はない。K10 の変更対象数・依存数などは未決のまま。viewer の表示追加は本変更の範囲外。
 
 
 ### 2026-11-23 Mac mini の remote は、mini 上の process からの loopback 接続で login を偽れる
@@ -169,8 +169,8 @@
 - 書いた agent: 3 端末同期の段階 1 を進める session
 - 対象: `beta/src/node/start_viewer.ts` の map 読み込みの応答
 - 中身: 20,150 node の map（約 8 MB の JSON）を Tailscale 越しに読むと 1.2〜1.7 秒かかる。同じ map を手元の server から読むと 0.1 秒である。`Accept-Encoding: gzip` を送っても、圧縮しない応答が返る。自宅 LAN の外から DERP 経由でつなぐと、さらに遅くなりうる。
-- 根拠: リハーサルの remote と手元の server に curl で計測した。
-- 扱い: 未対応
+- 根拠: 遅延はリハーサル時の curl 計測。圧縮の回帰試験は `beta/tests/unit/local_sync_store.test.ts` の `transport B1: map load negotiates gzip and decompresses to the exact uncompressed response` と `transport B2: map load without Accept-Encoding keeps the original JSON body`。B1 は origin/dev-beta で Content-Encoding が無く失敗し、変更後は合格。B2 は前後とも合格し、ヘッダーなし・gzip;q=0 の非圧縮応答を確認する。実 map route をプロセス内で通した。Tailscale 越しの再計測はしていない。
+- 扱い: 実装で解消。map 読み込みと共通の JSON 応答 helper が Accept-Encoding を照合し、gzip を許す要求には Node.js 組み込み zlib の非同期 gzip と Content-Encoding: gzip、Vary: Accept-Encoding を返す。展開後の本文は非圧縮応答と byte 単位で同じ。ヘッダーなし・gzip を拒否した要求では従来の JSON 本文を返す。圧縮の処理量は当該応答の byte 数に比例する。
 
 ### 2026-11-22 削除した node の本文が commit-index.json に上限なく積もる
 

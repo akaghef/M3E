@@ -3,6 +3,7 @@ import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { closeActiveRecordStore, activeRecordStore, startLocalMode } from "../../src/node/record_store/active";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
@@ -59,6 +60,7 @@ function responseFor(
   url: URL, options: RequestInit,
   dispatch: (req: http.IncomingMessage, res: http.ServerResponse) => void,
   rewrite: (url: URL, response: any) => unknown = (_url, body) => body,
+  raw = false,
 ): Promise<Response> {
   const req = Object.assign(Readable.from(options.body ? [Buffer.from(String(options.body))] : []), {
     url: url.pathname + url.search, method: options.method ?? "GET", headers: { host: url.host, ...options.headers }, socket: { remoteAddress: "127.0.0.1" },
@@ -66,11 +68,13 @@ function responseFor(
   const headers = new Headers();
   return new Promise<Response>((resolve) => {
     const res = {
-      statusCode: 200, headersSent: false, writableEnded: false,
+      req, statusCode: 200, headersSent: false, writableEnded: false,
       setHeader(key: string, value: string) { headers.set(key, value); },
-      end(value: string) {
+      getHeader(key: string) { return headers.get(key) ?? undefined; },
+      end(value: string | Buffer) {
         this.writableEnded = true;
-        const body = rewrite(url, JSON.parse(value));
+        if (raw) { resolve(new Response(value, { status: this.statusCode, headers })); return; }
+        const body = rewrite(url, JSON.parse(String(value)));
         resolve(new Response(JSON.stringify(body), { status: this.statusCode, headers }));
       },
     };
@@ -103,6 +107,115 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test("transport A1: pushes and confirms a single Command above the batch and former request caps", async () => {
+  const a = await client();
+  const text = "大".repeat(3_000_000); // 9 MB UTF-8, beyond the former 8 MB request cap.
+  change(a.store(), text);
+  a.store().setMapColumns("map", { tags: ["after-large"] }, "human");
+  const waiting = entries("local");
+  const requests: number[] = [];
+  vi.stubGlobal("fetch", (url: URL, options: RequestInit = {}) => {
+    if (url.pathname === "/api/sync/push") requests.push(JSON.parse(String(options.body)).commands.length);
+    return serve(url, options);
+  });
+  expect(await a.push(() => {})).toMatchObject({ sent: 2, committed: 2, conflicts: 0 });
+  expect(requests).toEqual([1, 1]);
+  expect(entries("local")).toEqual([]);
+  expect(mapText(remote())).toBe(text);
+  expect(remote().journalLinesAfter(waiting[0].baseSeq)!.map((line) => line.commandId)).toEqual(waiting.map((entry) => entry.commandId));
+  expect((await a.status()).unsent).toBe(0);
+});
+
+test("transport A2: reports PUSH_COMMAND_TOO_LARGE, preserves order and retains blocked status after restart", async () => {
+  const a = await client();
+  // Keep the map's human-readable name small; the oversized value is a node detail.
+  const state = a.store().getMapRow("map").state;
+  state.nodes.root.details = "x".repeat(32_000_000);
+  expect(a.store().saveWholeMap("map", state, "human")).toMatchObject({ ok: true });
+  a.store().setMapColumns("map", { tags: ["must-wait"] }, "human");
+  const waiting = entries("local");
+  await expect(a.push(() => {})).rejects.toMatchObject({ status: 413, code: "PUSH_COMMAND_TOO_LARGE" });
+  const expected = {
+    unsent: 2, push: { state: "blocked", commandId: waiting[0].commandId,
+      mapName: waiting[0].mapName, intent: waiting[0].command.intent,
+      code: "PUSH_COMMAND_TOO_LARGE", limitBytes: 32_000_000, reason: expect.any(String) },
+  };
+  expect(await a.status()).toMatchObject(expected);
+  expect(entries("local")).toEqual(waiting);
+  expect(remote().journalLinesAfter(waiting[0].baseSeq)).toEqual([]);
+  await a.close();
+  devices.splice(devices.indexOf(a), 1);
+  const restarted = await client();
+  expect(await restarted.status()).toMatchObject(expected);
+}, 60_000);
+
+test("transport retries smaller batches after a proxy 413 and clears blocked status only after settlement", async () => {
+  const a = await client();
+  change(a.store(), "First");
+  const state = a.store().getMapRow("map").state;
+  state.nodes.root.details = "x".repeat(3_000);
+  expect(a.store().saveWholeMap("map", state, "human")).toMatchObject({ ok: true });
+  a.store().setMapColumns("map", { tags: ["last"] }, "human");
+  const waiting = entries("local");
+  let limited = true;
+  const accepted: string[] = [];
+  vi.stubGlobal("fetch", async (url: URL, options: RequestInit = {}) => {
+    if (url.pathname === "/api/sync/push") {
+      if (limited && Buffer.byteLength(String(options.body)) > 2_000) return new Response("Too large", { status: 413 });
+      accepted.push(...JSON.parse(String(options.body)).commands.map((entry: any) => entry.commandId));
+    }
+    return serve(url, options);
+  });
+  await expect(a.push(() => {})).rejects.toMatchObject({ code: "PUSH_COMMAND_TOO_LARGE" });
+  expect(accepted).toEqual([waiting[0].commandId]);
+  expect(await a.status()).toMatchObject({ unsent: 2, push: { state: "blocked", commandId: waiting[1].commandId } });
+  await expect(a.push(() => {})).rejects.toMatchObject({ code: "PUSH_COMMAND_TOO_LARGE" });
+  expect(accepted).toEqual([waiting[0].commandId]);
+  limited = false;
+  expect(await a.push(() => {})).toMatchObject({ committed: 2 });
+  expect(accepted).toEqual(waiting.map((entry) => entry.commandId));
+  expect(await a.status()).toMatchObject({ unsent: 0, push: { state: "idle" } });
+});
+
+async function rawMapResponse(acceptEncoding?: string) {
+  vi.stubEnv("M3E_DATA_DIR", path.join(temp, "viewer"));
+  vi.stubEnv("M3E_TAILSCALE_USERS", undefined);
+  const { createAppServer } = await import("../../src/node/start_viewer");
+  const app = createAppServer();
+  return responseFor(new URL("/api/maps/map", ORIGIN), {
+    headers: acceptEncoding === undefined ? {} : { "accept-encoding": acceptEncoding },
+  }, (req, res) => { app.emit("request", req, res); }, (_url, body) => body, true);
+}
+
+test("transport B1: map load negotiates gzip and decompresses to the exact uncompressed response", async () => {
+  remote().saveWholeMap("map", appState("Root".repeat(300_000)), "human");
+  const plain = await rawMapResponse();
+  const compressed = await rawMapResponse("gzip");
+  expect(compressed.status).toBe(200);
+  expect(compressed.headers.get("content-encoding")).toBe("gzip");
+  expect(compressed.headers.get("vary")).toContain("Accept-Encoding");
+  const bytes = Buffer.from(await compressed.arrayBuffer());
+  const original = Buffer.from(await plain.arrayBuffer());
+  expect(bytes.length).toBeLessThan(original.length);
+  expect(gunzipSync(bytes)).toEqual(original);
+});
+
+test("transport B2: map load without Accept-Encoding keeps the original JSON body", async () => {
+  const plain = await rawMapResponse();
+  expect(plain.status).toBe(200);
+  expect(plain.headers.get("content-encoding")).toBeNull();
+  expect(plain.headers.get("content-type")).toBe("application/json; charset=utf-8");
+  const body = await plain.text();
+  const doc = JSON.parse(body);
+  expect(body).toBe(JSON.stringify(doc));
+  expect(doc.state.nodes.root.text).toBe("Root");
+  for (const encoding of ["gzip;q=0", "br", "gzip;q=0, *;q=1"]) {
+    const refused = await rawMapResponse(encoding);
+    expect(refused.headers.get("content-encoding")).toBeNull();
+    expect(await refused.text()).toBe(body);
+  }
 });
 
 test("local content and map operations enter the outbox and converge through the remote push and pull handlers", async () => {
