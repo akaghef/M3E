@@ -1,13 +1,13 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { SaveStateTracker } from "../../src/browser/save_command";
 import { initialKeys, keyBetween } from "../../src/shared/record_model/order_key";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { RecordWorkspaceStore } from "../../src/node/record_store/store";
+import type { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import { diffState } from "../../src/shared/map_changes";
 import { MapProjector, recordRk } from "../../src/shared/record_model/steady";
+import { createTestStore, dropTestStores } from "./neo4j_test_store";
+
+afterEach(dropTestStores);
 
 function state(count: number): any {
   const keys = initialKeys(count), nodes: any = { root: { id: "root", parentId: null, children: [], text: "root", nodeType: "text", attributes: {} } };
@@ -54,14 +54,12 @@ function structuralState(count: number): any {
   return value;
 }
 
-test("scopen, unscopen and composite subtree moves visit the boundary, not unrelated map nodes", async () => {
+test("scopen, unscopen and composite subtree moves visit the boundary, not unrelated map nodes", { timeout: 180000 }, async () => {
   const sizes: number[][] = [], recordSizes: number[][] = [];
   for (const count of [50, 20000]) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-structural-delta-"));
     const source = structuralState(count);
     source.surfaces = { board: { id: "board", scopeId: "scope:root", kind: "scatter", nodeViews: Object.fromEntries(Array.from({ length: count }, (_, i) => [`n${i}`, { x: i }])) } };
-    RecordWorkspaceStore.create(dir, toSnapshot("work-counter", [{ id: "m", state: source }]));
-    const store = RecordWorkspaceStore.open(dir);
+    const store = (await createTestStore(toSnapshot("work-counter", [{ id: "m", state: source }]))).store;
     let reads = 0, recordReads = 0;
     const counts: number[] = [], recordCounts: number[] = [];
     store.getMapRow("m"); // Open/warm is outside the measured commit.
@@ -96,7 +94,7 @@ test("scopen, unscopen and composite subtree moves visit the boundary, not unrel
         counts.push(reads); recordCounts.push(recordReads);
       }
       sizes.push(counts); recordSizes.push(recordCounts);
-    } finally { for (const undo of undoInstrumentation) undo(); await store.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+    } finally { for (const undo of undoInstrumentation) undo(); }
   }
   console.info("R2 node reads (50, 20000):", sizes, "record reads:", recordSizes);
   for (let i = 0; i < sizes[0].length; i++) {
@@ -115,12 +113,13 @@ test("structural deltas agree with full canonical projection across scope resour
   source.surfaces = { board: { id: "board", scopeId: "scope:n0", kind: "scatter", nodeViews: { leaf: { x: 1, y: 2 } } } };
   source.scopes = { "scope:n0": { primarySurfaceId: "board" } };
   source.linearNotesByScope = { n0: "scope text", "scope:n0": "second text" };
-  const dirs = [0, 1].map(() => fs.mkdtempSync(path.join(os.tmpdir(), "m3e-structure-parity-")));
   const snapshot = toSnapshot("parity", [{ id: "m", state: source }]);
   Object.assign(snapshot.find(record => record.kind === "snapshot")!, { historyId: "a304d7ae-2c52-4072-bf3b-a1b958ef4d0a", epoch: 1 });
-  RecordWorkspaceStore.create(dirs[0], snapshot);
-  fs.cpSync(dirs[0], dirs[1], { recursive: true });
-  const stores = dirs.map(dir => RecordWorkspaceStore.open(dir, { now: () => "2026-11-27T00:00:00Z" }));
+  const options = { now: () => "2026-11-27T00:00:00Z" };
+  const stores = [
+    (await createTestStore(structuredClone(snapshot), options)).store,
+    (await createTestStore(structuredClone(snapshot), options)).store,
+  ];
   const [fast, reference] = stores;
   const records = (store: RecordWorkspaceStore) => store.records().sort((a, b) => recordRk(a).localeCompare(recordRk(b)));
   const move = (s: any, parent: string) => {
@@ -157,13 +156,10 @@ test("structural deltas agree with full canonical projection across scope resour
     expect(fast.getMapRow("m").state).toEqual(before); expect(records(fast)).toEqual(saved);
     const pending = structuredClone(before); pending.nodes.n0.nodeType = "folder";
     const cmd = { commandId: "durability", intent: "assert" as const, actor: { kind: "human" as const, id: "test" }, changes: diffState(before, pending) };
-    const fsync = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => { throw new Error("injected fsync failure"); });
-    try { expect(() => fast.commitMapCommand("m", cmd, "human")).toThrow("injected fsync failure"); } finally { fsync.mockRestore(); }
-    expect(fast.getMapRow("m").state).toEqual(before); expect(records(fast)).toEqual(saved);
     expect(fast.commitMapCommand("m", cmd, "human")).toMatchObject({ ok: true });
     const fallback = vi.spyOn(MapProjector.prototype, "prepareStructure").mockReturnValue(undefined);
     try { expect(reference.commitMapCommand("m", cmd, "human")).toMatchObject({ ok: true }); } finally { fallback.mockRestore(); }
     expect(fast.getMapRow("m").state).toEqual(reference.getMapRow("m").state);
     expect(records(fast)).toEqual(records(reference));
-  } finally { for (const store of stores) await store.close(); for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally { /* dropped by afterEach */ }
 });

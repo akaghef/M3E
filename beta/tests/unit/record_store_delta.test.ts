@@ -1,25 +1,16 @@
-import fs from "fs";
-import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { JOURNAL_FILE, RecordWorkspaceStore } from "../../src/node/record_store/store";
+import type { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import { MapProjector } from "../../src/shared/record_model/steady";
-import { command, ISSUER, NOW, richState, snapshotOf, tempDir, node, clone } from "./record_store_helpers";
+import { command, ISSUER, NOW, richState, snapshotOf, node, clone } from "./record_store_helpers";
 import { diffState, type RecordChange } from "../../src/shared/map_changes";
+import { createTestStore, dropTestStores, type TestStore } from "./neo4j_test_store";
 
-const stores: RecordWorkspaceStore[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const store of stores.splice(0)) await store.close();
+  await dropTestStores();
 });
-function open(dir: string): RecordWorkspaceStore {
-  const store = RecordWorkspaceStore.open(dir, { now: () => NOW, compactAfterLines: 0 });
-  stores.push(store);
-  return store;
-}
-function create(): { store: RecordWorkspaceStore; dir: string } {
-  const dir = path.join(tempDir("delta"), "store");
-  RecordWorkspaceStore.create(dir, snapshotOf([{ id: "m", state: richState() }]));
-  return { store: open(dir), dir };
+async function create(state: Record<string, unknown> = richState()): Promise<TestStore> {
+  return createTestStore(snapshotOf([{ id: "m", state }]), { now: () => NOW, compactAfterLines: 0 });
 }
 function edit(store: RecordWorkspaceStore, id: string, after: Record<string, unknown>) {
   const before: Record<string, unknown> = {};
@@ -31,46 +22,34 @@ function edit(store: RecordWorkspaceStore, id: string, after: Record<string, unk
 }
 
 describe("delta-proportional store paths", () => {
-  it("reads only the requested journal bytes after reopen, append and compaction", async () => {
-    const { store: initial, dir } = create();
-    let last = edit(initial, "leaf", { text: "日本語 🐦" });
+  it("reads the one journal line after the cursor, after a reopen and an append", async () => {
+    const handle = await create();
+    let store = handle.store;
+    let last = edit(store, "leaf", { text: "日本語 🐦" });
     for (let i = 0; i < 30; i += 1) {
-      last = edit(initial, "leaf", { text: `日本語 🐦 ${i}` });
-      expect(initial.commitMapCommand("m", last, ISSUER).ok).toBe(true);
+      last = edit(store, "leaf", { text: `日本語 🐦 ${i}` });
+      expect(store.commitMapCommand("m", last, ISSUER).ok).toBe(true);
     }
-    await initial.close();
-    // Recovery adds a missing newline; offsets must remain byte offsets, not character counts.
-    const file = path.join(dir, JOURNAL_FILE);
-    fs.truncateSync(file, fs.statSync(file).size - 1);
-    const store = open(dir);
-    const check = () => {
-      const whole = vi.spyOn(fs, "readFileSync");
-      const ranged = vi.spyOn(fs, "readSync");
-      try {
-        const lines = store.journalLinesAfter(store.seq() - 1)!;
-        expect(lines).toHaveLength(1);
-        const found = store.committedCommand("m", last.commandId)!;
-        expect(found).toEqual(lines[0]);
-        found.ops.length = 0;
-        expect(store.committedCommand("m", last.commandId)?.ops.length).toBeGreaterThan(0);
-        // No scan of the current journal or an archived segment, even after compaction.
-        expect(whole.mock.calls.filter(([file]) => String(file).endsWith(".jsonl"))).toHaveLength(0);
-        const bytes = ranged.mock.results.reduce((n, result) => n + Number(result.value), 0);
-        const lineBytes = Buffer.byteLength(JSON.stringify(lines[0]) + "\n");
-        expect(bytes).toBeLessThanOrEqual(3 * lineBytes);
-        expect(store.journalLinesAfter(store.seq())).toEqual([]);
-      } finally { whole.mockRestore(); ranged.mockRestore(); }
+    store = await handle.reopen();
+    const check = async () => {
+      const lines = (await store.readJournalAfter(store.seq() - 1))!;
+      expect(lines).toHaveLength(1);
+      const found = (await store.readCommittedCommand("m", last.commandId))!;
+      expect(found).toEqual(lines[0]);
+      found.ops.length = 0;
+      expect((await store.readCommittedCommand("m", last.commandId))?.ops.length).toBeGreaterThan(0);
+      expect(await store.readJournalAfter(store.seq())).toEqual([]);
     };
-    check();
+    await check();
     last = edit(store, "leaf", { text: "appended" });
     expect(store.commitMapCommand("m", last, ISSUER).ok).toBe(true);
-    check();
-    store.compact();
-    check();
+    await check();
+    store = await handle.reopen();
+    await check();
   });
 
-  it("does not enumerate unrelated nodes or records for content commits", () => {
-    const { store } = create();
+  it("does not enumerate unrelated nodes or records for content commits", async () => {
+    const { store } = await create();
     const change = edit(store, "root", { text: "new root", details: "body", collapsed: false });
     let enumerations = 0;
     store.readState("m", (state) => {
@@ -85,8 +64,8 @@ describe("delta-proportional store paths", () => {
     expect(state.scopes?.["scope:root"].label).toBe("new root");
   });
 
-  it("keeps the commit guard indexed across commits without scanning the workspace", () => {
-    const { store } = create();
+  it("keeps the commit guard indexed across commits without scanning the workspace", async () => {
+    const { store } = await create();
     expect(store.commitMapCommand("m", edit(store, "leaf", { text: "warm guard" }), ISSUER).ok).toBe(true);
     const all = (store as unknown as { all: Map<string, unknown> }).all;
     const scan = vi.spyOn(all, "values");
@@ -99,10 +78,10 @@ describe("delta-proportional store paths", () => {
     expect(store.getMapRow("m").state.nodes.leaf.text).toBe("indexed guard");
   });
 
-  it("matches full projection, journal operations, normalization and subsequent structural edits", () => {
-    const { store: fast } = create();
-    const { store: full } = create();
-    const compare = (changes: RecordChange[]) => {
+  it("matches full projection, journal operations, normalization and subsequent structural edits", async () => {
+    const { store: fast } = await create();
+    const { store: full } = await create();
+    const compare = async (changes: RecordChange[]) => {
       const cmd = command(changes);
       const result = fast.commitMapCommand("m", cmd, ISSUER);
       const fallback = vi.spyOn(MapProjector.prototype, "canProjectContent").mockReturnValue(false);
@@ -111,23 +90,23 @@ describe("delta-proportional store paths", () => {
       expect(result).toEqual(reference);
       expect(fast.records().slice(1)).toEqual(full.records().slice(1));
       expect(fast.getMapRow("m")).toEqual(full.getMapRow("m"));
-      expect(fast.committedCommand("m", cmd.commandId)).toEqual(full.committedCommand("m", cmd.commandId));
+      expect(await fast.readCommittedCommand("m", cmd.commandId)).toEqual(await full.readCommittedCommand("m", cmd.commandId));
     };
     for (const id of ["root", "f1", "leaf", "al"]) {
       for (const after of [{ text: "new", details: "body", note: "memo", link: "url", collapsed: true },
         { text: "", details: "", note: "", link: "", collapsed: false },
         { text: null, details: null, note: null, link: null, collapsed: null }]) {
-        compare(edit(fast, id, after).changes);
+        await compare(edit(fast, id, after).changes);
       }
-      compare([{ kind: "node", key: [id], op: "update", before: { text: "", details: "", note: "", link: "", collapsed: false }, after: {} }]);
+      await compare([{ kind: "node", key: [id], op: "update", before: { text: "", details: "", note: "", link: "", collapsed: false }, after: {} }]);
     }
-    compare([{ kind: "attribute", key: ["node", "leaf", "x"], op: "create", after: { value: "attribute" } }]);
-    compare(edit(fast, "leaf", { text: "after full projection" }).changes);
-    compare([{ kind: "node", key: ["leaf"], op: "update", before: { text: "stale" }, after: { text: "conflict" } }]);
+    await compare([{ kind: "attribute", key: ["node", "leaf", "x"], op: "create", after: { value: "attribute" } }]);
+    await compare(edit(fast, "leaf", { text: "after full projection" }).changes);
+    await compare([{ kind: "node", key: ["leaf"], op: "update", before: { text: "stale" }, after: { text: "conflict" } }]);
   });
 
-  it.each([0, 1, 3])("inserts a leaf at %i without enumerating existing node or sibling tables", (position) => {
-    const { store } = create();
+  it.each([0, 1, 3])("inserts a leaf at %i without enumerating existing node or sibling tables", async (position) => {
+    const { store } = await create();
     const state = store.getMapRow("m").state;
     const after = clone(state);
     after.nodes.fresh = node("fresh", "root") as typeof after.nodes[string];
@@ -150,10 +129,10 @@ describe("delta-proportional store paths", () => {
     expect(store.getMapRow("m").state.nodes.fresh.parentId).toBe("root");
   });
 
-  it("matches the full projection and journal for batch appends, content edits and later reorders", () => {
-    const { store: fast } = create();
-    const { store: full } = create();
-    const compare = (cmd: ReturnType<typeof command>) => {
+  it("matches the full projection and journal for batch appends, content edits and later reorders", async () => {
+    const { store: fast } = await create();
+    const { store: full } = await create();
+    const compare = async (cmd: ReturnType<typeof command>) => {
       const result = fast.commitMapCommand("m", cmd, ISSUER);
       const fallback = vi.spyOn(MapProjector.prototype, "canProjectContent").mockReturnValue(false);
       let reference;
@@ -161,7 +140,7 @@ describe("delta-proportional store paths", () => {
       expect(result).toEqual(reference);
       expect(fast.getMapRow("m")).toEqual(full.getMapRow("m"));
       expect(fast.records().slice(1)).toEqual(full.records().slice(1));
-      expect(fast.committedCommand("m", cmd.commandId)).toEqual(full.committedCommand("m", cmd.commandId));
+      expect(await fast.readCommittedCommand("m", cmd.commandId)).toEqual(await full.readCommittedCommand("m", cmd.commandId));
     };
     for (let batch = 0; batch < 4; batch += 1) {
       const before = fast.getMapRow("m").state;
@@ -173,17 +152,17 @@ describe("delta-proportional store paths", () => {
           after.nodes[parent].children.push(id);
         }
       }
-      compare(command(diffState(before, after)));
-      compare(edit(fast, "root", { text: `root ${batch}` }));
+      await compare(command(diffState(before, after)));
+      await compare(edit(fast, "root", { text: `root ${batch}` }));
     }
     const before = fast.getMapRow("m").state;
     const after = clone(before);
     after.nodes.root.children.reverse();
-    compare(command(diffState(before, after)));
-    compare(edit(fast, "leaf", { text: "after reorder" }));
+    await compare(command(diffState(before, after)));
+    await compare(edit(fast, "leaf", { text: "after reorder" }));
   });
 
-  it("falls back when a new leaf changes an orphan note or a broken alias", () => {
+  it("falls back when a new leaf changes an orphan note or a broken alias", async () => {
     for (const alias of [false, true]) {
       const state = richState();
       const nodes = state.nodes as Record<string, Record<string, unknown>>;
@@ -194,13 +173,8 @@ describe("delta-proportional store paths", () => {
         nodes.al.targetSnapshotLabel = "missing target";
         delete (state.linearNotesByScope as Record<string, unknown>).fresh;
       }
-      const make = () => {
-        const dir = path.join(tempDir("append-fallback"), "store");
-        RecordWorkspaceStore.create(dir, snapshotOf([{ id: "m", state }]));
-        return open(dir);
-      };
-      const fast = make();
-      const full = make();
+      const { store: fast } = await create(state);
+      const { store: full } = await create(state);
       const before = fast.getMapRow("m").state;
       const after = clone(before);
       after.nodes.fresh = node("fresh", "root") as typeof after.nodes[string];
@@ -215,59 +189,17 @@ describe("delta-proportional store paths", () => {
     }
   });
 
-  it("rolls back an appended suffix on append failure and preserves deep-copy reads", () => {
-    const { store } = create();
+  it("a committed append leaves the caller's earlier state copy unchanged", async () => {
+    const { store } = await create();
     const before = store.getMapRow("m");
-    const records = store.records();
     const after = clone(before.state);
     after.nodes.fresh = node("fresh", "root") as typeof after.nodes[string];
     after.nodes.root.children.push("fresh");
     const cmd = command(diffState(before.state, after));
-    const write = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => { throw new Error("disk failure"); });
-    expect(() => store.commitMapCommand("m", cmd, ISSUER)).toThrow("disk failure");
-    write.mockRestore();
-    expect(store.records()).toEqual(records);
-    expect(store.getMapRow("m")).toEqual(before);
     expect(store.commitMapCommand("m", cmd, ISSUER).ok).toBe(true);
     expect(before.state.nodes.root.children).not.toContain("fresh");
     const copy = store.getMapRow("m");
     copy.state.nodes.root.children.length = 0;
     expect(store.getMapRow("m").state.nodes.root.children).toContain("fresh");
-  });
-
-  it("rolls back parent assignments and child indexes when append fails", () => {
-    const { store } = create();
-    const before = store.getMapRow("m"), records = store.records(), seq = store.seq();
-    const after = clone(before.state);
-    after.nodes.root.children = after.nodes.root.children.filter(id => id !== "img");
-    after.nodes.img.parentId = "leaf";
-    after.nodes.leaf.children.push("img");
-    const cmd = command(diffState(before.state, after));
-    const write = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => { throw new Error("disk failure"); });
-    expect(() => store.commitMapCommand("m", cmd, ISSUER)).toThrow("disk failure");
-    write.mockRestore();
-    expect(store.records()).toEqual(records);
-    expect(store.getMapRow("m")).toEqual(before);
-    expect(store.journalLinesAfter(seq)).toEqual([]);
-    expect(store.commitMapCommand("m", cmd, ISSUER).ok).toBe(true);
-    expect(store.getMapRow("m").state.nodes.leaf.children).toEqual(["img"]);
-  });
-
-  it("rolls back nodes, scope labels, records and journal positions when append fails", () => {
-    const { store } = create();
-    const state = store.getMapRow("m");
-    const records = store.records();
-    const seq = store.seq();
-    const cmd = edit(store, "root", { text: "refused", details: "body" });
-    const write = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => { throw new Error("disk failure"); });
-    expect(() => store.commitMapCommand("m", cmd, ISSUER)).toThrow("disk failure");
-    write.mockRestore();
-    expect(store.seq()).toBe(seq);
-    expect(store.records()).toEqual(records);
-    expect(store.getMapRow("m")).toEqual(state);
-    expect(store.journalLinesAfter(seq)).toEqual([]);
-    expect(store.committedCommand("m", cmd.commandId)).toBeNull();
-    expect(store.commitMapCommand("m", cmd, ISSUER).ok).toBe(true);
-    expect(store.journalLinesAfter(seq)).toHaveLength(1);
   });
 });

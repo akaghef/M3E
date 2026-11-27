@@ -1,32 +1,20 @@
-// Commits through the record store (src/node/record_store). Synthetic data only.
+// Commits through the record store (src/node/record_store). Synthetic data only. The store is Neo4j.
 
-import fs from "fs";
-import os from "os";
-import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  JOURNAL_FILE,
-  RecordWorkspaceStore,
-  SNAPSHOT_FILE,
-  type CommitResult,
-  type EngineApplier,
-  type EngineCommit,
-  type EngineSource,
-} from "../../src/node/record_store";
+import { RecordWorkspaceStore, type CommitResult } from "../../src/node/record_store";
 import { acceptEdgeOrders, applyChanges, diffState, type RecordChange } from "../../src/shared/map_changes";
 import { fromSnapshot } from "../../src/shared/record_model/from_snapshot";
 import { checkInvariants } from "../../src/shared/record_model/invariants";
-import { serializeSnapshot, sortRecords } from "../../src/shared/record_model/jsonl";
+import { serializeSnapshot } from "../../src/shared/record_model/jsonl";
 import { isProjectedRecord, projectMap, recordRk } from "../../src/shared/record_model/steady";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
 import type { AppState } from "../../src/shared/types";
-import { ISSUER, NOW, WS, clone, command, node, richState, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
+import { ISSUER, NOW, WS, clone, command, node, richState, snapshotOf, type Loose } from "./record_store_helpers";
+import { createTestStore, dropTestStores, type TestStore } from "./neo4j_test_store";
 
-const open: RecordWorkspaceStore[] = [];
+const handles: TestStore[] = [];
 
-afterEach(async () => {
-  for (const store of open.splice(0)) await store.close();
-});
+afterEach(dropTestStores);
 
 function seedRows() {
   return [
@@ -35,22 +23,22 @@ function seedRows() {
   ];
 }
 
-function newDir(name: string, records: SnapshotRecord[] = snapshotOf(seedRows())): string {
-  const dir = path.join(tempDir(name), "store");
-  RecordWorkspaceStore.create(dir, records);
-  return dir;
-}
-
 let clock = 0;
 function tick(): string {
   clock += 1;
   return new Date(Date.UTC(2026, 10, 17, 0, 0, clock)).toISOString();
 }
 
-function openStore(dir: string, options: Parameters<typeof RecordWorkspaceStore.open>[1] = {}): RecordWorkspaceStore {
-  const store = RecordWorkspaceStore.open(dir, { now: tick, ...options });
-  open.push(store);
-  return store;
+async function openStore(records: SnapshotRecord[] = snapshotOf(seedRows())): Promise<RecordWorkspaceStore> {
+  const handle = await createTestStore(records, { now: tick });
+  handles.push(handle);
+  return handle.store;
+}
+
+function reopenOf(store: RecordWorkspaceStore): Promise<RecordWorkspaceStore> {
+  const handle = handles.find((item) => item.store === store);
+  if (!handle) throw new Error("no test store for reopen");
+  return handle.reopen();
 }
 
 function stateOf(store: RecordWorkspaceStore, mapId = "map_a"): Loose {
@@ -96,9 +84,8 @@ function recordsOfMap(store: RecordWorkspaceStore, mapId: string): SnapshotRecor
 }
 
 describe("record store: every kind of change", () => {
-  it("commits each RecordChange kind and reads back what applyChanges gives", () => {
-    const dir = newDir("kinds");
-    const store = openStore(dir);
+  it("commits each RecordChange kind and reads back what applyChanges gives", async () => {
+    const store = await openStore();
     const seen = new Set<string>();
     const run = (change: (state: Loose) => void): void => {
       const previous = recordsOfMap(store, "map_a");
@@ -228,8 +215,8 @@ describe("record store: every kind of change", () => {
     expect(stateOf(store, "map_b")).toEqual(fromSnapshot(snapshotOf(seedRows())).rows[1].state);
   });
 
-  it("stamps rev with the commit sequence and records the commit", () => {
-    const store = openStore(newDir("rev"));
+  it("stamps rev with the commit sequence and records the commit", async () => {
+    const store = await openStore();
     edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
     edit(store, (state) => { nodesOf(state).inner.text = "two"; });
     const records = store.records();
@@ -246,8 +233,8 @@ describe("record store: every kind of change", () => {
 });
 
 describe("record store: retries and conflicts", () => {
-  it("returns the first result for a command id seen before, and refuses the same id with other content", () => {
-    const store = openStore(newDir("retry"));
+  it("returns the first result for a command id seen before, and refuses the same id with other content", async () => {
+    const store = await openStore();
     const before = stateOf(store);
     const after = clone(before);
     nodesOf(after).leaf.text = "once";
@@ -268,8 +255,8 @@ describe("record store: retries and conflicts", () => {
     expect(store.commitMapCommand("map_b", command(onB, "edit", "same-id"), ISSUER)).toMatchObject({ ok: false, code: "SAME_ID_DIFFERENT_CONTENT" });
   });
 
-  it("rejects a command whose before values are stale, field by field", () => {
-    const store = openStore(newDir("cas"));
+  it("rejects a command whose before values are stale, field by field", async () => {
+    const store = await openStore();
     const base = stateOf(store);
     const mine = clone(base);
     nodesOf(mine).leaf.text = "mine";
@@ -289,8 +276,8 @@ describe("record store: retries and conflicts", () => {
     expect(nodesOf(stateOf(store)).leaf).toMatchObject({ text: "theirs", collapsed: true });
   });
 
-  it("checks the expected revision, the map and the shape of the command", () => {
-    const store = openStore(newDir("shape"));
+  it("checks the expected revision, the map and the shape of the command", async () => {
+    const store = await openStore();
     const base = stateOf(store);
     const after = clone(base);
     nodesOf(after).leaf.text = "x";
@@ -305,8 +292,8 @@ describe("record store: retries and conflicts", () => {
     expect(store.revisionOf("map_a")).toBe("1");
   });
 
-  it("rejects a state the app's validation or an invariant does not accept, and writes nothing", () => {
-    const store = openStore(newDir("invalid"));
+  it("rejects a state the app's validation or an invariant does not accept, and writes nothing", async () => {
+    const store = await openStore();
     const untouched = text(store.records());
     const attempt = (change: (state: Loose) => void): CommitResult => {
       const before = stateOf(store);
@@ -330,16 +317,16 @@ describe("record store: retries and conflicts", () => {
     // (An id another map already uses is not refused: see record_store_fixes.test.ts.)
     expect(store.seq()).toBe(0);
     expect(text(store.records())).toBe(untouched);
-    expect(fs.readFileSync(path.join((store as unknown as { dir: string }).dir, JOURNAL_FILE), "utf8")).toBe("");
+    expect(await store.readJournalAfter(0)).toEqual([]);
     // The store still works after the refusals.
     edit(store, (state) => { nodesOf(state).leaf.text = "fine"; });
   });
 
-  it("lets a map that already has validation errors be edited, but not made worse", () => {
+  it("lets a map that already has validation errors be edited, but not made worse", async () => {
     const state = richState();
     // A link between a node and a link: valid as a record, an error for the app's validation.
     (state.links as Loose).l9 = { id: "l9", sourceNodeId: "img", targetNodeId: "l1" };
-    const store = openStore(newDir("already-invalid", snapshotOf([{ id: "map_a", state }])));
+    const store = await openStore(snapshotOf([{ id: "map_a", state }]));
     edit(store, (next) => { nodesOf(next).leaf.text = "still editable"; });
     const before = stateOf(store);
     const worse = clone(before);
@@ -363,13 +350,12 @@ describe("record store: journal, reopen, compaction", () => {
   }
 
   it("replays the journal on open to the identical record set", async () => {
-    const dir = newDir("replay");
-    const store = openStore(dir);
+    const store = await openStore();
     someCommits(store);
     const records = text(store.records());
     const stateA = stateOf(store);
     const rowB = store.getMapRow("map_b");
-    const lines = fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line));
+    const lines = (await store.readJournalAfter(0)) ?? [];
     expect(lines.map((line) => line.seq)).toEqual([1, 2, 3, 4]);
     expect(lines[1]).toMatchObject({ issuer: ISSUER, mapId: "map_a", intent: "test" });
     expect(Object.keys(lines[1])).toEqual(expect.arrayContaining(["seq", "commandId", "issuer", "committedAt", "mapId", "intent", "changes", "ops"]));
@@ -379,125 +365,23 @@ describe("record store: journal, reopen, compaction", () => {
     );
     expect(opNames).toContain("put decay|node|n1");
     expect(opNames.some((name: string) => name.startsWith("put decay|scope|"))).toBe(true);
-    await store.close();
 
-    const again = openStore(dir);
+    const again = await reopenOf(store);
     expect(again.seq()).toBe(4);
     expect(text(again.records())).toBe(records);
     expect(stateOf(again)).toEqual(stateA);
     expect(again.getMapRow("map_b")).toEqual(rowB);
     expect(again.revisionOf("map_a")).toBe("3");
     expect(again.revisionOf("map_b")).toBe("4");
-    // The snapshot file is still the one written at creation, except that the first open gave its header
-    // the history of the store (historyId, epoch) once.
-    const [fileHeader, ...fileRest] = fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8").trimEnd().split("\n");
-    const [createdHeader, ...createdRest] = text(snapshotOf(seedRows())).trimEnd().split("\n");
-    expect(fileRest).toEqual(createdRest);
-    expect(JSON.parse(fileHeader)).toEqual({ ...JSON.parse(createdHeader), historyId: again.syncIdentity().historyId, epoch: 1 });
     edit(again, (state) => { nodesOf(state).leaf.text = "after reopen"; });
     expect(again.seq()).toBe(5);
   });
 
-  it("ignores a truncated last journal line and cuts the file back to the last good line", async () => {
-    const dir = newDir("truncated");
-    const store = openStore(dir);
-    edit(store, (state) => { nodesOf(state).leaf.text = "first"; });
-    edit(store, (state) => { nodesOf(state).leaf.text = "second"; });
-    const afterTwo = text(store.records());
-    const journalPath = path.join(dir, JOURNAL_FILE);
-    const goodSize = fs.statSync(journalPath).size;
-    edit(store, (state) => { nodesOf(state).leaf.text = "third, lost"; });
-    await store.close();
-    fs.truncateSync(journalPath, fs.statSync(journalPath).size - 25);
-
-    const again = openStore(dir);
-    expect(again.seq()).toBe(2);
-    expect(text(again.records())).toBe(afterTwo);
-    expect(fs.statSync(journalPath).size).toBe(goodSize);
-    edit(again, (state) => { nodesOf(state).leaf.text = "third, again"; });
-    await again.close();
-    const third = openStore(dir);
-    expect(third.seq()).toBe(3);
-    expect(nodesOf(stateOf(third)).leaf.text).toBe("third, again");
-  });
-
-  it("keeps a last line that is complete but has no line end, and refuses damage further up", async () => {
-    const dir = newDir("damaged");
-    const store = openStore(dir);
-    edit(store, (state) => { nodesOf(state).leaf.text = "first"; });
-    edit(store, (state) => { nodesOf(state).leaf.text = "second"; });
-    const records = text(store.records());
-    await store.close();
-    const journalPath = path.join(dir, JOURNAL_FILE);
-    const content = fs.readFileSync(journalPath, "utf8");
-    fs.writeFileSync(journalPath, content.slice(0, -1));
-    const again = openStore(dir);
-    expect(text(again.records())).toBe(records);
-    await again.close();
-    expect(fs.readFileSync(journalPath, "utf8")).toBe(content);
-
-    fs.writeFileSync(journalPath, `{"seq":1,"ops":[` + "\n" + content.split("\n")[1] + "\n");
-    expect(() => RecordWorkspaceStore.open(dir)).toThrow(/damaged/);
-  });
-
-  it("compacts: the snapshot is rewritten, the journal emptied, nothing is lost", async () => {
-    const dir = newDir("compact");
-    const store = openStore(dir);
-    someCommits(store);
-    const before = stateOf(store);
-    const after = clone(before);
-    nodesOf(after).img.text = "kept command";
-    const kept = command(diffState(before, after), "edit", "kept-command");
-    const first = ok(store.commitMapCommand("map_a", kept, ISSUER));
-    const records = text(store.records());
-    const savedAtA = store.getMapRow("map_a").savedAt;
-    store.compact();
-    expect(fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8")).toBe("");
-    expect(fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8")).toBe(records);
-    expect(text(store.records())).toBe(records);
-    // Still usable without reopening.
-    edit(store, (state) => { nodesOf(state).leaf.text = "after compaction"; });
-    const afterCompaction = text(store.records());
-    await store.close();
-
-    const again = openStore(dir);
-    expect(again.seq()).toBe(6);
-    expect(text(again.records())).toBe(afterCompaction);
-    expect(again.records().filter((record) => record.kind === "commit").map((record) => (record as { seq: number }).seq)).toEqual([0, 1, 2, 3, 4, 5, 6]);
-    expect(again.revisionOf("map_b")).toBe("4");
-    expect(again.revisionOf("map_a")).toBe("6");
-    expect(again.commitMapCommand("map_a", kept, ISSUER)).toEqual({ ok: true, savedAt: first.savedAt, seq: first.seq, replayed: true });
-    expect(first.savedAt).toBe(savedAtA);
-    const changed = clone(kept);
-    (changed.changes[0].after as Loose).text = "other";
-    expect(again.commitMapCommand("map_a", changed, ISSUER)).toMatchObject({ ok: false, code: "SAME_ID_DIFFERENT_CONTENT" });
-    again.compact();
-    again.compact();
-    await again.close();
-    const third = openStore(dir);
-    expect(text(third.records())).toBe(afterCompaction);
-    expect(third.commitMapCommand("map_a", kept, ISSUER)).toMatchObject({ ok: true, replayed: true });
-  });
-
-  it("opens a store whose compaction stopped after the snapshot was rewritten", async () => {
-    const dir = newDir("half-compacted");
-    const store = openStore(dir);
-    someCommits(store);
-    const journal = fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8");
-    const records = text(store.records());
-    store.compact();
-    await store.close();
-    // The journal as it was before it would have been emptied.
-    fs.writeFileSync(path.join(dir, JOURNAL_FILE), journal);
-    const again = openStore(dir);
-    expect(again.seq()).toBe(4);
-    expect(text(again.records())).toBe(records);
-  });
 });
 
 describe("record store: whole-map saves and map-level operations", () => {
-  it("saves a whole state as the difference to the current one, and creates a map that is absent", () => {
-    const store = openStore(newDir("whole"));
+  it("saves a whole state as the difference to the current one, and creates a map that is absent", async () => {
+    const store = await openStore();
     const state = stateOf(store);
     nodesOf(state).leaf.text = "whole save";
     nodesOf(state).w1 = node("w1", "root");
@@ -530,8 +414,7 @@ describe("record store: whole-map saves and map-level operations", () => {
   });
 
   it("sets columns, renames and deletes a map; all of it survives a reopen", async () => {
-    const dir = newDir("map-ops");
-    const store = openStore(dir);
+    const store = await openStore();
     store.setMapColumns("map_a", { tags: ["a", "b"], pinned: null, source: undefined }, ISSUER);
     expect(store.getMapRow("map_a")).toMatchObject({ tags: ["a", "b"], archived: 0 });
     expect("pinned" in store.getMapRow("map_a")).toBe(false);
@@ -574,8 +457,7 @@ describe("record store: whole-map saves and map-level operations", () => {
 
     const records = text(store.records());
     const seq = store.seq();
-    await store.close();
-    const again = openStore(dir);
+    const again = await reopenOf(store);
     expect(again.seq()).toBe(seq);
     expect(text(again.records())).toBe(records);
     expect(again.listMaps().map((item) => item.id)).toEqual(["map_new", "map_renamed"]);
@@ -585,8 +467,8 @@ describe("record store: whole-map saves and map-level operations", () => {
 });
 
 describe("record store: scope records and subtree deletion", () => {
-  it("creates and removes the scope record when nodeType changes to and from folder", () => {
-    const store = openStore(newDir("folder"));
+  it("creates and removes the scope record when nodeType changes to and from folder", async () => {
+    const store = await openStore();
     const scopeRoots = (): string[] => recordsOfMap(store, "map_a")
       .filter((record) => record.kind === "scope")
       .map((record) => (record as { rootNodeId: string }).rootNodeId)
@@ -614,8 +496,8 @@ describe("record store: scope records and subtree deletion", () => {
     expect(checkInvariants(store.records())).toEqual([]);
   });
 
-  it("deletes the edges, details, node views, links and scope records of a deleted subtree", () => {
-    const store = openStore(newDir("subtree"));
+  it("deletes the edges, details, node views, links and scope records of a deleted subtree", async () => {
+    const store = await openStore();
     edit(store, (state) => {
       const nodes = nodesOf(state);
       nodes.deep = node("deep", "inner", [], { details: "deep details", nodeType: "folder" });
@@ -652,240 +534,9 @@ describe("record store: scope records and subtree deletion", () => {
   });
 });
 
-describe("record store: the storage engine behind the journal", () => {
-  class FakeApplier implements EngineApplier {
-    broken = false;
-    started = 0;
-    closed = false;
-    readonly applied: number[] = [];
-    readonly records = new Map<string, SnapshotRecord>();
-
-    async start(source: EngineSource): Promise<number> {
-      if (this.broken) throw new Error("engine unreachable");
-      this.started += 1;
-      this.records.clear();
-      for (const record of source.records()) this.records.set(recordRk(record), record);
-      return source.seq();
-    }
-
-    async apply(commit: EngineCommit): Promise<void> {
-      await Promise.resolve();
-      if (this.broken) throw new Error("engine write failed");
-      for (const op of commit.ops) {
-        if (op.op === "delete") this.records.delete(op.rk);
-        else this.records.set(op.rk, op.record as SnapshotRecord);
-      }
-      this.applied.push(commit.seq);
-    }
-
-    async close(): Promise<void> {
-      this.closed = true;
-    }
-
-    dump(): string {
-      return text(sortRecords(clone([...this.records.values()])));
-    }
-  }
-
-  it("applies every commit in order; the engine then holds exactly the records of the store", async () => {
-    const applier = new FakeApplier();
-    const store = openStore(newDir("engine"), { applier });
-    edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
-    edit(store, (state) => {
-      const nodes = nodesOf(state);
-      nodes.f1.children = ["inner"];
-      delete nodes.al;
-    });
-    store.setMapColumns("map_b", { pinned: 1 }, ISSUER);
-    store.renameMapId("map_b", "map_z", ISSUER);
-    await store.flush();
-    expect(applier.applied).toEqual([1, 2, 3, 4]);
-    expect(store.engineStatus()).toEqual({ appliedSeq: 4 });
-    expect(applier.dump()).toBe(text(store.records()));
-    store.deleteMap("map_z", ISSUER);
-    await store.flush();
-    expect(applier.dump()).toBe(text(store.records()));
-    await store.close();
-    expect(applier.closed).toBe(true);
-  });
-
-  const waitUntil = async (done: () => boolean): Promise<void> => {
-    const deadline = Date.now() + 5000;
-    while (!done()) {
-      if (Date.now() > deadline) throw new Error("the engine did not catch up in time");
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-  };
-
-  it("keeps committing while the engine is down, and the engine catches up from the journal by itself", async () => {
-    const applier = new FakeApplier();
-    const dir = newDir("engine-behind");
-    const store = openStore(dir, { applier, engineRetry: { firstMs: 5, maxMs: 20 } });
-    await store.flush();
-    applier.broken = true;
-    // The journal append is the commit point: every one of these commits stands.
-    edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
-    await expect(store.flush()).rejects.toThrow(/engine write failed|engine unreachable/);
-    expect(store.engineStatus().appliedSeq).toBe(0);
-    expect(store.engineStatus().error).toMatch(/engine write failed|engine unreachable/);
-    edit(store, (state) => { nodesOf(state).leaf.text = "two"; });
-    ok(store.saveWholeMap("map_b", { ...stateOf(store, "map_b"), linearPanelWidth: 111 } as unknown as AppState, ISSUER));
-    store.setMapColumns("map_a", { pinned: 0 }, ISSUER);
-    store.renameMapId("map_b", "map_y", ISSUER);
-    expect(store.seq()).toBe(5);
-    // Retries happen in the background and keep failing; the status says so.
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(store.engineStatus()).toMatchObject({ appliedSeq: 0, error: "engine unreachable" });
-    expect(applier.applied).toEqual([]);
-
-    // The engine comes back. Nobody calls flush: the next retry brings it to the last commit.
-    applier.broken = false;
-    await waitUntil(() => store.engineStatus().error === undefined && store.engineStatus().appliedSeq === 5);
-    expect(store.engineStatus()).toEqual({ appliedSeq: 5 });
-    expect(applier.dump()).toBe(text(store.records()));
-    // And the commits after that go to it one by one, in order.
-    edit(store, (state) => { nodesOf(state).leaf.text = "three"; });
-    edit(store, (state) => { nodesOf(state).leaf.text = "four"; });
-    await store.flush();
-    expect(applier.applied).toEqual([6, 7]);
-    expect(applier.dump()).toBe(text(store.records()));
-  });
-
-  it("an applier that fails on a commit is started again and resumes at the commit it did not get", async () => {
-    // An engine that keeps what it has between starts, like Neo4j: it reports the commit it holds
-    // and takes the missing ones from the journal.
-    class KeepingApplier extends FakeApplier {
-      held = -1;
-      failAt: number | undefined;
-      async start(source: EngineSource): Promise<number> {
-        if (this.broken) throw new Error("engine unreachable");
-        this.started += 1;
-        if (this.held < 0) {
-          for (const record of source.records()) this.records.set(recordRk(record), record);
-          this.held = source.seq();
-          return this.held;
-        }
-        for (const commit of source.commitsAfter(this.held) ?? []) await this.apply(commit);
-        return this.held;
-      }
-      async apply(commit: EngineCommit): Promise<void> {
-        if (commit.seq === this.failAt) throw new Error(`engine write failed at ${commit.seq}`);
-        await super.apply(commit);
-        this.held = commit.seq;
-      }
-    }
-    const applier = new KeepingApplier();
-    const store = openStore(newDir("engine-resume"), { applier, engineRetry: { firstMs: 5, maxMs: 20 } });
-    await store.flush();
-    applier.failAt = 2;
-    edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
-    edit(store, (state) => { nodesOf(state).leaf.text = "two"; });
-    edit(store, (state) => { nodesOf(state).leaf.text = "three"; });
-    await waitUntil(() => store.engineStatus().error !== undefined);
-    expect(store.engineStatus()).toEqual({ appliedSeq: 1, error: "engine write failed at 2" });
-    edit(store, (state) => { nodesOf(state).leaf.text = "four"; });
-    applier.failAt = undefined;
-    await waitUntil(() => store.engineStatus().error === undefined && store.engineStatus().appliedSeq === 4);
-    expect(applier.applied).toEqual([1, 2, 3, 4]);
-    expect(applier.dump()).toBe(text(store.records()));
-  });
-
-  it("refuses commits with ENGINE_BEHIND only when the engine is behind by the limit, and accepts them again after it caught up", async () => {
-    const applier = new FakeApplier();
-    const store = openStore(newDir("engine-limit"), { applier, engineBacklogLimit: 3, engineRetry: { firstMs: 5, maxMs: 20 } });
-    await store.flush();
-    applier.broken = true;
-    edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
-    edit(store, (state) => { nodesOf(state).leaf.text = "two"; });
-    edit(store, (state) => { nodesOf(state).leaf.text = "three"; });
-    expect(store.seq()).toBe(3);
-
-    const before = stateOf(store);
-    const after = clone(before);
-    nodesOf(after).leaf.text = "refused";
-    const refused = command(diffState(before, after));
-    expect(store.commitMapCommand("map_a", refused, ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND", conflicts: [], current: null });
-    expect((store.commitMapCommand("map_a", refused, ISSUER) as { message?: string }).message).toMatch(/3 commits behind \(limit 3\)/);
-    expect(store.saveWholeMap("map_a", after as unknown as AppState, ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND" });
-    expect(() => store.setMapColumns("map_a", { pinned: 0 }, ISSUER)).toThrow(/ENGINE_BEHIND/);
-    expect(() => store.deleteMap("map_b", ISSUER)).toThrow(/ENGINE_BEHIND/);
-    expect(() => store.renameMapId("map_b", "map_y", ISSUER)).toThrow(/ENGINE_BEHIND/);
-    expect(store.seq()).toBe(3);
-    // Reads keep working.
-    expect(nodesOf(stateOf(store)).leaf.text).toBe("three");
-
-    await waitUntil(() => store.engineStatus().error !== undefined);
-    applier.broken = false;
-    await waitUntil(() => store.engineStatus().error === undefined);
-    expect(store.engineStatus()).toEqual({ appliedSeq: 3 });
-    ok(store.commitMapCommand("map_a", refused, ISSUER));
-    await store.flush();
-    expect(applier.dump()).toBe(text(store.records()));
-  });
-
-  it("takes the backlog limit from M3E_ENGINE_BACKLOG_LIMIT, 10,000 when it is not set", async () => {
-    const saved = process.env.M3E_ENGINE_BACKLOG_LIMIT;
-    try {
-      process.env.M3E_ENGINE_BACKLOG_LIMIT = "1";
-      const applier = new FakeApplier();
-      const store = openStore(newDir("engine-env"), { applier, engineRetry: { firstMs: 1000, maxMs: 1000 } });
-      await store.flush();
-      applier.broken = true;
-      edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
-      expect(store.commitMapCommand("map_a", command([]), ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND" });
-
-      delete process.env.M3E_ENGINE_BACKLOG_LIMIT;
-      const other = new FakeApplier();
-      const second = openStore(newDir("engine-default"), { applier: other, engineRetry: { firstMs: 1000, maxMs: 1000 } });
-      await second.flush();
-      other.broken = true;
-      for (let i = 0; i < 20; i += 1) second.setMapColumns("map_a", { pinned: i }, ISSUER);
-      expect(second.commitMapCommand("map_a", command([]), ISSUER)).toMatchObject({ ok: true });
-    } finally {
-      if (saved === undefined) delete process.env.M3E_ENGINE_BACKLOG_LIMIT; else process.env.M3E_ENGINE_BACKLOG_LIMIT = saved;
-    }
-  });
-
-  it("reports an engine that cannot be reached at open, keeps committing, and catches up when it can", async () => {
-    const applier = new FakeApplier();
-    applier.broken = true;
-    const store = openStore(newDir("engine-down"), { applier, engineRetry: { firstMs: 5, maxMs: 20 } });
-    await expect(store.flush()).rejects.toThrow(/engine unreachable/);
-    expect(store.engineStatus()).toEqual({ appliedSeq: 0, error: "engine unreachable" });
-    edit(store, (state) => { nodesOf(state).leaf.text = "while down"; });
-    applier.broken = false;
-    await waitUntil(() => store.engineStatus().error === undefined);
-    edit(store, (state) => { nodesOf(state).leaf.text = "now"; });
-    await store.flush();
-    expect(store.engineStatus()).toEqual({ appliedSeq: 2 });
-    expect(applier.dump()).toBe(text(store.records()));
-  });
-
-  it("resolves flush at once and reports the journal position when there is no engine", async () => {
-    const store = openStore(newDir("no-engine"));
-    edit(store, (state) => { nodesOf(state).leaf.text = "x"; });
-    await store.flush();
-    expect(store.engineStatus()).toEqual({ appliedSeq: 1 });
-  });
-});
-
-describe("record store: where it may live", () => {
-  it("refuses a directory that is not empty, and a directory without a store", () => {
-    const dir = tempDir("not-empty");
-    fs.writeFileSync(path.join(dir, "something"), "x");
-    expect(() => RecordWorkspaceStore.create(dir, snapshotOf(seedRows()))).toThrow(/not empty/);
-    expect(() => RecordWorkspaceStore.open(tempDir("no-store"))).toThrow(/missing/);
-  });
-
-  it("refuses the live M3E data directory when M3E_FORBID_LIVE_DATA is 1", () => {
-    expect(process.env.M3E_FORBID_LIVE_DATA).toBe("1");
-    const live = path.join(os.homedir(), "Library", "Application Support", "M3E", "record-store-test-that-must-not-exist");
-    expect(() => RecordWorkspaceStore.create(live, snapshotOf(seedRows()))).toThrow(/live M3E/);
-    expect(() => RecordWorkspaceStore.open(live)).toThrow(/live M3E/);
-  });
-
+describe("record store: a closed store", () => {
   it("refuses to use a store after it is closed", async () => {
-    const store = RecordWorkspaceStore.open(newDir("closed"));
+    const store = await openStore();
     await store.close();
     expect(() => store.getMapRow("map_a")).toThrow(/closed/);
     expect(() => store.commitMapCommand("map_a", command([]), ISSUER)).toThrow(/closed/);

@@ -1,28 +1,19 @@
 // Commit-time locks, grants, OC1–OC4, copy provenance and event kinds. Synthetic data only.
 
-import fs from "fs";
-import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { COMMIT_INDEX_FILE, JOURNAL_FILE, RecordWorkspaceStore, type CommitResult } from "../../src/node/record_store";
+import { RecordWorkspaceStore, type CommitResult } from "../../src/node/record_store";
 import { decodeRecord, encodeRecord } from "../../src/node/neo4j_store/encoding";
 import { diffState, type MapCommand } from "../../src/shared/map_changes";
 import { recordRk } from "../../src/shared/record_model/steady";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
 import type { AppState } from "../../src/shared/types";
 import { applyDelete, copyEntities } from "../../src/node/record_store/operations";
-import { ISSUER, command, node, richState, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
+import { ISSUER, command, node, richState, snapshotOf, type Loose } from "./record_store_helpers";
+import { createTestStore, dropTestStores, type TestStore } from "./neo4j_test_store";
 
-const open: RecordWorkspaceStore[] = [];
+const handles: TestStore[] = [];
 
-afterEach(async () => {
-  for (const store of open.splice(0)) await store.close();
-});
-
-function newDir(name: string): string {
-  const dir = path.join(tempDir(name), "store");
-  RecordWorkspaceStore.create(dir, snapshotOf([{ id: "map_a", state: richState() }]));
-  return dir;
-}
+afterEach(dropTestStores);
 
 let clock = 0;
 function tick(): string {
@@ -30,10 +21,16 @@ function tick(): string {
   return new Date(Date.UTC(2026, 10, 17, 0, 0, clock)).toISOString();
 }
 
-function openStore(dir: string, now: () => string = tick): RecordWorkspaceStore {
-  const store = RecordWorkspaceStore.open(dir, { now });
-  open.push(store);
-  return store;
+async function openStore(now: () => string = tick): Promise<RecordWorkspaceStore> {
+  const handle = await createTestStore(snapshotOf([{ id: "map_a", state: richState() }]), { now });
+  handles.push(handle);
+  return handle.store;
+}
+
+function reopenOf(store: RecordWorkspaceStore): Promise<RecordWorkspaceStore> {
+  const handle = handles.find((item) => item.store === store);
+  if (!handle) throw new Error("no test store for reopen");
+  return handle.reopen();
 }
 
 function stateOf(store: RecordWorkspaceStore): Loose {
@@ -131,20 +128,16 @@ function nodeRecord(store: RecordWorkspaceStore, id: string): Extract<SnapshotRe
   return found?.kind === "node" ? found : undefined;
 }
 
-function lastJournal(dir: string): Loose {
-  const text = fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8").trim();
-  return JSON.parse(text.split("\n").at(-1) ?? "{}") as Loose;
-}
-
-function touched(dir: string): Array<{ rk: string; ev: string[] }> {
-  return (lastJournal(dir).touched as Array<{ rk: string; ev: string[] }> | undefined) ?? [];
+async function touched(store: RecordWorkspaceStore): Promise<Array<{ rk: string; ev: string[] }>> {
+  const lines = await store.readJournalAfter(store.seq() - 1);
+  return (lines?.at(-1)?.touched as Array<{ rk: string; ev: string[] }> | undefined) ?? [];
 }
 
 const AI = { kind: "ai-agent" as const, id: "agent-1" };
 
 describe("locks and grants", () => {
-  it("rejects removal, removal through an ancestor, reparent and ending through another alias", () => {
-    const store = openStore(newDir("lock-block"));
+  it("rejects removal, removal through an ancestor, reparent and ending through another alias", async () => {
+    const store = await openStore();
     lock(store, "node|img");
     refused(commit(store, "delete", (state) => drop(state, "img")), /locked node\|img/);
     expect(nodesOf(stateOf(store)).img).toBeTruthy();
@@ -171,8 +164,8 @@ describe("locks and grants", () => {
     expect(nodesOf(stateOf(store)).al2.nodeType).toBe("alias");
   });
 
-  it("allows a content edit, a new child, a sibling reorder and an ancestor move", () => {
-    const store = openStore(newDir("lock-allow"));
+  it("allows a content edit, a new child, a sibling reorder and an ancestor move", async () => {
+    const store = await openStore();
     lock(store, "node|inner");
     accepted(commit(store, "rename", (state) => { nodesOf(state).inner.text = "edited"; }));
     expect(nodesOf(stateOf(store)).inner.text).toBe("edited");
@@ -191,9 +184,9 @@ describe("locks and grants", () => {
     expect(store.records().some((record) => record.kind === "lock" && record.target === "node|inner")).toBe(true);
   });
 
-  it("lets an AI agent unlock only with a grant that is still inside its expiry", () => {
+  it("lets an AI agent unlock only with a grant that is still inside its expiry", async () => {
     let nowIso = "2026-11-17T00:00:10.000Z";
-    const store = openStore(newDir("grant"), () => nowIso);
+    const store = await openStore(() => nowIso);
     const at = (iso: string): void => { nowIso = iso; };
     at("2026-11-17T00:00:11.000Z");
     lock(store, "node|leaf");
@@ -230,18 +223,17 @@ describe("locks and grants", () => {
 });
 
 describe("touched event kinds", () => {
-  it("emits m3e:reparent and m3e:order separately, and no m3e:content for a position change", () => {
-    const dir = newDir("kinds");
-    const store = openStore(dir);
+  it("emits m3e:reparent and m3e:order separately, and no m3e:content for a position change", async () => {
+    const store = await openStore();
     accepted(commit(store, "reparent", (state) => move(state, "inner", "leaf")));
     const edge = store.records().find((record) => record.kind === "connection" && record.type === "edge" && record.target === "inner");
     expect(edge).toBeTruthy();
-    expect(touched(dir).find((entry) => entry.rk === recordRk(edge!))?.ev).toContain("m3e:reparent");
+    expect((await touched(store)).find((entry) => entry.rk === recordRk(edge!))?.ev).toContain("m3e:reparent");
 
     accepted(commit(store, "order", (state) => {
       nodesOf(state).root.children = ["leaf", "f1", "img"];
     }));
-    const ordered = touched(dir).filter((entry) => entry.ev.includes("m3e:order"));
+    const ordered = (await touched(store)).filter((entry) => entry.ev.includes("m3e:order"));
     expect(ordered.length).toBeGreaterThan(0);
     expect(ordered.every((entry) => !entry.ev.includes("m3e:reparent"))).toBe(true);
 
@@ -250,14 +242,14 @@ describe("touched event kinds", () => {
       const views = surface?.nodeViews as Record<string, Loose>;
       views.leaf = { ...(views.leaf ?? {}), x: 9 };
     }));
-    expect(touched(dir).some((entry) => entry.ev.includes("m3e:content"))).toBe(false);
+    expect((await touched(store)).some((entry) => entry.ev.includes("m3e:content"))).toBe(false);
     expect(store.records().some((record) => record.kind === "nodeView" && record.nodeId === "leaf" && record.x === 9)).toBe(true);
   });
 });
 
 describe("delete operations and copy", () => {
-  it("OC1 removes an alias occurrence and refuses a non-alias", () => {
-    const store = openStore(newDir("oc1"));
+  it("OC1 removes an alias occurrence and refuses a non-alias", async () => {
+    const store = await openStore();
     accepted(commit(store, "setup", (state) => {
       addChild(state, "task", "al");
       const nodes = nodesOf(state);
@@ -280,9 +272,8 @@ describe("delete operations and copy", () => {
     expect(nodes.al2.isBroken).toBeFalsy();
   });
 
-  it("OC3 fills valid.to, keeps aliases and emits m3e:end", () => {
-    const dir = newDir("oc3");
-    const store = openStore(dir);
+  it("OC3 fills valid.to, keeps aliases and emits m3e:end", async () => {
+    const store = await openStore();
     accepted(commit(store, "oc3", (state) => {
       const applied = applyDelete(state as unknown as AppState, "oc3", "al", { at: "2026-11-17T03:00:00.000Z" });
       if (!applied.ok) throw new Error(applied.message);
@@ -292,11 +283,11 @@ describe("delete operations and copy", () => {
     expect(nodes.al.nodeType).toBe("alias");
     expect(nodes.al.isBroken).toBeFalsy();
     expect(nodes.al.targetNodeId).toBe("leaf");
-    expect(touched(dir).find((entry) => entry.rk === "node|leaf")?.ev).toEqual(["m3e:end"]);
+    expect((await touched(store)).find((entry) => entry.rk === "node|leaf")?.ev).toEqual(["m3e:end"]);
   });
 
-  it("OC4 breaks other aliases and keeps their children", () => {
-    const store = openStore(newDir("oc4"));
+  it("OC4 breaks other aliases and keeps their children", async () => {
+    const store = await openStore();
     accepted(commit(store, "setup", (state) => addChild(state, "task", "al")));
     accepted(commit(store, "oc4", (state) => {
       const applied = applyDelete(state as unknown as AppState, "oc4", "al");
@@ -310,8 +301,8 @@ describe("delete operations and copy", () => {
     expect(nodes.al.children).toEqual(["task"]);
   });
 
-  it("OC2 moves on the canonical plane and refuses a deletion", () => {
-    const store = openStore(newDir("oc2"));
+  it("OC2 moves on the canonical plane and refuses a deletion", async () => {
+    const store = await openStore();
     accepted(commit(store, "oc2", (state) => {
       const applied = applyDelete(state as unknown as AppState, "oc2", "inner", { parentId: "leaf" });
       if (!applied.ok) throw new Error(applied.message);
@@ -320,8 +311,8 @@ describe("delete operations and copy", () => {
     refused(commit(store, "oc2", (state) => drop(state, "img")), /projection\.dissolved/);
   });
 
-  it("copies an alias in range as an alias and records copyOf", () => {
-    const store = openStore(newDir("copy"));
+  it("copies an alias in range as an alias and records copyOf", async () => {
+    const store = await openStore();
     const before = stateOf(store);
     const after = JSON.parse(JSON.stringify(before)) as Loose;
     const copied = copyEntities(after as unknown as AppState, "f1", "img", { seq: store.seq() + 1, mapId: "map_a" });
@@ -342,8 +333,7 @@ describe("delete operations and copy", () => {
   });
 
   it("keeps lock, grant and valid across snapshot write, journal replay and Neo4j encode", async () => {
-    const dir = newDir("round");
-    const first = openStore(dir);
+    const first = await openStore();
     accepted(commit(first, "valid", (state) => {
       nodesOf(state).leaf.valid = { from: "2026-01-01T00:00:00.000Z", to: "2026-06-01T00:00:00.000Z" };
     }));
@@ -354,16 +344,12 @@ describe("delete operations and copy", () => {
         g1: { scopeId, principal: { account: "agent-1" }, capability: "m3e:unlock", grantedBy: "human-1", expiresAt: "2026-12-01T00:00:00.000Z" },
       };
     }));
-    await first.close();
-
-    const replayed = openStore(dir);
+    const replayed = await reopenOf(first);
     expect(replayed.records().some((record) => record.kind === "lock" && record.target === "node|leaf")).toBe(true);
     expect(replayed.records().some((record) => record.kind === "grant" && record.id === "g1")).toBe(true);
     expect(nodeRecord(replayed, "leaf")?.valid).toEqual({ from: "2026-01-01T00:00:00.000Z", to: "2026-06-01T00:00:00.000Z" });
-    replayed.compact();
-    await replayed.close();
 
-    const stored = openStore(dir);
+    const stored = await reopenOf(replayed);
     const lockRecord = stored.records().find((record) => record.kind === "lock");
     const grantRecord = stored.records().find((record) => record.kind === "grant");
     const leaf = nodeRecord(stored, "leaf");
@@ -379,9 +365,8 @@ describe("delete operations and copy", () => {
     expect(encodeRecord(grantRecord!).labels).toContain("Grant");
   });
 
-  it("refuses reuse of a deleted id, including after compaction, and accepts the Undo", async () => {
-    const dir = newDir("reuse");
-    const store = openStore(dir);
+  it("refuses reuse of a deleted id, including after a reopen, and accepts the Undo", async () => {
+    const store = await openStore();
     const original = JSON.parse(JSON.stringify(stateOf(store))) as Loose;
     accepted(commit(store, "delete", (state) => drop(state, "img")));
     refused(commit(store, "create", (state) => {
@@ -400,12 +385,7 @@ describe("delete operations and copy", () => {
     expect(nodesOf(stateOf(store)).img.nodeType).toBe("image");
 
     accepted(commit(store, "delete", (state) => drop(state, "img")));
-    store.compact();
-    const index = JSON.parse(fs.readFileSync(path.join(dir, COMMIT_INDEX_FILE), "utf8")) as { retired?: Record<string, string> };
-    expect(typeof index.retired?.img).toBe("string");
-    await store.close();
-
-    const again = openStore(dir);
+    const again = await reopenOf(store);
     refused(commit(again, "create", (state) => {
       const nodes = nodesOf(state);
       nodes.img = node("img", "root", [], { nodeType: "image", text: "different" });

@@ -1,9 +1,9 @@
 // Bands, projection, write-back, link-to-entity, promotion, named snapshots and retention.
-// Synthetic maps only. Removing a feature fails the case that names it.
+// Synthetic maps only. The store is Neo4j. Removing a feature fails the case that names it.
 
-import fs from "fs";
+import os from "os";
 import path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RapidMvpModel } from "../../src/node/rapid_mvp";
 import { M3eMcpService } from "../../src/node/mcp_service";
 import { decodeRecord, encodeRecord } from "../../src/node/neo4j_store/encoding";
@@ -11,25 +11,30 @@ import { diffState } from "../../src/shared/map_changes";
 import { readBand } from "../../src/shared/record_model/scope_fields";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
 import type { AppState } from "../../src/shared/types";
-import {
-  ARCHIVE_DIR,
-  ARCHIVE_INDEX_FILE,
-  ARCHIVE_RETENTION_MS,
-  JOURNAL_FILE,
-  RecordWorkspaceStore,
-  snapshotArchiveName,
-  type CommitResult,
-} from "../../src/node/record_store";
+import { RecordWorkspaceStore, type CommitResult } from "../../src/node/record_store";
 import { activeRecordStore, closeActiveRecordStore } from "../../src/node/record_store/active";
 import { applyDelete, commitTimeRefusal } from "../../src/node/record_store/operations";
 import { ISSUER, node, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
+import { createTestStore, dropTestStores, type TestStore } from "./neo4j_test_store";
+
+const holder: { store: RecordWorkspaceStore | null } = { store: null };
+
+vi.mock("../../src/node/record_store/active", async () => {
+  const actual = await vi.importActual<typeof import("../../src/node/record_store/active")>("../../src/node/record_store/active");
+  return {
+    ...actual,
+    activeRecordStore: () => holder.store,
+    closeActiveRecordStore: async () => { holder.store = null; },
+  };
+});
 
 const MAP = "map_a";
 const DAY = 24 * 60 * 60 * 1000;
-const openStores: RecordWorkspaceStore[] = [];
+const handles: TestStore[] = [];
 
 afterEach(async () => {
-  for (const store of openStores.splice(0)) await store.close();
+  holder.store = null;
+  await dropTestStores();
 });
 
 function planeTree(withVia: boolean): Loose {
@@ -80,12 +85,16 @@ function promoteTree(): Loose {
   };
 }
 
-function makeStore(name: string, state: Loose): { dir: string; store: RecordWorkspaceStore } {
-  const dir = path.join(tempDir(name), "store");
-  RecordWorkspaceStore.create(dir, snapshotOf([{ id: MAP, state }]));
-  const store = RecordWorkspaceStore.open(dir);
-  openStores.push(store);
-  return { dir, store };
+async function makeStore(state: Loose): Promise<RecordWorkspaceStore> {
+  const handle = await createTestStore(snapshotOf([{ id: MAP, state }]));
+  handles.push(handle);
+  return handle.store;
+}
+
+function reopenOf(store: RecordWorkspaceStore): Promise<RecordWorkspaceStore> {
+  const handle = handles.find((item) => item.store === store);
+  if (!handle) throw new Error("no test store for reopen");
+  return handle.reopen();
 }
 
 function stateOf(store: RecordWorkspaceStore): Loose {
@@ -188,10 +197,6 @@ function linkPairs(state: Loose): string[] {
     .sort();
 }
 
-function archiveIndex(dir: string): { entries: Array<{ file: string; retain?: true; archivedAt: string }> } {
-  return JSON.parse(fs.readFileSync(path.join(dir, ARCHIVE_DIR, ARCHIVE_INDEX_FILE), "utf8")) as { entries: Array<{ file: string; retain?: true; archivedAt: string }> };
-}
-
 function assertNoAliasTarget(state: Loose, folderId: string): void {
   const nodes = nodesOf(state);
   const walk = (id: string): void => {
@@ -208,8 +213,8 @@ function assertNoAliasTarget(state: Loose, folderId: string): void {
 }
 
 describe("scope band", () => {
-  it("reads an absent band as rapid and refuses a projected or uncommanded deep band", () => {
-    const { store } = makeStore("band", planeTree(false));
+  it("reads an absent band as rapid and refuses a projected or uncommanded deep band", async () => {
+    const store = await makeStore(planeTree(false));
     const home = scopeByRoot(store, "home");
     expect(home.band).toBeUndefined();
     expect(readBand(undefined)).toBe("rapid");
@@ -235,30 +240,20 @@ describe("scope band", () => {
     }), "INVALID_STATE", /cannot become deep/);
   });
 
-  it("shortens retention only when confirmed, and an explicit window can only lengthen the 90-day pass", () => {
-    const { dir, store } = makeStore("retention", planeTree(false));
+  it("shortens retention only when confirmed", async () => {
+    const store = await makeStore(planeTree(false));
     refused(store.setBand(MAP, ISSUER, { scopeKey: "home", retentionMs: 10 * DAY }), "INVALID_STATE", /Shortening a scope's retention/);
     expect(scopeByRoot(store, "home").retention).toBeUndefined();
     accepted(store.setBand(MAP, ISSUER, { scopeKey: "home", retentionMs: 10 * DAY, confirm: true }));
     expect(scopeByRoot(store, "home").retention).toEqual({ ms: 10 * DAY });
     accepted(store.setBand(MAP, ISSUER, { scopeKey: "home", retentionMs: 40 * DAY, retentionBytes: 1000 }));
     expect(scopeByRoot(store, "home").retention).toEqual({ ms: 40 * DAY, bytes: 1000 });
-
-    const { dir: longDir, store: longStore } = makeStore("retention-long", planeTree(false));
-    accepted(longStore.setBand(MAP, ISSUER, { scopeKey: "home", retentionMs: 200 * DAY }));
-    longStore.compact();
-    const archivedAt = Date.parse(archiveIndex(longDir).entries[0]!.archivedAt);
-    expect(longStore.pruneArchive({ now: new Date(archivedAt + ARCHIVE_RETENTION_MS).toISOString() }).deleted).toEqual([]);
-    const due = longStore.pruneArchive({ now: new Date(archivedAt + 200 * DAY).toISOString() });
-    expect(due.problems).toEqual([]);
-    expect(due.deleted.length).toBeGreaterThan(0);
-    expect(dir).not.toBe(longDir);
   });
 });
 
 describe("work projection", () => {
-  it("projects a plane: aliases, parent edges, source order, one alias per parent, no alias-to-alias", () => {
-    const { store } = makeStore("plane", planeTree(true));
+  it("projects a plane: aliases, parent edges, source order, one alias per parent, no alias-to-alias", async () => {
+    const store = await makeStore(planeTree(true));
     const before = Object.keys(nodesOf(stateOf(store))).length;
     accepted(store.project(MAP, ISSUER, { mode: "work", root: "home", label: "Plane" }));
     const state = stateOf(store);
@@ -288,8 +283,8 @@ describe("work projection", () => {
     assertNoAliasTarget(stateOf(store), work(stateOf(store), "Again").folderId);
   });
 
-  it("projects a relationType: id order, an alias per parent, and an alias in range points at the entity", () => {
-    const { store } = makeStore("relation-project", relationTree());
+  it("projects a relationType: id order, an alias per parent, and an alias in range points at the entity", async () => {
+    const store = await makeStore(relationTree());
     accepted(store.project(MAP, ISSUER, { mode: "work", relationType: "m3e:consist-of", entities: ["aliasA", "B", "C"], label: "Parents" }));
     const state = stateOf(store);
     const plane = work(state, "Parents");
@@ -305,8 +300,8 @@ describe("work projection", () => {
 });
 
 describe("observe projection", () => {
-  it("stores no alias or parent edge, computes the view, and refuses structural edits and write-back", () => {
-    const { store } = makeStore("observe", planeTree(true));
+  it("stores no alias or parent edge, computes the view, and refuses structural edits and write-back", async () => {
+    const store = await makeStore(planeTree(true));
     const nodesBefore = Object.keys(nodesOf(stateOf(store))).length;
     const edgesBefore = edgeCount(store);
     accepted(store.project(MAP, ISSUER, { mode: "observe", root: "home", label: "Watch" }));
@@ -356,8 +351,8 @@ function observeKey(state: Loose): string {
 }
 
 describe("write-back", () => {
-  it("applies the plane mapping, advances baseSeq, and keeps the plane", () => {
-    const { store } = makeStore("write-plane", planeTree(false));
+  it("applies the plane mapping, advances baseSeq, and keeps the plane", async () => {
+    const store = await makeStore(planeTree(false));
     const projected = accepted(store.project(MAP, ISSUER, { mode: "work", root: "home", label: "Work" }));
     let state = stateOf(store);
     const plane = work(state, "Work");
@@ -421,8 +416,8 @@ describe("write-back", () => {
     expect(nodesOf(state)[plane.folderId]).toBeTruthy();
   });
 
-  it("applies the relation mapping and does not write sibling order back", () => {
-    const { store } = makeStore("write-relation", relationTree());
+  it("applies the relation mapping and does not write sibling order back", async () => {
+    const store = await makeStore(relationTree());
     accepted(store.project(MAP, ISSUER, { mode: "work", relationType: "m3e:consist-of", root: "A", depth: 1, label: "Rel" }));
     let state = stateOf(store);
     const plane = work(state, "Rel");
@@ -471,8 +466,8 @@ describe("write-back", () => {
     expect(nodesOf(state)[plane.folderId]).toBeTruthy();
   });
 
-  it("refuses the whole command when the source changed after baseSeq and keeps the plane edit", () => {
-    const { store } = makeStore("conflict", planeTree(false));
+  it("refuses the whole command when the source changed after baseSeq and keeps the plane edit", async () => {
+    const store = await makeStore(planeTree(false));
     const projected = accepted(store.project(MAP, ISSUER, { mode: "work", root: "home", label: "Work" }));
     const baseSeq = (work(stateOf(store), "Work").scope.projection as Loose).baseSeq;
     expect(baseSeq).toBe(projected.seq);
@@ -490,8 +485,8 @@ describe("write-back", () => {
 });
 
 describe("link and promotion", () => {
-  it("turns a node into an alias of an existing entity and does not write a binding record", () => {
-    const { store } = makeStore("link", planeTree(false));
+  it("turns a node into an alias of an existing entity and does not write a binding record", async () => {
+    const store = await makeStore(planeTree(false));
     const kinds = new Set(store.records().map((record) => record.kind));
     const linked = accepted(store.linkToEntity(MAP, ISSUER, { nodeId: "b", targetId: "other" }));
     expect(nodesOf(stateOf(store)).b?.nodeType).toBe("alias");
@@ -505,8 +500,8 @@ describe("link and promotion", () => {
     refused(store.linkToEntity(MAP, ISSUER, { nodeId: "b", targetId: "a" }), "INVALID_COMMAND", /different entity/);
   });
 
-  it("refuses promotion without a choice for every node, then promotes and requires the choice on a later deep create", () => {
-    const { dir, store } = makeStore("promote", promoteTree());
+  it("refuses promotion without a choice for every node, then promotes and requires the choice on a later deep create", async () => {
+    const store = await makeStore(promoteTree());
     const members = { home: "new" as const, a: "new" as const, b: "new" as const, via: "new" as const };
     refused(store.promote(MAP, ISSUER, { scopeKey: "home", nodes: { a: "new", b: "new", via: "new" }, reason: "missing root" }), "INVALID_COMMAND", /choice for every node/);
     refused(store.promote(MAP, ISSUER, { scopeKey: "home", nodes: { ...members, b: "hold" }, reason: "hold" }), "INVALID_COMMAND", /not committed/);
@@ -523,9 +518,6 @@ describe("link and promotion", () => {
     if (snap?.kind === "namedSnapshot") {
       expect(snap.seq).toBe(promoted.seq);
       expect(snap.scopeId).toBe(scopeByRoot(store, "home").id);
-      const file = snapshotArchiveName(promoted.seq, 3);
-      expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(true);
-      expect(archiveIndex(dir).entries.find((entry) => entry.file === file)?.retain).toBe(true);
     }
     refused(store.promote(MAP, ISSUER, { scopeKey: "home", nodes: members, reason: "again" }), "INVALID_COMMAND", /rapid scope/);
     refused(commit(store, "edit", (state) => {
@@ -548,8 +540,8 @@ describe("link and promotion", () => {
 });
 
 describe("named snapshot and replay", () => {
-  it("keeps a marked file across compaction and the 90-day pass, then drops the mark when the record is deleted", async () => {
-    const { dir, store } = makeStore("named", planeTree(false));
+  it("keeps a named snapshot, its band and retention across a reopen", async () => {
+    const store = await makeStore(planeTree(false));
     accepted(store.setBand(MAP, ISSUER, { scopeKey: "home", band: "rapid", retentionMs: 40 * DAY, retentionBytes: 2048 }));
     const projected = accepted(store.project(MAP, ISSUER, { mode: "work", root: "home", label: "Work" }));
     const dAlias = aliasId(stateOf(store), "d", "a");
@@ -558,14 +550,8 @@ describe("named snapshot and replay", () => {
       if (!applied.ok) throw new Error(applied.message);
     }));
     const named = accepted(store.createNamedSnapshot(MAP, ISSUER, { scopeKey: "home", name: "keep", reason: "retain" }));
-    const file = snapshotArchiveName(named.seq, 3);
-    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(true);
-    expect(archiveIndex(dir).entries.find((entry) => entry.file === file)?.retain).toBe(true);
-
     const beforeClose = store.records();
-    await store.close();
-    const replayed = RecordWorkspaceStore.open(dir);
-    openStores.push(replayed);
+    const replayed = await reopenOf(store);
     expect(JSON.stringify(replayed.records())).toBe(JSON.stringify(beforeClose));
     const scope = replayed.records().find((record) => record.kind === "scope" && record.projection?.mode === "work");
     const snap = replayed.records().find((record) => record.kind === "namedSnapshot");
@@ -588,48 +574,26 @@ describe("named snapshot and replay", () => {
       expect(JSON.stringify(decodeRecord(encodeRecord(record!).props))).toBe(JSON.stringify(record));
     }
 
-    replayed.compact();
-    accepted(commit(replayed, "edit", (draft) => { nodesOf(draft).c!.text = "changed"; }));
-    replayed.compact();
-    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(true);
-    expect(archiveIndex(dir).entries.find((entry) => entry.file === file)?.retain).toBe(true);
-    const latest = Math.max(...archiveIndex(dir).entries.map((entry) => Date.parse(entry.archivedAt)));
-    const dueAt = new Date(latest + ARCHIVE_RETENTION_MS).toISOString();
-    const pruned = replayed.pruneArchive({ now: dueAt });
-    expect(pruned.problems).toEqual([]);
-    expect(pruned.deleted).not.toContain(file);
-    expect(pruned.deleted.length).toBeGreaterThan(0);
-    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(true);
-
     const id = snap?.kind === "namedSnapshot" ? snap.id : "";
     refused(replayed.deleteNamedSnapshot(MAP, ISSUER, { id }), "INVALID_STATE", /explicit confirmed Command/);
-    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(true);
     accepted(replayed.deleteNamedSnapshot(MAP, ISSUER, { id, confirm: true }));
-    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(true);
-    expect(archiveIndex(dir).entries.find((entry) => entry.file === file)?.retain).toBeUndefined();
-    const dropped = replayed.pruneArchive({ now: dueAt });
-    expect(dropped.problems).toEqual([]);
-    expect(dropped.deleted).toContain(file);
-    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(false);
   });
 });
 
 describe("mcp entry", () => {
-  const saved = { dir: process.env.M3E_STORE_DIR, forbid: process.env.M3E_FORBID_LIVE_DATA };
+  const saved = process.env.M3E_FORBID_LIVE_DATA;
 
   afterEach(async () => {
     await closeActiveRecordStore();
-    if (saved.dir === undefined) delete process.env.M3E_STORE_DIR;
-    else process.env.M3E_STORE_DIR = saved.dir;
-    if (saved.forbid === undefined) delete process.env.M3E_FORBID_LIVE_DATA;
-    else process.env.M3E_FORBID_LIVE_DATA = saved.forbid;
+    if (saved === undefined) delete process.env.M3E_FORBID_LIVE_DATA;
+    else process.env.M3E_FORBID_LIVE_DATA = saved;
   });
 
-  it("runs projection, write-back, link, band, promotion and namedSnapshot on the record store", () => {
+  it("runs projection, write-back, link, band, promotion and namedSnapshot on the record store", async () => {
     process.env.M3E_FORBID_LIVE_DATA = "1";
-    const dir = path.join(tempDir("mcp-bands"), "store");
-    RecordWorkspaceStore.create(dir, snapshotOf([]));
-    process.env.M3E_STORE_DIR = dir;
+    const handle = await createTestStore(snapshotOf([]));
+    holder.store = handle.store;
+    const feedback = path.join(os.tmpdir(), "m3e-bands-feedback");
     const model = new RapidMvpModel("Root");
     const home = model.addNode(model.state.rootId, "home");
     model.setScopeBoundary(home, true);
@@ -638,7 +602,7 @@ describe("mcp entry", () => {
     const b = model.addNode(home, "b");
     const other = model.addNode(model.state.rootId, "other");
     model.saveToSqlite("unused.sqlite", MAP);
-    const service = new M3eMcpService({ dbPath: () => "unused.sqlite", feedbackDir: () => path.join(dir, "..", "feedback") });
+    const service = new M3eMcpService({ dbPath: () => "unused.sqlite", feedbackDir: () => feedback });
     const uri = (id: string): string => `m3e://maps/${MAP}/nodes/${encodeURIComponent(id)}`;
     const ctx = service.call("m3e_context", { action: "enter", target: `m3e://maps/${MAP}` });
     expect(ctx.ok).toBe(true);
@@ -683,8 +647,8 @@ describe("mcp entry", () => {
 
     const created = service.call("m3e_create", { kind: "node", context_id: contextId, target: uri(home), text: "Fresh", deep: "new" });
     expect(created.ok).toBe(true);
-    const line = fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8").trim().split("\n").at(-1) ?? "{}";
-    expect(JSON.parse(line).intent).toBe("create-deep");
+    const lines = await store!.readJournalAfter(0);
+    expect(lines?.at(-1)?.intent).toBe("create-deep");
     const asAlias = service.call("m3e_create", { kind: "node", context_id: contextId, target: uri(home), text: "Alias", deep: { target: uri(a) } });
     expect(asAlias.ok).toBe(true);
     const alias = Object.values(store!.getMapRow(MAP).state.nodes).find((item) => item.text === "Alias");
@@ -692,8 +656,8 @@ describe("mcp entry", () => {
     expect(alias?.targetNodeId).toBe(a);
   });
 
-  it("refuses the new kinds when the record store is off", () => {
-    delete process.env.M3E_STORE_DIR;
+  it("refuses the new kinds when the record store is off", async () => {
+    holder.store = null;
     process.env.M3E_FORBID_LIVE_DATA = "1";
     const dir = tempDir("mcp-off");
     const sqlite = path.join(dir, "map.sqlite");

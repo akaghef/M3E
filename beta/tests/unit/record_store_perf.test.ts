@@ -1,12 +1,12 @@
 // Commit latency on a synthetic 20,000-node map. The numbers are printed; the assertions are loose
 // upper bounds so that a slow machine does not fail the suite.
 
-import fs from "fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { RecordWorkspaceStore } from "../../src/node/record_store";
+import type { RecordWorkspaceStore } from "../../src/node/record_store";
 import { applyChanges, diffState } from "../../src/shared/map_changes";
 import type { AppState } from "../../src/shared/types";
-import { ISSUER, bigState, clone, command, node, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
+import { ISSUER, bigState, clone, command, node, snapshotOf, type Loose } from "./record_store_helpers";
+import { createTestStore, dropTestStores } from "./neo4j_test_store";
 
 function timed<T>(run: () => T): { ms: number; value: T } {
   const started = process.hrtime.bigint();
@@ -15,22 +15,20 @@ function timed<T>(run: () => T): { ms: number; value: T } {
 }
 
 describe("record store commit latency (20,000 nodes)", () => {
-  let dir: string;
   let store: RecordWorkspaceStore;
   const lines: string[] = [];
 
-  beforeAll(() => {
-    dir = tempDir("perf");
-    fs.rmdirSync(dir);
-    RecordWorkspaceStore.create(dir, snapshotOf([{ id: "big", state: bigState(200, 100) }]));
-    const opened = timed(() => RecordWorkspaceStore.open(dir));
-    store = opened.value;
-    lines.push(`open (20,201 nodes, builds the state): ${opened.ms.toFixed(1)} ms`);
-  });
+  beforeAll(async () => {
+    const started = process.hrtime.bigint();
+    const handle = await createTestStore(snapshotOf([{ id: "big", state: bigState(200, 100) }]));
+    store = handle.store;
+    const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    lines.push(`open (20,201 nodes, builds the state): ${ms.toFixed(1)} ms`);
+  }, 120000);
 
   afterAll(async () => {
-    await store.close();
     console.log(`\n[record store latency]\n${lines.join("\n")}\n`);
+    await dropTestStores();
   });
 
   function measure(label: string, edit: (state: Loose) => void, repeat = 5): number {

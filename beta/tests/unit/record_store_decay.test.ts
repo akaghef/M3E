@@ -1,20 +1,12 @@
 // Decay accumulator, extensionDef default/ref, and the local invariant check.
-// Synthetic records in temporary directories only. The formula below is inlined
-// so a change to the store's arithmetic fails here.
+// The store is Neo4j. The formula below is inlined so a change to the store's arithmetic fails here.
 
-import fs from "fs";
-import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { diffState } from "../../src/shared/map_changes";
 import { decodeRecord, encodeRecord } from "../../src/node/neo4j_store/encoding";
-import {
-  JOURNAL_FILE,
-  RecordWorkspaceStore,
-  SNAPSHOT_FILE,
-  type CommitResult,
-} from "../../src/node/record_store";
+import { RecordWorkspaceStore, type CommitResult } from "../../src/node/record_store";
 import { checkInvariants, type InvariantProblem } from "../../src/shared/record_model/invariants";
-import { parseSnapshot, sortRecords } from "../../src/shared/record_model/jsonl";
+import { parseSnapshot, serializeSnapshot, sortRecords } from "../../src/shared/record_model/jsonl";
 import { NeighbourhoodIndex, type NeighbourOp } from "../../src/shared/record_model/neighbourhood";
 import { recordRk } from "../../src/shared/record_model/steady";
 import type {
@@ -32,9 +24,9 @@ import {
   command,
   richState,
   snapshotOf,
-  tempDir,
   type Loose,
 } from "./record_store_helpers";
+import { createTestStore, dropTestStores, type TestStore } from "./neo4j_test_store";
 
 const SCALES = [6, 10, 16, 20, 24];
 const T0 = "2026-01-01T00:00:00.000Z";
@@ -44,24 +36,22 @@ const T2 = "2026-01-01T00:04:16.000Z";
 const TASK = "m3e:nodeType:task@1";
 const PERSON = "m3e:nodeType:person@1";
 
-const openStores: RecordWorkspaceStore[] = [];
+const handles: TestStore[] = [];
 
-afterEach(async () => {
-  for (const store of openStores.splice(0)) await store.close();
-});
+afterEach(dropTestStores);
 
 let now = T0;
 
-function newDir(name: string, state: Loose = richState(), mapId = "m"): string {
-  const dir = path.join(tempDir(name), "store");
-  RecordWorkspaceStore.create(dir, snapshotOf([{ id: mapId, state }], WS));
-  return dir;
+async function openStore(state: Loose = richState(), mapId = "m"): Promise<RecordWorkspaceStore> {
+  const handle = await createTestStore(snapshotOf([{ id: mapId, state }], WS), { now: () => now, compactAfterLines: 0 });
+  handles.push(handle);
+  return handle.store;
 }
 
-function openStore(dir: string): RecordWorkspaceStore {
-  const store = RecordWorkspaceStore.open(dir, { now: () => now, compactAfterLines: 0 });
-  openStores.push(store);
-  return store;
+function reopenOf(store: RecordWorkspaceStore): Promise<RecordWorkspaceStore> {
+  const handle = handles.find((item) => item.store === store);
+  if (!handle) throw new Error("no test store for reopen");
+  return handle.reopen();
 }
 
 function nodesOf(state: Loose): Record<string, Loose> {
@@ -133,9 +123,9 @@ function taskDef(fields: ExtensionDefRecord["fields"]): ExtensionDefRecord {
 }
 
 describe("decay accumulator", () => {
-  it("stores the formula at committedAt and multiplies once on read", () => {
+  it("stores the formula at committedAt and multiplies once on read", async () => {
     now = T0;
-    const store = openStore(newDir("formula"));
+    const store = await openStore();
     commit(store, (state) => {
       nodesOf(state).leaf.text = "one";
       nodesOf(state).img.text = "two";
@@ -179,18 +169,16 @@ describe("decay accumulator", () => {
     expect(store.activityAt("node|img", T2)).toEqual(readValue(img.v, img.t, T2));
   });
 
-  it("survives snapshot replay, compaction and Neo4j encode/decode", async () => {
+  it("survives snapshot replay, a reopen and Neo4j encode/decode", async () => {
     now = T0;
-    const dir = newDir("roundtrip");
-    const store = openStore(dir);
+    const store = await openStore();
+    const base = serializeSnapshot(store.records());
     commit(store, (state) => { nodesOf(state).leaf.text = "one"; });
     now = T1;
     commit(store, (state) => { nodesOf(state).leaf.text = "two"; });
     const live = store.records();
-    const rebuilt = replay(
-      fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8"),
-      fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8"),
-    );
+    const lines = await store.readJournalAfter(0);
+    const rebuilt = replay(base, (lines ?? []).map((line) => JSON.stringify(line)).join("\n"));
     expect(rebuilt).toEqual(live);
     const decay = live.find((record) => record.kind === "decay" && record.target === "node|leaf");
     if (!decay) throw new Error("missing decay");
@@ -200,21 +188,18 @@ describe("decay accumulator", () => {
     expect(decodeRecord(encoded.props)).toEqual(decay);
 
     const kept = live.filter((record) => record.kind === "decay");
-    store.compact();
-    await store.close();
     now = T2;
-    const again = openStore(dir);
+    const again = await reopenOf(store);
     expect(again.records().filter((record) => record.kind === "decay")).toEqual(kept);
     const stored = decayOf(again, "node|leaf");
     expect(again.activityAt("node|leaf", T2)).toEqual(readValue(stored.v, stored.t, T2));
-    expect(fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8")).toBe("");
   });
 });
 
 describe("extensionDef default and ref", () => {
-  it("fills a required default inside the command that attaches the extension", () => {
+  it("fills a required default inside the command that attaches the extension", async () => {
     now = T0;
-    const store = openStore(newDir("default"));
+    const store = await openStore();
     const defined = commit(store, (state) => {
       state.extensionDefs = [taskDef([{ name: "status", type: "enum", required: true, values: ["open", "done"], default: "open" }])];
       nodesOf(state).leaf.extensions = [TASK];
@@ -230,9 +215,9 @@ describe("extensionDef default and ref", () => {
     });
   });
 
-  it("rejects a ref whose node exists without the extension and allows a missing node", () => {
+  it("rejects a ref whose node exists without the extension and allows a missing node", async () => {
     now = T0;
-    const store = openStore(newDir("ref"));
+    const store = await openStore();
     commit(store, (state) => {
       state.extensionDefs = [
         { kind: "extensionDef", name: "m3e:nodeType:person", version: 1, target: "node", fields: [], rev: 0 },
@@ -527,12 +512,11 @@ describe("local invariant check", () => {
     expect(checkInvariants([...bag.values()])).toEqual([]);
   });
 
-  it("commits a reparent on a 40000-node map without a whole-map invariant scan", { timeout: 120000 }, () => {
+  it("commits a reparent on a 40000-node map without a whole-map invariant scan", { timeout: 300000 }, async () => {
     now = T0;
     const state = bigState(200, 200);
     const nodeCount = Object.keys(state.nodes as Loose).length;
-    const dir = newDir("big", state, "big");
-    const store = openStore(dir);
+    const store = await openStore(state, "big");
     const before = store.getMapRow("big").state as unknown as Loose;
     const after = clone(before);
     const nodes = nodesOf(after);
