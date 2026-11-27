@@ -40,7 +40,7 @@ jobs:
         env:
           NEO4J_AUTH: none
         ports:
-          - 7687:7687
+          - 7688:7687
         options: >-
           --health-cmd "cypher-shell -a bolt://localhost:7687 'RETURN 1'"
           --health-interval 5s
@@ -48,7 +48,7 @@ jobs:
           --health-retries 30
 
     env:
-      M3E_TEST_NEO4J_BOLT: bolt://127.0.0.1:7687
+      M3E_TEST_NEO4J_BOLT: bolt://127.0.0.1:7688
 
     defaults:
       run:

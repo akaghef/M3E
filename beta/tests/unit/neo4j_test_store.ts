@@ -1,5 +1,4 @@
-// Record stores for tests, in the Neo4j named by M3E_TEST_NEO4J_BOLT (default: the local
-// bolt://127.0.0.1:7687). Each store has a name of its own, so tests never see each other's
+// Record stores for tests, in the disposable test Neo4j named by M3E_TEST_NEO4J_BOLT. Each store has a name of its own, so tests never see each other's
 // records; `dropTestStores()` in afterEach deletes them. There is no file-backed store.
 
 import { randomUUID } from "crypto";
@@ -7,9 +6,18 @@ import { RecordWorkspaceStore, type OpenOptions } from "../../src/node/record_st
 import { Neo4jDurability, neo4jConnectionFromEnv, type Neo4jConnection } from "../../src/node/record_store/neo4j_durability";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
 
-export const TEST_NEO4J: Neo4jConnection = neo4jConnectionFromEnv(process.env, "M3E_TEST_NEO4J")
-  ?? neo4jConnectionFromEnv(process.env)
-  ?? { uri: "bolt://127.0.0.1:7687" };
+/**
+ * The disposable test Neo4j (M3E_TEST_NEO4J_BOLT, e.g. bolt://127.0.0.1:7688, auth off). Never the
+ * instance that holds real data: there is no fallback to M3E_NEO4J_* or to port 7687.
+ */
+export const TEST_NEO4J: Neo4jConnection = (() => {
+  const connection = neo4jConnectionFromEnv(process.env, "M3E_TEST_NEO4J");
+  if (connection === null) {
+    throw new Error("M3E_TEST_NEO4J_BOLT is not set: the record store tests need the disposable test Neo4j (never the instance with real data).");
+  }
+  if (/:7687\b/.test(connection.uri)) throw new Error("M3E_TEST_NEO4J_BOLT points at port 7687, the instance with real data.");
+  return connection;
+})();
 
 const made: string[] = [];
 const opened: RecordWorkspaceStore[] = [];
