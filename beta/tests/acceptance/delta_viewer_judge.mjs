@@ -4,6 +4,8 @@
 // (key f) on a 50-node map and on a 20,000-node map. The judged time is the main-thread time from the
 // autosave timer firing to the Command request leaving the page: building the save (DV1). DV2 judges
 // the display update: from the key press to the second animation frame after it, the edit drawn.
+// DV3 and DV4 do the same for a move: grab one node (hold M), move it one sibling down or up (an arrow
+// key), release M; DV3 is building its save, DV4 from pressing M to the second frame after releasing it.
 // Usage: node delta_viewer_judge.mjs <beta dir>
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -122,10 +124,28 @@ async function measure(browser, name, count) {
       }));
       await page.waitForFunction((n) => window.__saveStatus.length >= n, i + 1, { timeout: 120_000 });
     }
+    const toggleSaves = await page.evaluate(() => window.__saveCosts.length);
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(300);
+    const moves = [];
+    for (let i = 0; i < TOGGLES; i += 1) {
+      const arrow = i % 2 === 0 ? "ArrowDown" : "ArrowUp";
+      moves.push(await page.evaluate(async (arrow) => {
+        const t = performance.now();
+        const target = document.activeElement;
+        target.dispatchEvent(new KeyboardEvent("keydown", { key: "m", code: "KeyM", bubbles: true }));
+        target.dispatchEvent(new KeyboardEvent("keydown", { key: arrow, bubbles: true }));
+        document.dispatchEvent(new KeyboardEvent("keyup", { key: "m", code: "KeyM", bubbles: true }));
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return performance.now() - t;
+      }, arrow));
+      await page.waitForFunction((n) => window.__saveStatus.length >= n, TOGGLES + i + 1, { timeout: 120_000 });
+    }
     const { costs, status } = await page.evaluate(() => ({ costs: window.__saveCosts, status: window.__saveStatus }));
     if (status.some((code) => code !== 200)) throw new Error(`${name}: a save answered ${status.join(",")}`);
+    if (toggleSaves !== TOGGLES) throw new Error(`${name}: ${toggleSaves} saves for ${TOGGLES} toggles`);
     const mid = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
-    return { save: mid(costs), paint: mid(paints) };
+    return { save: mid(costs.slice(0, TOGGLES)), paint: mid(paints), moveSave: mid(costs.slice(TOGGLES)), movePaint: mid(moves) };
   } finally {
     await page.close();
     await stop(s);
@@ -139,6 +159,8 @@ try {
   for (const [id, label, a, b] of [
     ["DV1", "save of a one-node scope toggle", small.save, large.save],
     ["DV2", "drawing a one-node scope toggle", small.paint, large.paint],
+    ["DV3", "save of a one-step move of one node", small.moveSave, large.moveSave],
+    ["DV4", "drawing a one-step move of one node", small.movePaint, large.movePaint],
   ]) {
     const ratio = b / a;
     const pass = ratio < RATIO;
