@@ -49,6 +49,15 @@
 
 ## 記録
 
+### 2026-11-27 拒否と忘却を記録する `sync-rejections.jsonl` は compact されず、伸び続ける
+
+- 種類: 問題
+- 書いた agent: Command の再送の修正の session
+- 対象: `beta/src/node/record_store/store.ts` の `rememberResult`・`resetRecords`・`commitIndexText`、DB 仕様書 5.3
+- 中身: 確定的な拒否と no-op の結果、および local の working store の rebase が外した ID は、store 所有の `sync-rejections.jsonl` に追記する。compact は確定の記憶だけを `commit-index.json` に移し、このファイルは切り詰めない。端末では pull のたびの rebase が、まだ確定していない Command の ID を 1 行に追記する。書き込みは変更に比例するが、ファイルは上限なく伸び、起動時の読込みはファイル全体に比例する。compact の時に、生きている結果だけを書き直す（忘却済みの行と、`COMMAND_INDEX_RETAIN` を超えた古い結果を落とす）ことを提案する。
+- 根拠: 実装を読んだ（`commitIndexText` は `result` を持つ記憶を除外し、`sync-rejections.jsonl` を書き直す経路が無い）。実データでの大きさは未計測。
+- 扱い: 未対応
+
 ### 2026-11-27 通常の parent edge の移動を決定済みの LWW に合わせる
 
 - 種類: 問題

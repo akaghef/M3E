@@ -1145,7 +1145,8 @@ export class RecordWorkspaceStore {
       if (known.hash === hash || known.canonicalHash === hash) {
         return this.commandResult(known);
       }
-      return this.failure("SAME_ID_DIFFERENT_CONTENT", null, "The Command ID was already used with different content.");
+      const entry = this.maps.get(mapId);
+      return this.failure("SAME_ID_DIFFERENT_CONTENT", entry ? this.currentOf(entry) : null, "The Command ID was already used with different content.");
     }
     const result = this.commitNewMapCommand(mapId, command, issuer, expectedRevision, sync);
     this.rememberResult(command.commandId, { hash, syncHash: sync?.hash, mapIds: new Set([mapId]) }, result);
