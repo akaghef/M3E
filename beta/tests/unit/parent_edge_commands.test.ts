@@ -75,3 +75,21 @@ test("a viewer can save two consecutive reorders without readback or self-confli
     expect(s.getMapRow("m").state.nodes.root.children).toEqual(live.nodes.root.children);
   }
 });
+
+test("legacy requests write keyed journals and outbox entries and retain retry identity after compaction", async () => {
+  const { s, dir } = store(3);
+  const captured: any[] = []; s.setCapture(payload => captured.push(payload));
+  const legacy = command([
+    { kind: "edge", key: ["n0"], op: "update", before: { index: 1 }, after: { index: 3 } },
+    { kind: "edge", key: ["n1"], op: "update", before: { index: 2 }, after: { index: 1 } },
+    { kind: "edge", key: ["n2"], op: "update", before: { index: 3 }, after: { index: 2 } },
+  ]);
+  expect(s.commitMapCommand("m", legacy, "human").ok).toBe(true);
+  expect(JSON.stringify(s.committedCommand("m", legacy.commandId)?.changes)).not.toContain('"index"');
+  expect(JSON.stringify(captured[0].command.changes)).not.toContain('"index"');
+  expect(captured[0].command.changes).toHaveLength(1);
+  for (const cmd of [legacy, captured[0].command]) expect(s.commitMapCommand("m", cmd, "human")).toMatchObject({ ok: true, replayed: true });
+  s.compact(); await s.close(); open.splice(open.indexOf(s), 1);
+  const again = RecordWorkspaceStore.open(dir); open.push(again);
+  for (const cmd of [legacy, captured[0].command]) expect(again.commitMapCommand("m", cmd, "human")).toMatchObject({ ok: true, replayed: true });
+});

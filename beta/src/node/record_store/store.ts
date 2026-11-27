@@ -17,7 +17,7 @@ import { createHash, randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { applyChanges, diffState, type FieldConflict, type MapCommand, type RecordChange } from "../../shared/map_changes";
+import { applyChanges, diffState, nonEmptyChanges, type FieldConflict, type MapCommand, type RecordChange } from "../../shared/map_changes";
 import { advanceDecay, readDecay } from "../../shared/record_model/decay";
 import { extensionDefShapeError, fillRequiredDefaults } from "../../shared/record_model/extensions";
 import { fromSnapshot } from "../../shared/record_model/from_snapshot";
@@ -218,6 +218,7 @@ const ALIAS_RECORD_RK: Record<Exclude<AliasKind, "surface">, string> = { node: "
 interface CommandEntry {
   seq: number;
   hash: string;
+  canonicalHash?: string;
 }
 
 type Dict = Record<string, unknown>;
@@ -615,7 +616,7 @@ export class RecordWorkspaceStore {
     if (fs.existsSync(indexPath)) {
       const index = JSON.parse(fs.readFileSync(indexPath, "utf8")) as {
         mapSeq?: Record<string, number>;
-        commands?: Array<[string, string, number, string]>;
+        commands?: Array<[string, string, number, string, string?]>;
         snapshot?: { seq: number; sha256: string };
         retired?: Record<string, string>;
       };
@@ -624,8 +625,8 @@ export class RecordWorkspaceStore {
         if (typeof body === "string") this.retired.set(id, body);
       }
       for (const [mapId, value] of Object.entries(index.mapSeq ?? {})) this.mapSeq.set(mapId, value);
-      for (const [mapId, commandId, commandSeq, hash] of index.commands ?? []) {
-        this.commands.set(commandKey(mapId, commandId), { seq: commandSeq, hash });
+      for (const [mapId, commandId, commandSeq, hash, canonicalHash] of index.commands ?? []) {
+        this.commands.set(commandKey(mapId, commandId), { seq: commandSeq, hash, canonicalHash });
       }
     }
 
@@ -998,7 +999,7 @@ export class RecordWorkspaceStore {
     // 1. A command id seen before: the first result again, or a refusal when the content differs.
     const known = this.commands.get(commandKey(mapId, command.commandId));
     if (known) {
-      if (known.hash === hashChanges(command.changes)) {
+      if (known.hash === hashChanges(command.changes) || known.canonicalHash === hashChanges(command.changes)) {
         return { ok: true, savedAt: this.committedAtOf(known.seq), seq: known.seq, replayed: true };
       }
       return this.failure(
@@ -1617,7 +1618,7 @@ export class RecordWorkspaceStore {
       .slice(-COMMAND_INDEX_RETAIN)
       .map(([key, value]) => {
         const cut = key.indexOf("\u0000");
-        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash];
+        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash, ...(value.canonicalHash ? [value.canonicalHash] : [])];
       });
     const body: Dict = {
       format: 1,
@@ -2066,27 +2067,32 @@ export class RecordWorkspaceStore {
     if (meta.actor !== undefined) line.actor = meta.actor;
     if (meta.provenance !== undefined) line.provenance = meta.provenance;
     if (meta.reason !== undefined && meta.reason !== "") line.reason = meta.reason;
-    // The journal keeps a Command's changes as the client sent them: a repeated command id is
-    // compared with them, and a reader of the committed Command gets its own ids back.
+    // Keep client ids, but write parent assignments with stable keys even for legacy requests.
+    // Preserve the original hash separately so retries of either representation are idempotent.
     const sentChanges = translated?.sent ?? changes;
-    line.changes = sentChanges.map((sent, index) => {
+    line.changes = nonEmptyChanges(sentChanges.map((sent, index) => {
       if (sent.kind !== "edge" || !(hasOwn(sent.before ?? {}, "index") || hasOwn(sent.after ?? {}, "index"))) return sent;
       const id = changes[index].key[0];
       const beforeNode = warm?.state.nodes[id], afterNode = result.state.nodes[id];
+      const clientParent = (parent: string): string => {
+        if (!translated) return parent;
+        return (entry ? this.aliasesOf(entry).out.node.get(parent) : undefined)
+          ?? translated.aliases.find(alias => alias.recordKind === "node" && alias.newId === parent)?.oldId ?? parent;
+      };
       const assignment = (node: AppState["nodes"][string] | undefined, wire: Record<string, unknown> | undefined) =>
-        node && typeof node.parentId === "string" ? { parentId: typeof wire?.parentId === "string" ? wire.parentId : node.parentId, ord: node.edgeOrder } : undefined;
+        node && typeof node.parentId === "string" ? { parentId: typeof wire?.parentId === "string" ? wire.parentId : clientParent(node.parentId), ord: node.edgeOrder } : undefined;
       return { ...sent,
         ...(sent.op !== "create" ? { before: assignment(beforeNode, sent.before) } : {}),
         ...(sent.op !== "delete" ? { after: assignment(afterNode, sent.after) } : {}),
       };
-    });
+    }));
     // Repeated legacy requests still compare with the bytes accepted at the boundary.
-    line.changesHash = hashChanges(sentChanges);
+    line.changesHash = hashChanges(meta.sent ?? sentChanges);
     const aliasRecords = translated?.aliases ?? [];
     const userOps = aliasRecords.length === 0
       ? ops
       : [...ops, ...aliasRecords.map((record): RecordOp => ({ op: "put", rk: recordRk(record), record }))];
-    if (meta.syncHash !== undefined && entry && userOps.length === 0) {
+    if (entry && userOps.length === 0 && (meta.syncHash !== undefined || line.changes.length === 0)) {
       undoGraph?.();
       result.revert?.();
       return { ok: true, savedAt: this.savedAtOf(entry), seq: this.currentSeq, replayed: false, noOp: true };
@@ -2116,7 +2122,7 @@ export class RecordWorkspaceStore {
         const state = result.state as AppState;
         const root = state.nodes?.[state.rootId];
         this.capture(payload, issuer, committedAt, this.mapName(entry) || root?.text || "");
-        line.changesHash = hashChanges(command.changes);
+        line.changesHash = hashChanges(meta.sent ?? command.changes);
       }
       this.append(line);
     } catch (error) {
@@ -2397,6 +2403,7 @@ export class RecordWorkspaceStore {
       this.commands.set(commandKey(line.mapId, line.commandId), {
         seq: line.seq,
         hash: line.changesHash ?? hashChanges(line.changes),
+        canonicalHash: line.changesHash && line.changesHash !== hashChanges(line.changes) ? hashChanges(line.changes) : undefined,
       });
     }
   }

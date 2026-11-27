@@ -126,12 +126,12 @@ describe("delta-proportional store paths", () => {
     compare([{ kind: "node", key: ["leaf"], op: "update", before: { text: "stale" }, after: { text: "conflict" } }]);
   });
 
-  it("appends leaves without enumerating the existing node or sibling tables", () => {
+  it.each([0, 1, 3])("inserts a leaf at %i without enumerating existing node or sibling tables", (position) => {
     const { store } = create();
     const state = store.getMapRow("m").state;
     const after = clone(state);
     after.nodes.fresh = node("fresh", "root") as typeof after.nodes[string];
-    after.nodes.root.children.push("fresh");
+    after.nodes.root.children.splice(position, 0, "fresh");
     const cmd = command(diffState(state, after));
     let enumerations = 0;
     let siblingsRead = 0;
@@ -233,6 +233,24 @@ describe("delta-proportional store paths", () => {
     const copy = store.getMapRow("m");
     copy.state.nodes.root.children.length = 0;
     expect(store.getMapRow("m").state.nodes.root.children).toContain("fresh");
+  });
+
+  it("rolls back parent assignments and child indexes when append fails", () => {
+    const { store } = create();
+    const before = store.getMapRow("m"), records = store.records(), seq = store.seq();
+    const after = clone(before.state);
+    after.nodes.root.children = after.nodes.root.children.filter(id => id !== "img");
+    after.nodes.img.parentId = "leaf";
+    after.nodes.leaf.children.push("img");
+    const cmd = command(diffState(before.state, after));
+    const write = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => { throw new Error("disk failure"); });
+    expect(() => store.commitMapCommand("m", cmd, ISSUER)).toThrow("disk failure");
+    write.mockRestore();
+    expect(store.records()).toEqual(records);
+    expect(store.getMapRow("m")).toEqual(before);
+    expect(store.journalLinesAfter(seq)).toEqual([]);
+    expect(store.commitMapCommand("m", cmd, ISSUER).ok).toBe(true);
+    expect(store.getMapRow("m").state.nodes.leaf.children).toEqual(["img"]);
   });
 
   it("rolls back nodes, scope labels, records and journal positions when append fails", () => {

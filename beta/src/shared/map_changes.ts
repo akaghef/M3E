@@ -1,6 +1,7 @@
+import { writtenNodeValid, writtenNodeCopyOf } from "./record_model/field_tables";
 import { scopeFieldsOf } from "./record_model/scope_fields";
 import { writtenExtensions } from "./record_model/extensions";
-import { assignOrderKeys, initialKeys, isOrderKey } from "./record_model/order_key";
+import { assignOrderKeys, isOrderKey } from "./record_model/order_key";
 /**
  * Field-level changes between two map states.
  * The storage shape stays the current map state. Command application compares
@@ -454,7 +455,9 @@ function sameField(left: Bag, right: Bag, field: string, kind?: RecordChange["ki
   if ((kind === "node" || kind === "graph-link") && (field === "extensions" || field === "edgeExtensions")) {
     return sameValue(writtenExtensions(left[field]), writtenExtensions(right[field]));
   }
-  if (kind === "node" && (field === "edgeAttributes" || field === "valid")) {
+  if (kind === "node" && field === "valid") return sameValue(writtenNodeValid(left[field]), writtenNodeValid(right[field]));
+  if (kind === "node" && field === "copyOf") return sameValue(writtenNodeCopyOf(left[field]), writtenNodeCopyOf(right[field]));
+  if (kind === "node" && field === "edgeAttributes") {
     const value = (bag: Bag) => isBag(bag[field]) && Object.keys(bag[field] as Bag).length ? bag[field] : undefined;
     return sameValue(value(left), value(right));
   }
@@ -591,11 +594,11 @@ function applicationEdges(state: Bag): Map<string, EdgeAssign> {
   return found;
 }
 
-function applyEdges(draft: Draft, changes: readonly RecordChange[]): void {
+function applyEdges(draft: Draft, changes: readonly RecordChange[], original?: Map<string, EdgeAssign>, exposeEdgeOrders?: boolean): void {
   const edges = changes.filter((change) => change.kind === "edge");
   if (!edges.length) return;
-  const assign = applicationEdges(draft.state);
-  const exposeOrders = Object.values(dict(draft.state, "nodes")).some(node => isBag(node) && has(node, "edgeOrder"));
+  const assign = original ? new Map(original) : applicationEdges(draft.state);
+  const exposeOrders = exposeEdgeOrders ?? Object.values(dict(draft.state, "nodes")).some(node => isBag(node) && has(node, "edgeOrder"));
   const affected = new Set<string>();
   for (const change of edges) {
     const id = change.key[0] ?? "";
@@ -610,25 +613,37 @@ function applyEdges(draft: Draft, changes: readonly RecordChange[]): void {
     else {
       const parentId = typeof change.after?.parentId === "string" ? change.after.parentId : previous?.parentId;
       const index = typeof change.after?.index === "number" ? change.after.index : previous?.index;
-      const ord = typeof change.after?.ord === "string" ? change.after.ord : previous?.ord;
+      const ord = typeof change.after?.ord === "string" ? change.after.ord : previous?.parentId === parentId ? previous?.ord : undefined;
       if (typeof parentId === "string") assign.set(id, { parentId, index: index ?? 0, ord });
     }
   }
   const nodes = draft.ensure("nodes");
+  const keyed = edges.some(e => has(e.after ?? {}, "ord"));
+  const groups = new Map<string, Array<[string, EdgeAssign]>>();
+  for (const item of assign) {
+    if (!affected.has(item[1].parentId)) continue;
+    let group = groups.get(item[1].parentId);
+    if (!group) groups.set(item[1].parentId, group = []);
+    group.push(item);
+  }
   for (const parentId of affected) {
     if (!isBag(nodes[parentId])) continue;
     const parent = draft.node(parentId);
     if (!parent) continue;
-    parent.children = [...assign.entries()]
-      .filter(([, edge]) => edge.parentId === parentId)
-      .sort((left, right) => (edges.some(e => has(e.after ?? {}, "ord")) ? (left[1].ord! < right[1].ord! ? -1 : left[1].ord! > right[1].ord! ? 1 : 0) : left[1].index - right[1].index) || (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
+    parent.children = (groups.get(parentId) ?? [])
+      .sort((left, right) => (keyed ? (left[1].ord! < right[1].ord! ? -1 : left[1].ord! > right[1].ord! ? 1 : 0) : left[1].index - right[1].index) || (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
       .map(([id]) => id);
+    if (!keyed) {
+      const ids = parent.children as string[];
+      const keys = assignOrderKeys(ids.map(id => assign.get(id)?.ord));
+      ids.forEach((id, i) => { assign.get(id)!.ord = keys[i]; });
+    }
   }
   const changedIds = new Set(edges.map((change) => change.key[0]));
   for (const [id, edge] of assign) {
     if (!affected.has(edge.parentId) && !changedIds.has(id)) continue;
     const current = nodes[id];
-    if (isBag(current) && current.parentId === edge.parentId && current.edgeOrder === edge.ord) continue;
+    if (isBag(current) && current.parentId === edge.parentId && (!changedIds.has(id) || current.edgeOrder === edge.ord)) continue;
     const node = draft.node(id);
     if (node) {
       node.parentId = edge.parentId;
@@ -640,6 +655,7 @@ function applyEdges(draft: Draft, changes: readonly RecordChange[]): void {
     const node = draft.node(change.key[0] ?? "");
     if (node) { node.parentId = null; delete node.edgeOrder; }
   }
+  edgeOrders.set(draft.state, assign);
 }
 
 function applyAnnotations(draft: Draft, changes: readonly RecordChange[]): void {
@@ -740,7 +756,7 @@ function alreadyApplied(change: RecordChange, current: Bag | null): boolean {
     .every((field) => matchesField(current, change.after ?? {}, field, change.kind));
 }
 
-export function applyChanges(state: object, changes: readonly RecordChange[], allowAfter = false): ApplyResult {
+export function applyChanges(state: object, changes: readonly RecordChange[], allowAfter = false, exposeEdgeOrders?: boolean): ApplyResult {
   const source = state as Bag;
   const conflicts: FieldConflict[] = [];
   const pending: RecordChange[] = [];
@@ -777,7 +793,7 @@ export function applyChanges(state: object, changes: readonly RecordChange[], al
     }
     applyOne(draft, change);
   }
-  applyEdges(draft, pending);
+  applyEdges(draft, pending, edges, exposeEdgeOrders);
   applyAnnotations(draft, pending);
   for (const change of deferred) applyMapField(draft, change);
   return { ok: true, state: draft.state };

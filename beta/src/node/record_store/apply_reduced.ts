@@ -58,7 +58,10 @@ export function applyChangesReduced(state: object, changes: readonly RecordChang
   for (const id of ids) {
     if (hasOwn(nodes, id)) reducedNodes[id] = nodes[id];
   }
-  const result = applyChanges({ ...source, nodes: reducedNodes }, changes, allowAfter);
+  // Preserve the complete viewer state's metadata visibility even when its only keyed
+  // node is outside the reduced set (legacy array-only states omit these properties).
+  const exposeOrders = Object.values(nodes).some(node => isDict(node) && hasOwn(node, "edgeOrder"));
+  const result = applyChanges({ ...source, nodes: reducedNodes }, changes, allowAfter, exposeOrders);
   if (!result.ok) return result;
   const applied = result.state as Dict;
   const appliedNodes = applied.nodes;
@@ -105,7 +108,7 @@ export function appendedLeaves(state: object, changes: readonly RecordChange[]):
     created.add(id);
   }
   if (created.size === 0) return undefined;
-  const positions = new Map<string, Array<{ id: string; index: number }>>();
+  const positions = new Map<string, Array<{ id: string; index: number; stable: boolean }>>();
   const edged = new Set<string>();
   for (const change of changes) {
     if (change.kind === "node") continue;
@@ -120,13 +123,13 @@ export function appendedLeaves(state: object, changes: readonly RecordChange[]):
     edged.add(change.key[0]);
     let group = positions.get(parentId);
     if (!group) positions.set(parentId, group = []);
-    group.push({ id: change.key[0], index });
+    group.push({ id: change.key[0], index, stable: isOrderKey(ord) });
   }
   if (edged.size !== created.size) return undefined;
   const parents = new Map<string, string[]>();
   for (const [id, group] of positions) {
     group.sort((a, b) => a.index - b.index);
-    const stable = group.every(entry => changes.some(change => change.kind === "edge" && change.key[0] === entry.id && isOrderKey(change.after?.ord)));
+    const stable = group.every(entry => entry.stable);
     if (!stable) {
       const length = ((nodes[id] as Dict).children as unknown[]).length;
       if (group.some((entry, i) => entry.index !== length + i)) return undefined;

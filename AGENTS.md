@@ -48,6 +48,8 @@ An implementer does more than carry out the instruction. When the work turns up 
 
 Work on the write, sync and display-update paths costs in proportion to the change it carries, never to the size of the workspace, map or journal ([the principle](.kiro/specs/rapid-persistence-redesign/sync-principles.md), akaghef 2026-11-25, absolute). When code is wasteful by its structure, fix it at once; measuring first is not required. Examples: one round trip per item where the interface takes a list, a full copy or full replay where only a delta changed, work repeated whose result is already known. Measure to choose between plausible designs or to back a claim about speed. A fix that changes stored data or its meaning (what a journal records, for example) is still a decision for akaghef. A fix whose correct form needs design goes into the work area's log with the waste named.
 
+When changing viewer/store field tables, persisted defaults or canonicalization, extend the field lifecycle samples in `beta/tests/unit/viewer_field_lifecycle.ts` and run `viewer_field_lifecycle.test.ts` plus the corresponding local-mode test in `local_sync_store.test.ts`. Coverage is derived from production field tables and viewer types; never silence an unhandled-field failure by removing a field from coverage. Keep each step's `before` in the viewer's own previous shape, not a store readback. A new field without lifecycle handling must fail the test.
+
 Decided content is changed only by akaghef. For storage and database work the log is [the implementation log](.kiro/specs/rapid-persistence-redesign/implementation-log.md); read its open entries before starting there and update an entry's status when the work resolves it.
 
 ## Environment Structure

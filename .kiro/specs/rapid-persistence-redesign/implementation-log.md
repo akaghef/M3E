@@ -49,6 +49,33 @@
 
 ## 記録
 
+### 2026-11-27 parent edge の Command は変更した子の親と順序キーだけを運ぶ
+
+- 種類: 気づき
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: DB 仕様書 3.4、local-mode-design.md 3 節、`map_changes.ts`、`record_model/steady.ts`、`record_store/store.ts`
+- 中身: Command に `{parentId, ord}` を採用した。既存の `fractional-indexing` と保存済みの key を再利用でき、兄弟の index がずれても兄弟自身を書き換えずに済む。viewer の `edgeOrder` は入ってくる parent edge の key であり、node record の内容とは分ける。同一 scope 内の付け替えと並べ替え、通常の葉の挿入は、対象 record と親ごとの索引だけを更新し、子配列は読むときに構成する。index 形式の既存 Command も同時適用の意味を保って受け、journal / outbox は key 形式で書く。受信時と正規化後の hash を保持し、同じ Command の再送を判定する。
+- 根拠: `parent_edge_commands.test.ts` で 10 / 20,000 兄弟の移動・挿入・並べ替えが parent edge 1 件になること、別の兄弟と同じ node の CAS、旧形式の再起動・compaction 後の再送、viewer の連続保存を検証した。`record_store_delta.test.ts` で挿入位置に依らない非走査と、書込み失敗時の親・順序・record の rollback を検証した。`scope_view_api.test.ts` と `map_changes_invariants.test.ts` で HTTP の scope 操作とランダム変更・逆操作を検証した。 `npm run build` が成功し、差分量の受入判定は DJ1–DJ5 の 5/5、local mode の受入判定は 16/16 を通過した。全 unit suite は 1609 passed / 2 failed / 27 skipped。失敗は vault watch の 2 件で、一時ディレクトリへの最小の `fs.watch` 呼出しでも `EMFILE` を再現したため、全体合格は未達である。Playwright と viewer の受入判定は未実行（Director 依頼）。
+- 扱い: 仕様へ反映（DB 仕様書 3.4、local-mode-design.md 3 節）。同一 scope の経路は実装で解消。scope をまたぐ付け替えや複合構造変更の全体射影、配列からの構造差分作成時の全 node 列挙は残る。DB 仕様書 5.2 の LWW は本作業で変更せず、本作業で要求された同一 node の CAS と決定との差は未対応として残す。
+
+### 2026-11-27 viewer の全 field の保存後の自己競合をライフサイクル試験で検出する
+
+- 種類: 気づき
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: `record_model/field_tables.ts`、`map_changes.ts`、`viewer_field_lifecycle.ts`、`viewer_field_lifecycle.test.ts`、`local_sync_store.test.ts`、`AGENTS.md`
+- 中身: production の field table と viewer の型定義から node、relation edge、scope、Surface View、parent edge の欄を列挙する。既定値と非既定値で create → update → delete を実 store と working store に通し、前提は store の読戻しでなく viewer が持つ直前の値から作る。空の extensions・edgeAttributes・valid、valid の空文字、copyOf.ids の省略、空の edgeRelationType、自動 port、scope の band・retention・projection の比較を保存側の正規形に合わせた。未対応の欄は試験を失敗させ、field table や正規化の変更時にこの試験を要求する規則を AGENTS.md に置いた。
+- 根拠: 実 store と local mode の試験が通過。field table に `unhandledProbe` を一時追加すると `Unhandled viewer field node.unhandledProbe` で失敗したことを確認し、probe は削除した。valid の空文字と copyOf.ids の省略でも修正前の自己競合を再現し、射影と比較に共通の正規化処理で修正した。local mode は実際の push まで行い、conflicts が 0 件であることも検証した。
+- 扱い: 実装で解消。skill の変更・mirror 同期は不要。全ての値の組合せを証明するものではなく、欄の追加と既定値の脱落を継続して検出する。
+
+### 2026-11-27 空の update を Command builder と store 境界で除外する
+
+- 種類: 問題
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: `map_changes.ts`、`browser/save_command.ts`、`node/mcp_service.ts`、`record_store/store.ts`、`local_sync_store.test.ts`
+- 中身: JSON 化で消える undefined も考慮し、送信形で before / after が等しい update を共有処理で除く。`diffState` と viewer の保存経路でこの処理を使い、変更がなければ viewer / MCP は送信・確定しない。store に直接届く空 update も capture より前に no-op として返し、journal・outbox の行を増やさない。既存 viewer builder にも空判定はあったが、store 境界はその条件を保証していなかった。過去の実 outbox の発行経路は本作業では特定していない。
+- 根拠: `empty viewer-shaped updates never enter the working journal or outbox` は修正前に `noOp: true` が返らず失敗し、修正後に通過した。builder と MCP のコードを調べ、空の結果で送信・確定に進まないことを確認した。
+- 扱い: 実装で解消（空 update と 0 件の Command の流入防止）。過去の発行操作の特定は未確認。実 Beta データには触れていない。
+
 ### 2026-11-25 push の前に outbox の Command をまとめていない（作ってすぐ消した node も remote に残る）
 
 - 種類: 問題
@@ -65,7 +92,7 @@
 - 対象: MacBook の Beta workspace の outbox（2026-11-25 時点の 52 件目）、`beta/src/shared/map_changes.ts` の `diffState`
 - 中身: intent が `rename` で、変更が 1 件だけの Command が outbox にあった。その 1 件は node の update で、`before` も `after` も `{}` だった。working store で commit し直すと no-op になり、journal に行を残さない。push すれば remote でも no-op になるが、outbox の 1 件、push の 1 件、当て直しの 1 回を無駄に使う。どの経路が空の update を作ったかは確かめていない（viewer の改名の保存と思われる）。local 側は、この no-op を飛ばして再開できるように直した（このログと同じ commit）。
 - 根拠: `sync/outbox.jsonl` と working store の journal を突き合わせた。
-- 扱い: 未対応（空の update を作る経路を特定し、Command に入れないようにする）
+- 扱い: 空 update と 0 件の Command の流入防止は実装で解消（2026-11-27 の記録）。JSON 化した差分を builder と store 境界で除外する。過去の発行操作の特定は未確認。
 
 ### 2026-11-25 書き込み・同期・表示更新の経路に、まだ全体に比例する処理がある
 
@@ -79,7 +106,7 @@
   - viewer の保存: 自動保存のたびに、map 全体について `diffState(base, state)` を取る（`viewer.ts` の `saveDocToLocalDb` と `save_command.ts`）。
   - local の rebase: 触った map の投影（warm）と近傍の索引を捨てるので、次に読むときに map 全体を投影し直す。commit の側も map 全体を複製しているので、今は同じ桁にとどまる。
 - 根拠: コードを読んだ。所要時間は測っていない（原則により、構造で判断する）。
-- 扱い: 未対応。remote の journal を通し番号で引けるようにする（行の位置の索引）、commit と保存の差分を変えた record に限る、の二つに設計が要る。名前付き snapshot の記録を確かめるため commit のたびに全 record を走査していた件は、このログと同じ commit で解消した（名前付き snapshot の record に触れない commit では何もしない）。
+- 扱い: 一部解消。同一 scope 内の parent edge の移動・並べ替えと通常の葉の挿入は、変更 record だけの確定にした（2026-11-27 の記録）。構造差分作成時の全 node 列挙と一般の複合変更の全体射影は残る。以下はこの記録時点の未対応部分であり、今回の S1–S3 以外の経路の完了判定は行っていない。remote の journal を通し番号で引けるようにする（行の位置の索引）、commit と保存の差分を変えた record に限る、の二つに設計が要る。名前付き snapshot の記録を確かめるため commit のたびに全 record を走査していた件は、このログと同じ commit で解消した（名前付き snapshot の record に触れない commit では何もしない）。
 
 ### 2026-11-25 push と pull のたびに、working store を confirmed 全体の複製から作り直している
 

@@ -9,13 +9,13 @@ import { JOURNAL_FILE, RecordWorkspaceStore, SNAPSHOT_FILE, COMMIT_INDEX_FILE, t
 import { activeRecordStore, closeActiveRecordStore } from "../../src/node/record_store/active";
 import { aliasId } from "../../src/node/record_store/id_alias";
 import { storeDuplicateMap, storeListMaps } from "../../src/node/record_store/legacy_api";
-import { diffState } from "../../src/shared/map_changes";
+import { acceptEdgeOrders, diffState } from "../../src/shared/map_changes";
 import { sha256Hex } from "../../src/shared/record_model/hash";
 import { checkInvariants } from "../../src/shared/record_model/invariants";
 import { serializeSnapshot } from "../../src/shared/record_model/jsonl";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
 import type { AppState } from "../../src/shared/types";
-import { ISSUER, WS, bigState, clone, command, node, richState, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
+import { ISSUER, WS, withOrderKeys, bigState, clone, command, node, richState, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
 
 const open: RecordWorkspaceStore[] = [];
 
@@ -55,7 +55,10 @@ function ok(result: CommitResult): Extract<CommitResult, { ok: true }> {
 }
 
 function save(store: RecordWorkspaceStore, mapId: string, state: Loose): Extract<CommitResult, { ok: true }> {
-  return ok(store.saveWholeMap(mapId, state as unknown as AppState, ISSUER));
+  const changes = diffState(store.hasMap(mapId) ? stateOf(store, mapId) : {}, state);
+  const result = ok(store.saveWholeMap(mapId, state as unknown as AppState, ISSUER));
+  acceptEdgeOrders(state, changes);
+  return result;
 }
 
 function recordsOfMap(store: RecordWorkspaceStore, mapId: string): SnapshotRecord[] {
@@ -71,13 +74,15 @@ function edit(store: RecordWorkspaceStore, mapId: string, change: (state: Loose)
   const before = stateOf(store, mapId);
   const after = clone(before);
   change(after);
-  ok(store.commitMapCommand(mapId, command(diffState(before, after)), ISSUER));
+  const changes = diffState(before, after);
+  ok(store.commitMapCommand(mapId, command(changes), ISSUER));
+  acceptEdgeOrders(after, changes);
   expect(stateOf(store, mapId)).toEqual(after);
 }
 
 /** The state the e2e spec seeds every map with. */
 function feelState(): Loose {
-  return {
+  return withOrderKeys({
     rootId: "root",
     nodes: {
       root: node("root", null, ["A", "B", "C"], { text: "Feel Root" }),
@@ -87,7 +92,7 @@ function feelState(): Loose {
       B: node("B", "root", [], { text: "Bravo" }),
       C: node("C", "root", [], { text: "Charlie" }),
     },
-  };
+  });
 }
 
 describe("record store: a map whose ids another map already uses", () => {

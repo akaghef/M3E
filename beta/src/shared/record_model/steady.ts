@@ -1,5 +1,5 @@
 import { PARENT_EDGE_FIELDS } from "../map_changes";
-import { NODE_FIELDS, LINK_FIELDS, NODE_VIEW_FIELDS } from "./field_tables";
+import { NODE_FIELDS, LINK_FIELDS, NODE_VIEW_FIELDS, writtenNodeValid, writtenNodeCopyOf } from "./field_tables";
 // Steady-state projection of ONE map: current `AppState` row -> records, used on every commit
 // after the migration. Same record shapes and field rules as ./to_snapshot.ts (contract sections
 // 3.2-3.4), with these differences:
@@ -287,18 +287,10 @@ function projectNode(
   if (Object.keys(alias).length > 0) record.alias = alias;
   const extensions = writtenExtensions(node.extensions);
   if (extensions) record.extensions = extensions;
-  if (isDict(node.valid)) {
-    const valid: Dict = {};
-    if (typeof node.valid.from === "string" && node.valid.from !== "") valid.from = node.valid.from;
-    if (typeof node.valid.to === "string" && node.valid.to !== "") valid.to = node.valid.to;
-    if (Object.keys(valid).length > 0) record.valid = valid;
-  }
-  if (isDict(node.copyOf) && typeof node.copyOf.source === "string" && typeof node.copyOf.mode === "string" && typeof node.copyOf.seq === "number") {
-    const copyOf: Dict = { source: node.copyOf.source, seq: node.copyOf.seq, mode: node.copyOf.mode };
-    if (typeof node.copyOf.mapId === "string") copyOf.mapId = node.copyOf.mapId;
-    copyOf.ids = isDict(node.copyOf.ids) ? node.copyOf.ids : {};
-    record.copyOf = copyOf;
-  }
+  const valid = writtenNodeValid(node.valid);
+  if (valid) record.valid = valid;
+  const copyOf = writtenNodeCopyOf(node.copyOf);
+  if (copyOf) record.copyOf = copyOf;
   const extra = collectExtra(node, NODE_FIELDS);
   if (extra) record.extra = extra;
   record.rev = undefined;

@@ -31,8 +31,8 @@ const values: Record<string, Record<string, [any, any]>> = {
     attributes: [{}, { a: "value" }], targetNodeId: ["target", "root"], aliasLabel: ["", "alias"], access: ["read", "write"],
     targetSnapshotLabel: ["", "snapshot"], isBroken: [false, true], aliasOf: [undefined, "target"],
     extensions: [[], ["test:nodeType:example@1"]], edgeRelationType: ["", "detail"], edgeAttributes: [{}, { a: "b" }],
-    edgeExtensions: [[], ["test:parentEdge:example@1"]], valid: [{}, { from: "2026-01-01" }],
-    copyOf: [undefined, { source: "target", seq: 0, mode: "deep", ids: {} }],
+    edgeExtensions: [[], ["test:parentEdge:example@1"]], valid: [{ from: "", to: "" }, { from: "2026-01-01", to: "" }],
+    copyOf: [undefined, { source: "target", seq: 0, mode: "deep" }],
   },
   link: {
     id: ["relation", "relation"], sourceNodeId: ["root", "folder"], targetNodeId: ["target", "folder"],
@@ -40,8 +40,8 @@ const values: Record<string, Record<string, [any, any]>> = {
     color: [undefined, "#123456"], sourcePort: ["auto", "left"], targetPort: ["auto", "right"], attributes: [{}, { a: "value" }],
     extensions: [[], ["test:relationEdge:example@1"]],
   },
-  scope: { id: ["scope:probe", "scope:probe"], label: ["", "derived"], rootNodeIds: [["probe"], ["probe"]], relationIds: [[], []],
-    primarySurfaceId: [undefined, "surface"], band: ["rapid", "rapid"], retention: [{}, { ms: 2592000000 }],
+  scope: { id: ["scope:probe", "scope:probe"], label: ["", "derived"], rootNodeIds: [["probe"], ["probe", "target"]], relationIds: [[], ["relation"]],
+    primarySurfaceId: [undefined, "surface"], band: ["rapid", "deep"], retention: [{}, { ms: 5184000000 }],
     projection: [undefined, { mode: "work", from: { scopeId: "scope:root" }, range: { root: "root" }, baseSeq: 0, dissolved: [] }],
   },
   surface: { id: ["surface", "surface"], scopeId: ["scope:root", "scope:folder"], kind: ["tree", "scatter"], layout: ["tree", "scatter"],
@@ -95,7 +95,9 @@ export function exerciseViewerFields(store: RecordWorkspaceStore, prefix: string
     let before = seed;
     for (const after of [unique(shaped(kind as any, field, samples[0])), unique(shaped(kind as any, field, samples[1])), seed]) {
       const changes: RecordChange[] = diffState(before, after);
-      const result = store.commitMapCommand(mapId, command(changes), "human");
+      // Band changes require the public promotion intent; keep the real guard enabled.
+      const intent = kind === "scope" && field === "band" ? "promote" : "test";
+      const result = store.commitMapCommand(mapId, command(changes, intent), "human");
       expect.soft(result, `${kind}.${field}: ${JSON.stringify(changes)} -> ${JSON.stringify(result)}`).toMatchObject({ ok: true });
       before = after; // Deliberately NOT store.getMapRow(): this is the viewer's own previous value.
     }

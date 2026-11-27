@@ -32,6 +32,9 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
 - 同時に、その commit を outbox の entry として fsync する。entry は remote で compare-and-set（R7.1）できる形で持つ：
   - 内容の変更：`MapCommand`（`commandId`・`actor`・`intent`・`changes: RecordChange[]`、各 change は `before`/`after` を持つ）。`saveWholeMap` の差分（`diffState`）もこの形にする。
   - map 単位の操作：`{mapOp: "create" | "delete" | "rename" | "columns", ...}`。作成は初期内容を `changes` で運ぶ。
+- parent edge の変更は、子の ID と `{parentId, ord}` の `before` / `after` を持つ。兄弟の index をずらす変更は作らない。working store と remote は同じ子の親と順序キーを compare-and-set で照合する。`index` 形式の既存 entry は読み取れ、受理した変更は順序キー形式で journal / outbox に書く。どちらの形で再送しても同じ Command と判定する。
+- store が省く既定値・導出値は、viewer の値との比較時に同じ正規形で扱う。node、relation edge、scope、Surface View、parent edge の欄を production の field table と型定義から列挙し、viewer の前回の値を `before` にした create → update → delete を working store と remote で検証する。
+- `before` と `after` が同じ update は `diffState` と Command builder で除く。変更が 0 件なら viewer / MCP は送信・確定を行わず、store に届いても journal と outbox に記録しない。
 - entry は `baseSeq`（そのときの `confirmedSeq`）を持つ。
 - `commandId` は local で作り、再送しても変えない（R4.2・R4.5）。
 
