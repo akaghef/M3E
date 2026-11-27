@@ -17,7 +17,11 @@ import { readFileSync } from "fs";
 import neo4j, { type Driver, type ManagedTransaction } from "neo4j-driver";
 import type { SnapshotRecord } from "../../shared/record_model/types";
 import { applyOps, ensureSchema, writeMarker, type RecordOp } from "../neo4j_store/apply";
-import { storeLabel } from "../neo4j_store/encoding";
+import { encodeRecord, storeLabel } from "../neo4j_store/encoding";
+
+function recordKeyOf(record: SnapshotRecord): string {
+  return encodeRecord(record).rk;
+}
 import { dump } from "../neo4j_store/store";
 
 export interface Neo4jConnection {
@@ -53,17 +57,24 @@ export interface CommitUnit {
 
 export type DurableUnit =
   | CommitUnit
+  /** The state of one map right after a commit, kept as the base of a projection's write-back. */
+  | { kind: "base"; key: string; records: SnapshotRecord[] }
+  | { kind: "dropBase"; key: string }
   | { kind: "result"; commandId: string; entry: StoredCommand }
   | { kind: "forget"; commandIds: string[] };
 
 export interface LoadedStore {
   records: SnapshotRecord[];
+  /** Kept map states by key (`<mapId>@<seq>`). */
+  bases?: Array<[string, SnapshotRecord[]]>;
   commands: Array<[string, StoredCommand]>;
   retired: Array<[string, string]>;
   mapSeq: Array<[string, number]>;
 }
 
 const JOURNAL = "JournalEntry";
+/** A kept map state is a store of its own, named `<store>#base:<mapId>@<seq>`. */
+export const BASE_SEPARATOR = "#base:";
 const RESULT = "CommandResult";
 const RETIRED = "RetiredId";
 const MAP_SEQ = "MapSeq";
@@ -246,7 +257,16 @@ export class Neo4jDurability {
       for await (const row of session.run(`MATCH (m:${MAP_SEQ} {store: $store}) RETURN m.mapId AS mapId, m.seq AS seq`, { store })) {
         mapSeq.push([String(row.get("mapId")), toNumber(row.get("seq"))]);
       }
-      return { records, commands, retired, mapSeq };
+      const bases = new Map<string, SnapshotRecord[]>();
+      const { decodeRecord } = await import("../neo4j_store/encoding");
+      const prefix = `${store}${BASE_SEPARATOR}`;
+      for await (const row of session.run(`MATCH (r:Rec) WHERE r.store STARTS WITH $prefix RETURN r.store AS s, properties(r) AS p`, { prefix })) {
+        const key = String(row.get("s")).slice(prefix.length);
+        const list = bases.get(key) ?? [];
+        list.push(decodeRecord(row.get("p") as never));
+        bases.set(key, list);
+      }
+      return { records, commands, retired, mapSeq, bases: [...bases.entries()] };
     } finally {
       await session.close();
     }
@@ -305,6 +325,7 @@ export class Neo4jDurability {
             if (toNumber(result.records[0].get("n")) === 0) break;
           }
         }
+        await session.run(`MATCH (r:Rec) WHERE r.store STARTS WITH $prefix DETACH DELETE r`, { prefix: `${store}${BASE_SEPARATOR}` });
         await session.run(`MATCH (m:RecordStoreMarker {name: $store}) DELETE m`, { store });
       } finally {
         await session.close();
@@ -393,6 +414,16 @@ export class Neo4jDurability {
       await tx.run(`MERGE (c:${RESULT} {store: $store, commandId: $commandId}) SET c += $props`, {
         store, commandId: unit.commandId, props: encodeCommand(unit.commandId, unit.entry),
       });
+      return;
+    }
+    if (unit.kind === "base") {
+      const base = `${store}${BASE_SEPARATOR}${unit.key}`;
+      await tx.run(`MATCH (r:Rec {store: $base}) DETACH DELETE r`, { base });
+      await applyOps(tx, unit.records.map((record) => ({ op: "put" as const, rk: recordKeyOf(record), record })), base);
+      return;
+    }
+    if (unit.kind === "dropBase") {
+      await tx.run(`MATCH (r:Rec {store: $base}) DETACH DELETE r`, { base: `${store}${BASE_SEPARATOR}${unit.key}` });
       return;
     }
     if (unit.kind === "forget") {

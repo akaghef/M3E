@@ -20,6 +20,17 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await dropTestStores();
 });
+/**
+ * The same refusal: kind, reason and conflicting fields of the first answer. The map state a
+ * refusal carries is the state when it is answered (a remembered refusal does not store the map).
+ */
+function sameRefusal(actual: unknown, first: unknown): void {
+  const strip = (value: unknown) => {
+    const { current: _current, ...rest } = value as Record<string, unknown>;
+    return rest;
+  };
+  expect(strip(actual)).toEqual(strip(first));
+}
 function ready() { expect(store.commitMapCommand("a", edit("prepare", "initial", "ready"), "tester").ok).toBe(true); }
 
 test("DD4: CONFLICT remains the exact first result after state changes, including across map rename", () => {
@@ -29,7 +40,10 @@ test("DD4: CONFLICT remains the exact first result after state changes, includin
   ready();
   store.renameMapId("a", "renamed", "tester");
   const length = store.seq();
-  expect(store.commitMapCommand("renamed", cmd, "tester")).toEqual(first);
+  const again = store.commitMapCommand("renamed", cmd, "tester");
+  sameRefusal(again, first);
+  // The refusal carries the map as it is now, not as it was at the first answer.
+  expect((again as { current?: { state?: { nodes?: Record<string, { text?: string }> } } }).current?.state?.nodes?.a?.text).toBe("ready");
   expect(store.seq()).toBe(length);
   expect(store.commitMapCommand("renamed", edit("rejected", "ready", "different"), "tester"))
     .toMatchObject({ ok: false, code: "SAME_ID_DIFFERENT_CONTENT" });
@@ -40,7 +54,7 @@ test("DD4: rejection survives reopen", async () => {
   const first = store.commitMapCommand("a", cmd, "tester");
   ready();
   store = await handle.reopen();
-  expect(store.commitMapCommand("a", cmd, "tester")).toEqual(first);
+  sameRefusal(store.commitMapCommand("a", cmd, "tester"), first);
 });
 
 test("DD4: INVALID_COMMAND is remembered with its original state and cannot be replaced by other changes", () => {
@@ -48,7 +62,7 @@ test("DD4: INVALID_COMMAND is remembered with its original state and cannot be r
   const first = store.commitMapCommand("a", cmd, "tester");
   expect(first).toMatchObject({ ok: false, code: "INVALID_COMMAND" });
   ready();
-  expect(store.commitMapCommand("a", cmd, "tester")).toEqual(first);
+  sameRefusal(store.commitMapCommand("a", cmd, "tester"), first);
   expect(store.commitMapCommand("a", edit("invalid", "ready", "other"), "tester"))
     .toMatchObject({ ok: false, code: "SAME_ID_DIFFERENT_CONTENT" });
 });
@@ -63,7 +77,7 @@ test("DD4: INVALID_STATE remains refused after the missing endpoint is created",
   state.nodes.a.children.push("child");
   state.nodes.child = { id: "child", parentId: "a", children: [], text: "child", nodeType: "text", collapsed: false };
   expect(store.saveWholeMap("a", state, "tester").ok).toBe(true);
-  expect(store.commitMapCommand("a", cmd, "tester")).toEqual(first);
+  sameRefusal(store.commitMapCommand("a", cmd, "tester"), first);
   expect(store.commitMapCommand("a", { ...cmd, commandId: "fresh-link" }, "tester").ok).toBe(true);
 });
 
@@ -84,7 +98,7 @@ test.each([false, true])("push uses store's remembered rejection (fenced=%s)", a
   expect(first.results[0].code).toBe("CONFLICT");
   ready();
   const copy = await handle.reopen();
-  expect(pushCommands(copy, "", [payload], "tester", fenced)).toEqual(first);
+  sameRefusal(pushCommands(copy, "", [payload], "tester", fenced), first);
 });
 
 test("local rebase forgets tentative success durably, but retains deterministic rejection", async () => {
@@ -98,7 +112,7 @@ test("local rebase forgets tentative success durably, but retains deterministic 
   ]);
   store = await handle.reopen();
   expect(store.commitMapCommand("a", cmd, "tester")).toMatchObject({ ok: true, replayed: false });
-  expect(store.commitMapCommand("a", rejected, "tester")).toEqual(first);
+  sameRefusal(store.commitMapCommand("a", rejected, "tester"), first);
 });
 
 test("no-op can be replayed after local rebase, including repeated reopen", async () => {

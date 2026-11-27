@@ -362,6 +362,8 @@ export class RecordWorkspaceStore {
   private readonly warmOnLoad: boolean;
   /** Set while Neo4j is unavailable: the store answers nothing until it has read itself again. */
   private unavailable: string | undefined;
+  /** Map states kept as the bases of work projections, by `<mapId>@<seq>`; also kept in Neo4j. */
+  private readonly bases = new Map<string, SnapshotRecord[]>();
 
   private capture: ((command: SyncCommand, issuer: string, at: string, mapName: string) => void) | undefined;
   readonly mapChanges = new MapRecordChanges();
@@ -444,9 +446,10 @@ export class RecordWorkspaceStore {
 
   /** The state of the store, from what was read from Neo4j. Used on open and after Neo4j was unavailable. */
   private initFrom(loaded: LoadedStore): void {
-    for (const table of [this.guardIndexes, this.all, this.extensionDefs, this.decayByMap, this.maps, this.idIndex, this.retired, this.mapSeq, this.commands]) {
+    for (const table of [this.guardIndexes, this.all, this.extensionDefs, this.decayByMap, this.maps, this.idIndex, this.retired, this.mapSeq, this.commands, this.bases]) {
       (table as Map<unknown, unknown>).clear();
     }
+    for (const [key, records] of loaded.bases ?? []) this.bases.set(key, records);
     this.commandCollisions = 0;
     {
       const header = loaded.records.find((record) => record.kind === "snapshot") as SnapshotHeader | undefined;
@@ -826,11 +829,11 @@ export class RecordWorkspaceStore {
 
   // ---------------------------------------------------------------- commits
 
-  private commandResult(entry: CommandEntry): CommitResult {
+  private commandResult(entry: CommandEntry, askedMapId?: string): CommitResult {
     if (entry.result) {
       const result = jsonClone(entry.result);
       if (!result.ok && (result as Partial<CommitFailure>).current === undefined) {
-        const mapId = [...entry.mapIds][0];
+        const mapId = askedMapId !== undefined && this.maps.has(askedMapId) ? askedMapId : [...entry.mapIds][0];
         const map = mapId === undefined ? undefined : this.maps.get(mapId);
         (result as CommitFailure).current = map ? this.currentOf(map) : null;
       }
@@ -883,7 +886,7 @@ export class RecordWorkspaceStore {
     const known = this.commands.get(command.commandId);
     if (known) {
       if (known.hash === hash || known.canonicalHash === hash) {
-        return this.commandResult(known);
+        return this.commandResult(known, mapId);
       }
       const entry = this.maps.get(mapId);
       return this.failure("SAME_ID_DIFFERENT_CONTENT", entry ? this.currentOf(entry) : null, "The Command ID was already used with different content.");
@@ -1101,7 +1104,7 @@ export class RecordWorkspaceStore {
     if (!same) {
       return this.failure("SAME_ID_DIFFERENT_CONTENT", null, "The Command ID was already used with different content.");
     }
-    return this.commandResult(known);
+    return this.commandResult(known, payload.mapOp === "rename" ? payload.newMapId : payload.mapId);
   }
 
   /** Validates a pending Command against the current state, for push and working-store replay. */
@@ -1185,7 +1188,7 @@ export class RecordWorkspaceStore {
     }
     const commandId = input.commandId ?? `project:${randomUUID()}`;
     const reads = input.relationType ? this.readsOf(input.relationType) : undefined;
-    return this.commitPlanned(mapId, issuer, "project", (state) => planProject(state, {
+    return this.keepBase(mapId, input.mode === "work", this.commitPlanned(mapId, issuer, "project", (state) => planProject(state, {
       commandId,
       mode: input.mode,
       workspaceId: this.workspaceId,
@@ -1200,7 +1203,35 @@ export class RecordWorkspaceStore {
       depth: input.depth,
       parentId: input.parentId,
       label: input.label,
-    }), { commandId });
+    }), { commandId }));
+  }
+
+  /**
+   * After a work projection or a write-back: the map's state at that commit is the base the next
+   * write-back diffs against, so it is kept (in this process and in Neo4j, as a store of its own).
+   * Bases no scope refers to any more are dropped.
+   */
+  private keepBase(mapId: string, keep: boolean, result: CommitResult): CommitResult {
+    if (!keep || !result.ok || result.replayed) return result;
+    const entry = this.maps.get(mapId);
+    if (!entry) return result;
+    const records = [...entry.records.values(), ...this.extensionDefs.values()].map((record) => jsonClone(record));
+    const key = `${mapId}@${result.seq}`;
+    this.bases.set(key, records);
+    this.durability!.enqueue({ kind: "base", key, records });
+    const referenced = new Set<string>();
+    for (const map of this.maps.values()) {
+      for (const record of map.records.values()) {
+        const projection = record.kind === "scope" ? (record as ScopeRecord).projection : undefined;
+        if (projection?.mode === "work" && projection.baseSeq !== undefined) referenced.add(`${map.id}@${projection.baseSeq}`);
+      }
+    }
+    for (const old of [...this.bases.keys()]) {
+      if (referenced.has(old) || old === key) continue;
+      this.bases.delete(old);
+      this.durability!.enqueue({ kind: "dropBase", key: old });
+    }
+    return result;
   }
 
   /** Diffs a work plane against `projection.baseSeq` and applies the write-back table in one Command. */
@@ -1225,7 +1256,7 @@ export class RecordWorkspaceStore {
     const homeRootId = "scopeId" in from ? this.scopeRootOf(entry, from.scopeId) : undefined;
     const reads = "relationType" in from ? this.readsOf(from.relationType) : undefined;
     const stateKey = `scope:${scope.rootNodeId}`;
-    return this.commitPlanned(mapId, issuer, "write-back", (state) => planWriteBack(state, base, {
+    return this.keepBase(mapId, true, this.commitPlanned(mapId, issuer, "write-back", (state) => planWriteBack(state, base, {
       commandId,
       workspaceId: this.workspaceId,
       mapId,
@@ -1237,7 +1268,7 @@ export class RecordWorkspaceStore {
       reads,
       homeRootId,
       scopeRecordId: scope.id,
-    }), { commandId, reason: input.reason });
+    }), { commandId, reason: input.reason }));
   }
 
   /** Turns a node into an alias of an existing entity. No binding record. */
@@ -2256,7 +2287,8 @@ export class RecordWorkspaceStore {
 
   /** Map state as of `seq`. The current seq is memory; an older seq is snapshot plus journal. */
   private stateAt(mapId: string, seq: number): AppState | null {
-    const records = this.recordsAt(seq);
+    const kept = seq === this.currentSeq ? undefined : this.bases.get(`${mapId}@${seq}`);
+    const records = kept ?? this.recordsAt(seq);
     if (!records) return null;
     return fromSnapshot(records).rows.find((row) => row.id === mapId)?.state ?? null;
   }
