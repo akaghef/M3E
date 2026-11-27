@@ -67,7 +67,7 @@ scope は、複雑な対象を一枚の面で切り出したものと読む。�
 
 アプリ側の第 1 段（2026-11-17。一つの node から開ける面は一つのまま）:
 
-- 現行の木の状態では、parent edge の scope を node の欄 `edgeOutsideScope: true`（親は scope の root で、parent edge は親がふつうに属する面に載る）で表す。親の scope の root の ID を持たせないのは、祖先を scopen・unscopen すると古くなるため。record store へは変換時に parent edge の `scopeId` に直す（`beta/src/shared/scope_plane.ts`）。
+- 現行の木の状態では、parent edge の scope を node の欄 `edgeOutsideScope: true`（親は scope の root で、parent edge は親がふつうに属する面に載る）で表す。親の scope の root の ID を持たせないのは、祖先を scopen・unscopen すると古くなるため。store へは変換時に parent edge の `scopeId` に直す（`beta/src/shared/scope_plane.ts`）。
 - viewer: scope X に居ないとき、X の外に置いた子は X の横に見え、X に入ると見えない。X に居ないときに X へ足した子は X の外に置く（DA56）。Shift+F で選んだ子を X の内と外の間で移す（DA65）。unscopen で印を消す（DA58）。
 - MCP: `move` の `outside_scope: true` で X の外へ置く。**DA56 からの逸脱**: MCP の create は居る scope を知らないので、既定で X の内に置く。外に置くときは作ってから `move` する。
 - 一つの node から複数の面を開くこと（DA60）、scope の ID での指し方（DA63）、入口の見せ方（IB66）は第 2 段。部分的にしか子を読まない scope の表示（scope view）では、その親の parent edge の書き換えを断る。

@@ -1299,7 +1299,7 @@ Command を端末の状態へ当てるとき、local は当てる前に outbox �
 ### R10.7
 server、database、viewer は同じ端末に同居し、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
 - 出典: ADR 014 Decision 5
-- 状態: 未実装。record store は同じプロセスで確定できる（`store.ts:704`）が、同居を強制する構成は指定範囲に無い。
+- 状態: 未実装。store は同じプロセスで確定できる（`store.ts:704`）が、同居を強制する構成は指定範囲に無い。
 - 受入: 編集の確定が、remote への往復を待たずに local の outbox まで終わる。閲覧専用端末だけが遠い server を読む。
 
 ### R10.8
@@ -1637,7 +1637,7 @@ MCP の書き込みを受けるとき、入口は `m3e_context`、`m3e_get`、`m
 - 受入: 一覧に無い tool 名が `UNKNOWN_TOOL` になり、状態が変わらない。
 
 ### R12.2
-MCP が record store の上で確定するとき、observed は参加が見せられた record の read set であり、rk と読んだ時点の `rev` を持つ。見せられたものは、`m3e_get` が返したページの node（details を含む）と relation edge、および変更の event が本文を見せた node である。
+MCP が store の上で確定するとき、observed は参加が見せられた record の read set であり、rk と読んだ時点の `rev` を持つ。見せられたものは、`m3e_get` が返したページの node（details を含む）と relation edge、および変更の event が本文を見せた node である。
 - 出典: Database_Spec.md 6節
 - 状態: 実装済み（`mcp_service.ts:299-310`、`mcp_service.ts:449`、`mcp_service.ts:261`、`mcp_service.ts:273`、`store.ts:605` の `shownRecords`）
 - 受入: get のページ外の node が、その get を理由に observed へ入らない。本文を見せた変更 event の node は入る。
@@ -1664,7 +1664,7 @@ declared を作るとき、中身は copy の出所の subtree だけであり�
 SQLite の上で動くとき、`provenance.items` は空になる。道具の名前は残さず、`intent` は残る。
 - 出典: Database_Spec.md 6節
 - 状態: 実装済み（`mcp_service.ts:319` は store が無いと空の items を返す。intent は `mcp_service.ts:57-64`）
-- 受入: record store が無い参加の確定で items が空であり、journal または Command の intent は残る。
+- 受入: store が無い参加の確定で items が空であり、journal または Command の intent は残る。
 
 ### R12.7
 MCP が新しい relationType または、node にまだ無い attribute の key を受けるとき、接頭辞が無ければ拒否し、既にある key の更新と削除は受け付ける。
