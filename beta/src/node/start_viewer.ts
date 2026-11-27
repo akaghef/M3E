@@ -549,6 +549,12 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   const body = JSON.stringify(payload);
+  // Small responses (errors, acknowledgements) are sent as before: compressing them saves
+  // nothing worth the extra round through zlib.
+  if (body.length < 32 * 1024) {
+    res.end(body);
+    return;
+  }
   const vary = String(res.getHeader("Vary") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
   if (!vary.some((value) => value === "*" || value.toLowerCase() === "accept-encoding")) vary.push("Accept-Encoding");
   res.setHeader("Vary", vary.join(", "));
