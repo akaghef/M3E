@@ -292,7 +292,8 @@ test("approveDraft: full approval adds nodes to model", () => {
     assert.ok(node, `Node ${nodeId} should exist in model`);
     assert.equal(node.attributes["m3e:band"], "flash");
     assert.equal(node.attributes["m3e:sourceType"], "markdown");
-    assert.ok(node.attributes["m3e:confidence"]);
+    assert.equal(node.certainty, 70);
+    assert.equal(node.attributes["m3e:confidence"], undefined);
   }
 
   // Verify draft status updated
@@ -346,7 +347,7 @@ test("approveDraft: with edits adjusts text and confidence", () => {
   const nodeId = result.committedNodeIds[0];
   const node = model.state.nodes[nodeId];
   assert.equal(node.text, "Edited text");
-  assert.equal(node.attributes["m3e:confidence"], "0.8"); // edited -> 0.8
+  assert.equal(node.certainty, 80); // edited -> 80
 });
 
 test("approveDraft: throws for non-pending draft", () => {
@@ -413,7 +414,7 @@ test("approveDraft: confidence is 0.7 for manual input", () => {
   const result = approveDraft(draft.id, { mode: "all" }, model);
 
   const node = model.state.nodes[result.committedNodeIds[0]];
-  assert.equal(node.attributes["m3e:confidence"], "0.7");
+  assert.equal(node.certainty, 70);
 });
 
 // ---------------------------------------------------------------------------

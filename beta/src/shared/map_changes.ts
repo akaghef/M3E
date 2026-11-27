@@ -455,6 +455,8 @@ const NODE_NOT_KEPT = new Set(["scopeId", "aliasOf"]);
 /** Node fields the record store keeps only when they differ from this value; absent reads as it. */
 const NODE_DEFAULTS: Record<string, unknown> = {
   collapsed: false, details: "", note: "", link: "", isBroken: false, edgeOutsideScope: false,
+  // The record store keeps an unset certainty as -1 and reads it back absent.
+  certainty: -1,
 };
 
 function present(bag: Bag, field: string): boolean {

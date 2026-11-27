@@ -59,7 +59,8 @@ describe("NodeDrawPort contract", () => {
   test("normalizes style JSON, legacy attrs, and legacy surface names", () => {
     expect(normalizeNodeDrawStyle({
       styleJson: JSON.stringify({ fill: "#abcdef", text: "#111111", urgency: 2, importance: 3, status: "review" }),
-      legacy: { "m3e:bg": "#ffffff", "m3e:border": "#222222", "m3e:confidence": "2" },
+      legacy: { "m3e:bg": "#ffffff", "m3e:border": "#222222", "m3e:confidence": "0.5" },
+      certainty: 100,
     })).toMatchObject({
       fill: "#abcdef",
       text: "#111111",
@@ -67,6 +68,9 @@ describe("NodeDrawPort contract", () => {
       confidence: 1,
       status: "review",
     });
+    // The badge reads the node's certainty only; -1 (unset) and the old attribute draw none.
+    expect(normalizeNodeDrawStyle({ legacy: { "m3e:confidence": "0.5" }, certainty: -1 }).confidence).toBeUndefined();
+    expect(normalizeNodeDrawStyle({ certainty: 35 }).confidence).toBe(0.35);
     expect(canonicalSurfaceViewName("scatter")).toBe("Disperse");
     expect(canonicalSurfaceViewName("timeline")).toBe("Axial");
   });

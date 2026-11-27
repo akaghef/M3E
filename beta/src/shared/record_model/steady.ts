@@ -22,6 +22,7 @@ import { assignOrderKeys, initialKeys, isOrderKey, keysBetween } from "./order_k
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
 import { writtenExtensions } from "./extensions";
+import { certaintyOfNode } from "./certainty";
 import { scopeFieldsOf } from "./scope_fields";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
 import {
@@ -291,6 +292,7 @@ function projectNode(
   if (valid) record.valid = valid;
   const copyOf = writtenNodeCopyOf(node.copyOf);
   if (copyOf) record.copyOf = copyOf;
+  record.certainty = certaintyOfNode(id, node.certainty);
   const extra = collectExtra(node, NODE_FIELDS);
   if (extra) record.extra = extra;
   record.rev = undefined;
@@ -1675,6 +1677,7 @@ export class MapProjector {
       if (record.extensions !== undefined) restored.extensions = record.extensions;
       if (record.valid !== undefined) restored.valid = record.valid;
       if (record.copyOf !== undefined) restored.copyOf = record.copyOf;
+      if (record.certainty !== undefined && record.certainty !== -1) restored.certainty = record.certainty;
       const incoming = this.edgeByTarget.get(id);
       if (incoming) restored.edgeOrder = incoming.ord;
       if (incoming?.relationType !== undefined) restored.edgeRelationType = incoming.relationType;

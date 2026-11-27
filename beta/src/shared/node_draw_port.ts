@@ -101,6 +101,8 @@ export interface RawNodeDrawStyleInput {
   styleJson?: string;
   legacy?: Record<string, string | undefined>;
   surfaceShape?: NodeDrawShape | "rounded" | null;
+  /** The node's certainty: 0 to 100, or -1 / absent when unset (Database_Spec 3.2). */
+  certainty?: number;
 }
 
 const VALID_STATUSES = new Set<NodeDrawStatus>([
@@ -133,7 +135,9 @@ export function normalizeNodeDrawStyle(raw: RawNodeDrawStyleInput): NodeDrawStyl
     shape: raw.surfaceShape ?? sanitizeShape(legacy["m3e:shape"]),
     icon: sanitizeIcon(legacy["m3e:icon"]),
     status: sanitizeStatus(parsed.status) ?? sanitizeStatus(legacy["m3e:status"]),
-    confidence: sanitizeNumeric(legacy["m3e:confidence"], 0, 1),
+    confidence: typeof raw.certainty === "number" && Number.isInteger(raw.certainty) && raw.certainty >= 0 && raw.certainty <= 100
+      ? raw.certainty / 100
+      : undefined,
     urgency,
     importance,
     band: sanitizeBand(legacy["m3e:band"]),

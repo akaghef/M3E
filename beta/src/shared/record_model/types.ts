@@ -5,12 +5,12 @@
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
-export const SNAPSHOT_FORMAT = 2;
+export const SNAPSHOT_FORMAT = 3;
 
 export interface SnapshotHeader {
   kind: "snapshot";
   /** 1 is read and migrated once on open. 2 is the format this store writes. */
-  format: 1 | 2;
+  format: 1 | 2 | 3;
   workspaceId: string;
   historyId?: string;
   epoch?: number;
@@ -72,6 +72,11 @@ export interface NodeRecord {
   alias?: AliasValue;
   valid?: NodeValidity;
   copyOf?: CopyOf;
+  /**
+   * How likely the node holds: 0 to 100 is a percentage, -1 is unset (Database_Spec 3.2).
+   * Required from format 3; the server writes -1 when a Command gives no value.
+   */
+  certainty: number;
   /** `name@version`, string order, one entry per name. Omitted when empty. */
   extensions?: string[];
   extra?: JsonObject;

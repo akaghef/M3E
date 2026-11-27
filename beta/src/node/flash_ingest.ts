@@ -21,7 +21,6 @@ export const FLASH_ATTR = {
   SOURCE_TYPE: "m3e:sourceType",
   SOURCE_URL: "m3e:sourceUrl",
   CAPTURED_AT: "m3e:capturedAt",
-  CONFIDENCE: "m3e:confidence",
   STATUS: "m3e:status",
 } as const;
 
@@ -469,9 +468,10 @@ export function approveDraft(
         [FLASH_ATTR.SOURCE_TYPE]: draft.sourceType,
         [FLASH_ATTR.SOURCE_URL]: draft.sourceRef,
         [FLASH_ATTR.CAPTURED_AT]: now,
-        [FLASH_ATTR.CONFIDENCE]: String(draftNode.confidence),
         [FLASH_ATTR.STATUS]: "draft",
       };
+      // How sure the capture is: 70 typed in, 80 edited before approval (Database_Spec 3.2).
+      node.certainty = Math.round(draftNode.confidence * 100);
     }
   }
 

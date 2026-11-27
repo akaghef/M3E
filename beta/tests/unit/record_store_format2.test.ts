@@ -147,7 +147,7 @@ function replay(snapshotText: string, journalText: string): SnapshotRecord[] {
     seq = line.seq;
   }
   // The header carries the workspace and its history (workspaceId, historyId, epoch) through a rebuild.
-  return sortRecords([{ ...header, format: 2, seq }, ...all.values()]);
+  return sortRecords([{ ...header, format: 3, seq }, ...all.values()]);
 }
 
 describe("format 2 migration", () => {
@@ -160,7 +160,7 @@ describe("format 2 migration", () => {
     const format1 = fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8");
     const store = openStore(dir);
     const archive = path.join(dir, ARCHIVE_DIR);
-    expect(store.records()[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, historyId: expect.any(String), epoch: 1, seq: 0 });
+    expect(store.records()[0]).toEqual({ kind: "snapshot", format: 3, workspaceId: WS, historyId: expect.any(String), epoch: 1, seq: 0 });
     expect(store.records().slice(1)).toEqual(sortRecords(born).slice(1));
     expect(fs.readFileSync(path.join(archive, "snapshot.0.f1.jsonl"), "utf8")).toBe(format1);
     expect(fs.readdirSync(archive).filter((name) => name.startsWith("journal."))).toEqual([]);
@@ -168,7 +168,7 @@ describe("format 2 migration", () => {
     const after = fs.readdirSync(archive).sort();
     await store.close();
     const again = openStore(dir);
-    expect(again.records()[0]).toMatchObject({ format: 2, seq: 0 });
+    expect(again.records()[0]).toMatchObject({ format: 3, seq: 0 });
     expect(fs.readdirSync(archive).sort()).toEqual(after);
   });
 
@@ -194,7 +194,7 @@ describe("format 2 migration", () => {
     expect(fs.readFileSync(path.join(archive, "journal.1-1.f1.jsonl"), "utf8")).toBe(journal);
     expect(fs.readFileSync(journalPath, "utf8")).toBe("");
     const base = fs.readFileSync(snapshotPath, "utf8");
-    expect(JSON.parse(base.split("\n")[0])).toMatchObject({ kind: "snapshot", format: 2, seq: 1 });
+    expect(JSON.parse(base.split("\n")[0])).toMatchObject({ kind: "snapshot", format: 3, seq: 1 });
     const archived = fs.readdirSync(archive).sort();
     await migrated.close();
     const reopened = openStore(dir);
@@ -205,19 +205,19 @@ describe("format 2 migration", () => {
     expect(fs.readFileSync(journalPath, "utf8")).toMatch(/"seq":2/);
   });
 
-  it("refuses a snapshot format above 2 and does not migrate a format 2 store", () => {
-    const format2 = newDir("born-2");
+  it("refuses a snapshot format above 3 and does not migrate a format 3 store", () => {
+    const format2 = newDir("born-3");
     const store = openStore(format2);
-    expect(store.records()[0]).toMatchObject({ format: 2, seq: 0 });
+    expect(store.records()[0]).toMatchObject({ format: 3, seq: 0 });
     expect(fs.existsSync(path.join(format2, ARCHIVE_DIR))).toBe(false);
-    const format3 = newDir("format-3");
+    const format3 = newDir("format-4");
     const snapshotPath = path.join(format3, SNAPSHOT_FILE);
     const lines = fs.readFileSync(snapshotPath, "utf8").split("\n");
     const fileHeader = JSON.parse(lines[0]) as { format: number };
-    fileHeader.format = 3;
+    fileHeader.format = 4;
     lines[0] = JSON.stringify(fileHeader);
     fs.writeFileSync(snapshotPath, lines.join("\n"));
-    expect(() => RecordWorkspaceStore.open(format3, { now: tick })).toThrow(/Unsupported snapshot format: 3/);
+    expect(() => RecordWorkspaceStore.open(format3, { now: tick })).toThrow(/Unsupported snapshot format: 4/);
   });
 });
 
@@ -278,12 +278,12 @@ describe("format 2 invariants at commit", () => {
 
   it("rejects a duplicate parent-edge ord under one parent and keeps the same ord under another", () => {
     const records: SnapshotRecord[] = [
-      { kind: "snapshot", format: 2, workspaceId: WS, seq: 0 },
+      { kind: "snapshot", format: 3, workspaceId: WS, seq: 0 },
       { kind: "map", id: "m", rootNodeId: "root", rev: 0 },
-      { kind: "node", id: "root", mapId: "m", text: "root", rev: 0 },
-      { kind: "node", id: "a", mapId: "m", text: "a", rev: 0 },
-      { kind: "node", id: "b", mapId: "m", text: "b", rev: 0 },
-      { kind: "node", id: "c", mapId: "m", text: "c", rev: 0 },
+      { kind: "node", id: "root", mapId: "m", text: "root", certainty: -1, rev: 0 },
+      { kind: "node", id: "a", mapId: "m", text: "a", certainty: -1, rev: 0 },
+      { kind: "node", id: "b", mapId: "m", text: "b", certainty: -1, rev: 0 },
+      { kind: "node", id: "c", mapId: "m", text: "c", certainty: -1, rev: 0 },
       { kind: "connection", id: "e_a", mapId: "m", type: "edge", source: "root", target: "a", ord: "a0", scopeId: "s", rev: 0 },
       { kind: "connection", id: "e_b", mapId: "m", type: "edge", source: "root", target: "b", ord: "a0", scopeId: "s", rev: 0 },
       { kind: "connection", id: "e_c", mapId: "m", type: "edge", source: "a", target: "c", ord: "a0", scopeId: "s", rev: 0 },

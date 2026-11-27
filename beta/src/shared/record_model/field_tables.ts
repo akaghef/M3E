@@ -2,7 +2,7 @@
 export const NODE_FIELDS = new Set([
   "id", "parentId", "children", "edgeOrder", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
-  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions", "valid", "copyOf",
+  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions", "valid", "copyOf", "certainty",
 ]);
 export const LINK_FIELDS = new Set([
   "id", "sourceNodeId", "targetNodeId", "relationType", "label", "direction", "style", "color",

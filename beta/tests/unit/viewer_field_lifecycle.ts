@@ -32,7 +32,7 @@ const values: Record<string, Record<string, [any, any]>> = {
     targetSnapshotLabel: ["", "snapshot"], isBroken: [false, true], aliasOf: [undefined, "target"],
     extensions: [[], ["test:nodeType:example@1"]], edgeRelationType: ["", "detail"], edgeAttributes: [{}, { a: "b" }],
     edgeExtensions: [[], ["test:parentEdge:example@1"]], valid: [{ from: "", to: "" }, { from: "2026-01-01", to: "" }],
-    copyOf: [undefined, { source: "target", seq: 0, mode: "deep" }],
+    copyOf: [undefined, { source: "target", seq: 0, mode: "deep" }], certainty: [-1, 70],
   },
   link: {
     id: ["relation", "relation"], sourceNodeId: ["root", "folder"], targetNodeId: ["target", "folder"],

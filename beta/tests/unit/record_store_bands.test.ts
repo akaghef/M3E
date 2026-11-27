@@ -523,7 +523,7 @@ describe("link and promotion", () => {
     if (snap?.kind === "namedSnapshot") {
       expect(snap.seq).toBe(promoted.seq);
       expect(snap.scopeId).toBe(scopeByRoot(store, "home").id);
-      const file = snapshotArchiveName(promoted.seq, 2);
+      const file = snapshotArchiveName(promoted.seq, 3);
       expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(true);
       expect(archiveIndex(dir).entries.find((entry) => entry.file === file)?.retain).toBe(true);
     }
@@ -558,7 +558,7 @@ describe("named snapshot and replay", () => {
       if (!applied.ok) throw new Error(applied.message);
     }));
     const named = accepted(store.createNamedSnapshot(MAP, ISSUER, { scopeKey: "home", name: "keep", reason: "retain" }));
-    const file = snapshotArchiveName(named.seq, 2);
+    const file = snapshotArchiveName(named.seq, 3);
     expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, file))).toBe(true);
     expect(archiveIndex(dir).entries.find((entry) => entry.file === file)?.retain).toBe(true);
 

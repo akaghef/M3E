@@ -125,7 +125,7 @@ function replay(snapshotText: string, journalText: string): SnapshotRecord[] {
     seq = line.seq;
   }
   // The header carries the workspace and its history (workspaceId, historyId, epoch) through a rebuild.
-  return sortRecords([{ ...header, format: 2, seq }, ...all.values()]);
+  return sortRecords([{ ...header, format: 3, seq }, ...all.values()]);
 }
 
 function taskDef(fields: ExtensionDefRecord["fields"]): ExtensionDefRecord {

@@ -25,7 +25,8 @@ import { checkInvariants, type InvariantProblem } from "../../shared/record_mode
 import { parseSnapshot, recordKeyString, serializeSnapshot, sortRecords } from "../../shared/record_model/jsonl";
 import { NeighbourhoodIndex, subjectOfProblemKey } from "../../shared/record_model/neighbourhood";
 import { MapProjector, recordRk, sameJson, type ProjectionResult } from "../../shared/record_model/steady";
-import { compareStrings, type CommitRecord, type DecayRecord, type ExtensionDefRecord, type IdMapRecord, type JsonValue, type MapRecord, type ScopeRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
+import { takeLegacyCertainty } from "../../shared/record_model/certainty";
+import { SNAPSHOT_FORMAT, compareStrings, type CommitRecord, type DecayRecord, type ExtensionDefRecord, type IdMapRecord, type JsonValue, type MapRecord, type ScopeRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
 import type { AppState, TreeNode } from "../../shared/types";
 import { appendedLeaves, applyChangesReduced } from "./apply_reduced";
 import {
@@ -514,7 +515,7 @@ export class RecordWorkspaceStore {
   /** Checksum of the snapshot file, recorded by the compaction that wrote it. */
   private snapshotSum: { seq: number; sha256: string } | undefined;
   /** Snapshot format of the snapshot file; archive names carry it. */
-  private snapshotFormat: 1 | 2 = 1;
+  private snapshotFormat: 1 | 2 | 3 = 1;
   private readonly compactAfterLines: number;
   /** Problems of the last compaction or archive retention pass that stopped; empty when it ran. */
   private maintenanceProblems: string[] = [];
@@ -599,7 +600,7 @@ export class RecordWorkspaceStore {
     this.workspaceId = header.workspaceId;
     this.historyId = header.historyId ?? randomUUID();
     this.epoch = header.epoch ?? 1;
-    if (header.format !== 1 && header.format !== 2) {
+    if (header.format !== 1 && header.format !== 2 && header.format !== 3) {
       throw new Error(`Unsupported snapshot format: ${String(header.format)}`);
     }
     this.snapshotFormat = header.format;
@@ -661,7 +662,7 @@ export class RecordWorkspaceStore {
       fs.fsyncSync(this.journalFd);
       this.journalSize += 1;
     }
-    if (this.snapshotFormat === 1) this.migrateToFormat2();
+    if (this.snapshotFormat !== SNAPSHOT_FORMAT) this.migrateToCurrentFormat();
     else if (header.historyId === undefined || header.epoch === undefined) {
       header.historyId = this.historyId;
       header.epoch = this.epoch;
@@ -1694,7 +1695,14 @@ export class RecordWorkspaceStore {
    * under their existing names (`f1`), and a format 2 base snapshot is written at the
    * current seq. Journal lines are not rewritten.
    */
-  private migrateToFormat2(): void {
+  /**
+   * The one-time move of an older store to the current format. The old snapshot and journal go
+   * to `archive/` under their format; the records are rewritten as one new base snapshot.
+   * Format 3 adds the required node field `certainty` (Database_Spec 3.2, 7): every node gets the
+   * value of its `m3e:confidence` attribute, which is dropped, or -1.
+   */
+  private migrateToCurrentFormat(): void {
+    const from = this.snapshotFormat;
     const now = this.now();
     const journalPath = path.join(this.dir, JOURNAL_FILE);
     const snapshotPath = path.join(this.dir, SNAPSHOT_FILE);
@@ -1705,25 +1713,30 @@ export class RecordWorkspaceStore {
       if (lines.length > 0) {
         const fromSeq = lines[0].seq;
         const toSeq = lines[lines.length - 1].seq;
-        const name = journalArchiveName(fromSeq, toSeq, 1);
+        const name = journalArchiveName(fromSeq, toSeq, from);
         archiveFile(this.dir, journalPath, name);
-        added.push({ file: name, kind: "journal", fromSeq, toSeq, format: 1, archivedAt: now });
+        added.push({ file: name, kind: "journal", fromSeq, toSeq, format: from, archivedAt: now });
       }
     }
-    const snapshotName = snapshotArchiveName(this.snapshotSeq, 1);
+    const snapshotName = snapshotArchiveName(this.snapshotSeq, from);
     archiveFile(this.dir, snapshotPath, snapshotName);
     added.push({
       file: snapshotName,
       kind: "snapshot",
       fromSeq: this.snapshotSeq,
       toSeq: this.snapshotSeq,
-      format: 1,
+      format: from,
       archivedAt: now,
     });
     const names = new Set(added.map((entry) => entry.file));
     writeArchiveIndex(this.dir, [...archived.filter((entry) => !names.has(entry.file)), ...added]);
 
-    this.snapshotFormat = 2;
+    if (from < 3) {
+      for (const record of this.all.values()) {
+        if (record.kind === "node") record.certainty = takeLegacyCertainty(record as unknown as { certainty?: unknown; attributes?: { [key: string]: unknown } });
+      }
+    }
+    this.snapshotFormat = SNAPSHOT_FORMAT;
     const content = serializeSnapshot([this.header(), ...this.all.values()]);
     const snapshotSum = { seq: this.currentSeq, sha256: sha256(content) };
     writeFileDurably(path.join(this.dir, COMMIT_INDEX_FILE), this.commitIndexText(snapshotSum));

@@ -166,7 +166,7 @@ describe("record model JSON Lines", () => {
     const text = serializeSnapshot(toSnapshot(WS, canonicalRows(), { now: NOW }));
     expect(text.endsWith("\n")).toBe(true);
     const lines = text.trimEnd().split("\n").map((line) => JSON.parse(line) as SnapshotRecord);
-    expect(lines[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, seq: 0 });
+    expect(lines[0]).toEqual({ kind: "snapshot", format: 3, workspaceId: WS, seq: 0 });
     const kinds = lines.slice(1).map((l) => l.kind);
     expect(kinds).toEqual([...kinds].sort());
     expect(kinds).not.toContain("snapshot");
@@ -185,7 +185,7 @@ describe("record model JSON Lines", () => {
   it("rejects a missing header, a bad line and a null field", () => {
     expect(() => parseSnapshot('{"kind":"node","id":"a"}\n')).toThrow(/header/);
     expect(() => parseSnapshot('{"kind":"snapshot","format":1,"workspaceId":"w","seq":0}\nnot json\n')).toThrow(/line 2/);
-    expect(() => parseSnapshot('{"kind":"snapshot","format":3,"workspaceId":"w","seq":0}\n')).toThrow(/format/);
+    expect(() => parseSnapshot('{"kind":"snapshot","format":4,"workspaceId":"w","seq":0}\n')).toThrow(/format/);
     expect(() => serializeSnapshot([{ kind: "prefix", prefix: "p", uri: "u", rev: 0 }])).toThrow(/header/);
     expect(() => serializeSnapshot([
       { kind: "snapshot", format: 1, workspaceId: "w", seq: 0 },
@@ -198,9 +198,9 @@ describe("record model invariants (post-migration-spec section 9)", () => {
   const base = (): SnapshotRecord[] => [
     { kind: "snapshot", format: 1, workspaceId: WS, seq: 0 },
     { kind: "map", id: "m", rootNodeId: "root", rev: 0 },
-    { kind: "node", id: "root", mapId: "m", text: "root", rev: 0 },
-    { kind: "node", id: "a", mapId: "m", text: "a", rev: 0 },
-    { kind: "node", id: "b", mapId: "m", text: "b", rev: 0 },
+    { kind: "node", id: "root", mapId: "m", text: "root", certainty: -1, rev: 0 },
+    { kind: "node", id: "a", mapId: "m", text: "a", certainty: -1, rev: 0 },
+    { kind: "node", id: "b", mapId: "m", text: "b", certainty: -1, rev: 0 },
     { kind: "connection", id: "e_a", mapId: "m", type: "edge", source: "root", target: "a", ord: "1", scopeId: "s_root", rev: 0 },
     { kind: "connection", id: "e_b", mapId: "m", type: "edge", source: "a", target: "b", ord: "1", scopeId: "s_root", rev: 0 },
     { kind: "scope", id: "s_root", mapId: "m", rootNodeId: "root", rev: 0 },
@@ -227,7 +227,7 @@ describe("record model invariants (post-migration-spec section 9)", () => {
 
   it("3: an alias points to a non-alias node and may have children", () => {
     const alias = (id: string, target: string | undefined, more: Loose = {}): SnapshotRecord =>
-      ({ kind: "node", id, mapId: "m", nodeType: "alias", text: id, alias: { ...(target ? { target } : {}), ...more }, rev: 0 }) as SnapshotRecord;
+      ({ kind: "node", id, mapId: "m", nodeType: "alias", text: id, alias: { ...(target ? { target } : {}), ...more }, certainty: -1, rev: 0 }) as SnapshotRecord;
     const edge = (id: string, source: string, target: string, ord = "9"): SnapshotRecord =>
       ({ kind: "connection", id, mapId: "m", type: "edge", source, target, ord, scopeId: "s_root", rev: 0 });
     expect(rules([...base(), alias("al", "a"), edge("e_al", "root", "al")])).toEqual([]);
@@ -237,7 +237,7 @@ describe("record model invariants (post-migration-spec section 9)", () => {
     expect(rules([...base(), alias("al", "al2"), alias("al2", "a"), edge("e_al", "root", "al", "8"), edge("e_al2", "root", "al2", "7")])).toEqual([3]);
     expect(rules([
       ...base(), alias("al", "a"), edge("e_al", "root", "al"),
-      { kind: "node", id: "c", mapId: "m", text: "c", rev: 0 }, edge("e_c", "al", "c"),
+      { kind: "node", id: "c", mapId: "m", text: "c", certainty: -1, rev: 0 }, edge("e_c", "al", "c"),
     ])).toEqual([]);
   });
 
@@ -264,7 +264,7 @@ describe("record model invariants (post-migration-spec section 9)", () => {
   it("5a: an edge lies on a scope whose edges form one tree under its root (DA59)", () => {
     const edge = (id: string, source: string, target: string, scopeId: string | undefined, ord = "9"): SnapshotRecord =>
       ({ kind: "connection", id, mapId: "m", type: "edge", source, target, ord, ...(scopeId ? { scopeId } : {}), rev: 0 }) as SnapshotRecord;
-    const node = (id: string): SnapshotRecord => ({ kind: "node", id, mapId: "m", text: id, rev: 0 });
+    const node = (id: string): SnapshotRecord => ({ kind: "node", id, mapId: "m", text: id, certainty: -1, rev: 0 });
     const scope = (id: string, rootNodeId: string): SnapshotRecord => ({ kind: "scope", id, mapId: "m", rootNodeId, rev: 0 });
     // X = a opens two scopes; its child b stays on the root scope with a, c and d lie on a's scopes,
     // and e under c stays on c's scope.
@@ -300,7 +300,7 @@ describe("record model invariants (post-migration-spec section 9)", () => {
   });
 
   it("0: flags duplicate keys and records of an unknown map", () => {
-    expect(rules([...base(), { kind: "node", id: "a", mapId: "m", text: "again", rev: 0 }])).toEqual([0]);
+    expect(rules([...base(), { kind: "node", id: "a", mapId: "m", text: "again", certainty: -1, rev: 0 }])).toEqual([0]);
     expect(rules([...base(), { kind: "details", nodeId: "a", mapId: "other", v: 1, body: "x", rev: 0 }])).toEqual([0]);
   });
 

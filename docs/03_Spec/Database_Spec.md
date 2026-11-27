@@ -141,9 +141,15 @@ workspace > map > scope > node
 - 【決定】（akaghef、2026-11-23）node は確度 `certainty` を必ず持つ。命題や事象が成り立つ確からしさで、数学の命題にも日常の事象にも同じ規則で使う。
   - 値は整数。`0`〜`100` は百分率で、確率は値 ÷ 100 である。`-1` は未設定である。範囲は int8 に収まる。
   - 既定値と同じでも省かずに保存する（上の「既定値と同じなら保存しない」の例外）。欄が無い node、範囲の外の値、整数でない値を書く確定は拒否する（不変条件 11）。
-  - 値を指定せずに node を作る Command では、server が `-1` を書く。
+  - 値を指定せずに node を作る、または変える Command では、server が `-1` を書く。viewer と MCP の状態では、`-1` の node は欄を省いて表す。
   - 証明の有無や検証の方法（AI の証明、人の証明、Lean など）に、固定の値や専用の区分を割り当てない。それらは確度を決める材料である。`100` は確率 1 を表し、証明があることを表さない。
-  - 【未実装】
+  - 【決定】（akaghef、2026-11-27）attribute `m3e:confidence` は使わない。確度は `certainty` だけに持つ。
+  - 【決定】（akaghef、2026-11-27）Flash ingest は、承認した node の `certainty` に、手で入れた下書きなら `70`、承認の前に編集したものなら `80` を書く。
+  - 【決定】（2026-11-27。akaghef が選択をこの節の書き手に任せた）alias は自分の値を持たず、常に `-1` を持つ。確度は実体の性質であり、面ごとに変わらないからである。alias の確度を読むときは、参照先の実体の値を返す。【未実装】viewer は alias を描くとき、まだ参照先の値を読まない。
+  - 描画: viewer は `0`〜`100` の値を百分率の印として描く。`-1` は描かない。
+  - MCP: `m3e_create`（kind `node`）と `m3e_update`（kind `content`）は引数 `certainty` を受ける。`m3e_get` は node ごとに `certainty` を返す。alias に指定すると `INVALID_OPERATION` で拒否する。【実装済み】
+  - 【未実装】viewer で値を入れる操作。
+  - 【実装済み】`beta/src/shared/record_model/certainty.ts`（範囲の検査、format 3 への移し替え）、`steady.ts`（状態から node のレコードを作るときに検査し、値が無ければ `-1` を書く。範囲の外なら確定を拒否する）。
 - `nodeType` の値【実装済み】は `text`、`alias`、`image` と、移行で運んだそれ以外の値である。種別の扱いは 10 節で改める（【決定】）。【決定】format 2 では `nodeType` を残し、描画器の選択子として使う。`extensions` との統合は、次の format の bump で行う。
 
 ### 3.3 attribute
@@ -241,7 +247,7 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 8. details、linear-text、Surface View の保存設定、配置値、注釈は、指している node または scope が実在する。
 9. 同じ親の下で、parent edge の `ord` は一意である。
 10. `extensions` にある拡張は、定義の required の欄がそろい、欄の型が合う（10.4）。定義が無い拡張は検査しない。検査器は `beta/src/shared/record_model/extensions.ts`。
-11. 【決定】【未実装】node は `certainty` を持ち、その値は `-1` から `100` までの整数である（3.2）。
+11. 【決定】【実装済み】node は `certainty` を持ち、その値は `-1` から `100` までの整数である（3.2）。
 
 - 【決定】検査は、触った周辺だけで行い、map 全体は走査しない。【実装済み】のものは、確定のたびに map 全体を検査している。
 - 【決定】一つの Command の中に複数の付け替えがあるときは、全部を当てた後の状態で循環を検査する。
@@ -420,7 +426,10 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - format 1 の workspace を開くと、一度だけ移行する（`beta/src/node/record_store/store.ts` の `migrateToFormat2`）。format 1 の portable snapshot と journal を、`f1` の名前で `archive/` へ移し、今の通し番号で format 2 の base snapshot を書く。以後の確定は format 2 で書く。
   - format が 3 以上の snapshot は、開かずに拒否する。
 - 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}` は、snapshot に状態として持つ（9 節）。
-- 【決定】【未実装】（akaghef、2026-11-23）node に必須の欄 `certainty`（3.2）を足すので、format を 3 に上げる。format 2 の workspace を開くと一度だけ移行し、すべての node に `certainty: -1` を書いて、format 3 の base snapshot を書く。format 2 の portable snapshot と journal は `f2` の名前で `archive/` へ移す。
+- 【決定】【実装済み】（akaghef、2026-11-23）node に必須の欄 `certainty`（3.2）を足すので、format を 3 に上げる。format 1 または 2 の workspace を開くと一度だけ移行し、format 3 の base snapshot を書く。元の portable snapshot と journal は、元の format の名前（`f1`、`f2`）で `archive/` へ移す。
+  - 移行で書く値: attribute `m3e:confidence` を持つ node は、その値から決める。`0`〜`1` の数値（Flash ingest の値）は 100 倍して整数に丸める。`high`・`medium`・`low` は `80`・`50`・`20` にする（2026-11-27。データはまだ使っていないので仮の値でよい、と akaghef）。それ以外の node と、読めない値は `-1` である。`m3e:confidence` は消す。relation edge の attribute `confidence`（実現段階）は意味が違うので対象にしない。
+  - SQLite から record store への変換（`to_snapshot.ts`）も、同じ規則で `certainty` を書く。
+  - 同期: format 3 の remote と format 2 の local は、互いの snapshot を読めない。remote と local の両方を、同じ版に更新する。
 - 値の無い欄と null は書かない。
 - 並びは `kind`、次に key の文字列順。行の順序に意味は無いが、差分を安定させるために揃える。
 - 現行データからの変換規則と、逆変換で許す差は snapshot-format 3〜4 節に従う。
@@ -942,9 +951,6 @@ JA1 と JA2 の組み合わせが、操作の集まりになる。
 
 - 面の中を扱う木のエンジンを置くか（12.5）。計測してから決める。
 - facet と 12.1 の「一つの側面」の語の組（12.6 の KB5）。Glossary の側で決める。
-- alias の確度（3.2）: alias が出現ごとに自分の値を持つか、常に `-1` を持ち読むときに参照先の値を返すか。
-- Flash ingest が attribute `m3e:confidence` に書いている 0〜1 の値を、format 3 への移行で `certainty` に移すか。relation edge の attribute `confidence`（実現段階）は意味が違うので対象にしない。
-- 「確度」を Glossary に足す。
 
 ## 14. 決めた値と規則
 
