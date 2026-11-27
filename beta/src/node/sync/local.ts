@@ -251,10 +251,23 @@ export class LocalSync {
     }
     const local = new LocalSync(dir, url.origin, resolved);
     try {
+      let cloned = !recorded;
       if (recorded) {
         local.metadata = JSON.parse(fs.readFileSync(local.metadataFile, "utf8")) as RemoteMetadata;
         identityOf(local.metadata);
-        local.confirmed = await local.openConfirmed();
+        try {
+          local.confirmed = await local.openConfirmed();
+        } catch (error) {
+          // A device bound to the remote whose confirmed store is not in its Neo4j yet (the store moved
+          // into Neo4j, or the device's Neo4j was rebuilt): clone again, but only the same history.
+          if (!/^No record store named /.test((error as Error).message)) throw error;
+          const clone = await request<Clone>(new URL("/api/sync/clone?index=1", url));
+          if (!sameSyncIdentity(local.metadata, identityOf(clone))) throw new Error("The remote holds a different history than this device was bound to.");
+          await local.installClone(clone);
+          local.metadata = { ...local.metadata, ...identityOf(clone), confirmedSeq: clone.snapshotSeq };
+          local.remoteState = "ok";
+          cloned = true;
+        }
         if (!sameSyncIdentity(local.metadata, local.confirmed.syncIdentity())) throw new Error("The confirmed store is from a different history.");
         if (local.confirmed.seq() < local.metadata.confirmedSeq) throw new Error("The confirmed store moved backwards.");
       } else {
@@ -265,7 +278,7 @@ export class LocalSync {
       }
       local.bindDevice();
       local.persistMetadata();
-      if (!recorded || !(await local.resume())) await local.rebuild();
+      if (cloned || !(await local.resume())) await local.rebuild();
       await settled(local.working);
       await settled(local.confirmed);
       return local;

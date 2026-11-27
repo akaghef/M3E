@@ -137,6 +137,20 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 }, 300_000);
 
+test("a device bound to the remote whose stores are not in its Neo4j clones again from the same history and keeps nothing stale", async () => {
+  const a = await client();
+  change(a.store(), "Before the move");
+  await a.push(() => {});
+  await a.close();
+  devices.splice(devices.indexOf(a), 1);
+  const names = deviceStoreNames(WORKSPACE, path.join(temp, "local"));
+  await Neo4jDurability.drop(TEST_NEO4J, names.confirmed);
+  await Neo4jDurability.drop(TEST_NEO4J, names.working);
+  const again = await client();
+  expect(mapText(again.store())).toBe("Before the move");
+  expect(await again.status()).toMatchObject({ unsent: 0, conflicts: 0 });
+});
+
 test("transport A1: pushes and confirms a single Command above the batch and former request caps", async () => {
   const a = await client();
   const text = "大".repeat(3_000_000); // 9 MB UTF-8, beyond the former 8 MB request cap.
