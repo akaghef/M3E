@@ -1,19 +1,19 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { DeviceOutbox, pushEnvelope } from "../../src/node/sync/outbox";
+import { TEST_NEO4J } from "./neo4j_test_store";
+import { deleteSyncNodes, DeviceOutbox, outboxIO, pushEnvelope } from "../../src/node/sync/outbox";
 import { applyChanges, diffState, type RecordChange } from "../../src/shared/map_changes";
 
-let dir: string;
-let file: string;
+let store: string;
 let box: DeviceOutbox;
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-squash-"));
-  file = path.join(dir, "outbox.jsonl");
-  box = DeviceOutbox.open(file);
+  store = `squash:${randomUUID()}`;
+  box = DeviceOutbox.open(store, TEST_NEO4J);
 });
-afterEach(() => { vi.restoreAllMocks(); fs.rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => {
+  vi.restoreAllMocks();
+  deleteSyncNodes(TEST_NEO4J, store);
+});
 function append(id: string, changes: RecordChange[], issuer = "human") {
   return box.append({ commandId: id, mapId: "map", baseSeq: 0, issuer,
     command: { commandId: id, actor: { kind: "human", id: "actor" }, intent: "edit", changes } });
@@ -44,7 +44,7 @@ test("three updates use a new commandId, first before and last after", async () 
 test("an attempted Command survives a lost reply and reopening without squashing", async () => {
   const first = update("a", "0", "1");
   await expect(box.drain(async () => { throw new Error("lost response"); })).rejects.toThrow("lost response");
-  box = DeviceOutbox.open(file);
+  box = DeviceOutbox.open(store, TEST_NEO4J);
   expect(box.list()[0].attempted).toBe(true);
   update("b", "1", "2");
   expect((await sent()).map((entry) => entry.commandId)).toEqual(["a", "b"]);
@@ -64,20 +64,28 @@ test("map rename and issuer changes separate squash runs", async () => {
 });
 test("protected conflicts and blocked Commands, and legacy entries, remain exact", () => {
   update("a", "0", "1"); update("b", "1", "2"); update("c", "2", "3");
-  const before = fs.readFileSync(file, "utf8");
+  const before = box.list();
   expect(box.squash(new Set(["b"]))).toBe(false);
-  expect(fs.readFileSync(file, "utf8")).toBe(before);
-  fs.writeFileSync(file, before.replaceAll(',"attempted":false', ""));
+  expect(box.list()).toEqual(before);
+  box.replace(before.map((entry) => {
+    const legacy = { ...entry };
+    delete legacy.attempted;
+    return legacy;
+  }));
   expect(box.squash()).toBe(false);
 });
 test("a failed atomic rename leaves the complete old outbox and never sends", async () => {
   update("a", "0", "1"); update("b", "1", "2");
-  const before = fs.readFileSync(file, "utf8");
-  vi.spyOn(fs, "renameSync").mockImplementation(() => { throw new Error("crash before rename"); });
+  const before = box.list();
+  const real = outboxIO.run;
+  vi.spyOn(outboxIO, "run").mockImplementation((connection, write, statements) => {
+    if (write) throw new Error("crash before rename");
+    return real.call(outboxIO, connection, write, statements);
+  });
   const send = vi.fn();
   await expect(box.drain(send)).rejects.toThrow("crash before rename");
   expect(send).not.toHaveBeenCalled();
-  expect(fs.readFileSync(file, "utf8")).toBe(before);
+  expect(box.list()).toEqual(before);
 });
 test("composes field additions/removals and dependent node/edge/attribute changes without changing state", async () => {
   const before: any = { rootId: "r", nodes: { r: { id: "r", text: "root", parentId: null, children: [], attributes: {} } }, links: {} };

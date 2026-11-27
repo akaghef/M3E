@@ -6,10 +6,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
-import { LocalSync } from "../../src/node/sync/local";
+import { deviceStoreNames, dropDevicesUnder, LocalSync } from "../../src/node/sync/local";
 import { DeviceOutbox } from "../../src/node/sync/outbox";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import type { AppState } from "../../src/shared/types";
+import { TEST_NEO4J } from "./neo4j_test_store";
 
 const BETA = path.resolve(__dirname, "../..");
 const SERVER = path.join(BETA, "dist/node/start_viewer.js");
@@ -17,10 +18,26 @@ const MAIN = "sync-map";
 const ARCHIVED = "archived";
 const WORKSPACE = "sync-workspace";
 
-function activeDirectory(dir: string): string {
-  return process.platform === "win32"
-    ? path.resolve(path.dirname(dir), fs.readFileSync(path.join(dir, "CURRENT"), "utf8").trim())
-    : fs.realpathSync(dir);
+function storeToken(dir: string): string {
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, "sync", "remote.json"), "utf8")) as { workspaceId: string; workingGeneration?: number };
+  return `${deviceStoreNames(meta.workspaceId, dir).working}#${meta.workingGeneration ?? 0}`;
+}
+
+async function confirmedLines(dir: string, after: number) {
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, "sync", "remote.json"), "utf8")) as { workspaceId: string };
+  const store = await RecordWorkspaceStore.openNeo4j(TEST_NEO4J, deviceStoreNames(meta.workspaceId, dir).confirmed, { warm: false });
+  try { return await store.readJournalAfter(after); }
+  finally { await store.close(); }
+}
+
+function neo4jEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { M3E_NEO4J_BOLT: TEST_NEO4J.uri };
+  if (TEST_NEO4J.user !== undefined) {
+    env.M3E_NEO4J_USER = TEST_NEO4J.user;
+    env.M3E_NEO4J_PASSWORD = TEST_NEO4J.password ?? "";
+  }
+  if (TEST_NEO4J.database) env.M3E_NEO4J_DATABASE = TEST_NEO4J.database;
+  return env;
 }
 
 let temp: string;
@@ -36,6 +53,7 @@ beforeEach(() => {
 afterEach(async () => {
   await Promise.all(children.map(stop));
   await Promise.all(proxies.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  await dropDevicesUnder(TEST_NEO4J, temp);
   fs.rmSync(temp, { force: true, recursive: true });
   vi.unstubAllEnvs();
 });
@@ -71,9 +89,16 @@ async function viewer(dir: string, remote?: string, port = 0): Promise<{ origin:
   } as NodeJS.ProcessEnv;
   delete env.M3E_STORE_DIR;
   delete env.M3E_NEO4J_BOLT;
+  delete env.M3E_NEO4J_USER;
+  delete env.M3E_NEO4J_PASSWORD;
+  delete env.M3E_NEO4J_PASSWORD_FILE;
+  delete env.M3E_NEO4J_DATABASE;
   delete env.M3E_TAILSCALE_USERS;
   delete env.M3E_SYNC_REMOTE;
-  if (remote) env.M3E_SYNC_REMOTE = remote;
+  if (remote) {
+    env.M3E_SYNC_REMOTE = remote;
+    Object.assign(env, neo4jEnv());
+  }
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env, stdio: ["ignore", "pipe", "pipe"] });
   children.push(child);
   const actualPort = await new Promise<number>((resolve, reject) => {
@@ -131,7 +156,7 @@ async function mapText(origin: string, id = "main-root"): Promise<string> {
   return map.state.nodes[id].text;
 }
 
-function outbox(dir: string) { return DeviceOutbox.open(path.join(dir, "sync/outbox.jsonl")).list(); }
+function outbox(dir: string) { return DeviceOutbox.open(deviceStoreNames(WORKSPACE, dir).outbox, TEST_NEO4J).list(); }
 
 async function relay(origin: string, transform: (url: URL, body: any, headers: http.IncomingHttpHeaders) => any) {
   const server = http.createServer(async (req, res) => {
@@ -283,7 +308,7 @@ describe("local sync with isolated viewer processes", () => {
     expect((await ok(b.origin, `/api/maps/${created}`)).state).toEqual((await ok(remote.origin, `/api/maps/${created}`)).state);
 
     const directDir = path.join(temp, "direct");
-    const direct = await LocalSync.open(directDir, remote.origin);
+    const direct = await LocalSync.open(directDir, remote.origin, TEST_NEO4J);
     try {
       direct.store().renameMapId(MAIN, "renamed", "local");
       expect(outbox(directDir)).toMatchObject([{ mapId: MAIN, mapOp: "rename", newMapId: "renamed" }]);
@@ -375,24 +400,24 @@ describe("local sync with isolated viewer processes", () => {
     const before = (await status(b)).confirmedSeq;
     await edit(b, "main-root", "Conflicting draft");
     await edit(b, "main-child", "Independent draft");
-    const active = activeDirectory(path.join(dir, "store"));
+    const active = storeToken(dir);
     await edit(a, "main-root", "Authoritative");
     await edit(a, "main-root", "Authoritative again");
     await push(a);
     corrupt = true;
     expect(await call(b, "/api/sync/local/pull", "POST")).toMatchObject({ status: 502, body: { code: "SYNC_FAILED" } });
     expect((await status(b)).confirmedSeq).toBe(before);
-    expect(fs.readFileSync(path.join(activeDirectory(path.join(dir, "sync/confirmed")), "journal.jsonl"), "utf8")).toBe("");
-    expect(activeDirectory(path.join(dir, "store"))).toBe(active);
+    expect(await confirmedLines(dir, before)).toEqual([]);
+    expect(storeToken(dir)).toBe(active);
     expect(await mapText(b)).toBe("Conflicting draft");
     corrupt = false;
     expect(await pull(b)).toMatchObject({ confirmedSeq: before + 2, pulled: 2 });
     // Rebased in place: the pull touched the delta and the pending Commands, not a copy of the workspace.
-    expect(activeDirectory(path.join(dir, "store"))).toBe(active);
+    expect(storeToken(dir)).toBe(active);
     expect(await mapText(b)).toBe("Authoritative again");
     expect(await mapText(b, "main-child")).toBe("Independent draft");
     expect(await status(b)).toMatchObject({ unsent: 1, conflicts: 1 });
     const exact = (await ok(remote.origin, `/api/sync/pull?after=${before}`)).lines;
-    expect(fs.readFileSync(path.join(activeDirectory(path.join(dir, "sync/confirmed")), "journal.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line))).toEqual(exact);
+    expect(await confirmedLines(dir, before)).toEqual(exact);
   });
 });
