@@ -21,6 +21,21 @@ import { awaitDurableCommit } from "../map_commit";
 import { issuerForConnection, pushCommands } from "./push";
 import { allowedLogin } from "../remote_access";
 
+/** Ids named by the keys of the pushed Commands' changes: the records their checks read. */
+function idsOfPushedCommands(commands: unknown): string[] {
+  const ids = new Set<string>();
+  if (!Array.isArray(commands)) return [];
+  for (const item of commands) {
+    const changes = (item as { command?: { changes?: unknown } })?.command?.changes;
+    if (!Array.isArray(changes)) continue;
+    for (const change of changes) {
+      const key = (change as { key?: unknown })?.key;
+      if (Array.isArray(key)) for (const part of key) if (typeof part === "string") ids.add(part);
+    }
+  }
+  return [...ids];
+}
+
 function header(req: http.IncomingMessage, name: string): string {
   const raw = req.headers[name];
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -115,6 +130,8 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
       const fenced = fence(body ?? {});
       if (fenced === undefined) return true;
       const issuer = issuerForConnection(connectionFromRequest(req), store);
+      // The checks compare with what Neo4j holds now for the records these Commands touch.
+      await store.reconcileIds(idsOfPushedCommands(body?.commands));
       const pushed = pushCommands(store, storeDir, body?.commands, issuer, fenced);
       const held = await awaitDurableCommit(store);
       if (!held.ok) {
@@ -135,6 +152,8 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
         sendSyncJson(res, 405, { ok: false, error: "Method not allowed." });
         return true;
       }
+      // A clone is what Neo4j holds now.
+      await store.reconcileAll();
       const records = store.records();
       const headerRecord = records.find((record) => record.kind === "snapshot");
       const snapshotSeq = headerRecord && headerRecord.kind === "snapshot" ? headerRecord.seq : store.seq();

@@ -108,6 +108,8 @@ export async function storeLoadSavedMapFromDatabase(store: RecordWorkspaceStore,
   const records = await store.mapRecordsFromDatabase(mapId);
   if (records === null) return storeLoadSavedMap(store, mapId);
   if (!records.some((record) => record.kind === "map" && record.id === mapId)) throw new Error("Map not found.");
+  // Neo4j holds: what changed there outside a commit is committed before anything else reads it.
+  store.reconcileMap(mapId, records);
   if (!store.hasMap(mapId)) throw new Error("Map not found.");
   const memory = store.getMapRow(mapId);
   if (!memory.savedAt) throw new Error("Unsupported or invalid save format.");

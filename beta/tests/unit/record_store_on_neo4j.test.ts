@@ -106,4 +106,70 @@ describe("record store on Neo4j", () => {
     const again = await (async () => { await closeStore(store); return openStore(name); })();
     expect((again.getMapRow("map_a").state as unknown as Loose).nodes[first].text).toBe("back to back 19");
   });
+
+  it("takes a record changed in Neo4j outside a commit into the checks and the journal, and changes nothing when nothing changed", async () => {
+    const name = await newStore();
+    const store = await openStore(name);
+    const state = store.getMapRow("map_a").state as unknown as Loose;
+    const first = Object.keys(state.nodes).find((id) => id !== state.rootId) as string;
+    // Nothing changed: no commit.
+    expect(await store.reconcileIds([first])).toBe(0);
+    expect(store.reconcileMap("map_a", await store.mapRecordsFromDatabase("map_a"))).toBe(0);
+    const seq = store.seq();
+    // Someone changes the node's text in Neo4j directly.
+    const neo4j = (await import("neo4j-driver")).default;
+    const driver = neo4j.driver(connection.uri);
+    try {
+      await driver.executeQuery("MATCH (r:Rec {store: $store, id: $id}) WHERE r.kind = 'node' SET r.f_text = 'changed in Neo4j'", { store: name, id: first });
+    } finally {
+      await driver.close();
+    }
+    expect(await store.reconcileIds([first])).toBe(1);
+    expect(store.seq()).toBe(seq + 1);
+    expect((store.getMapRow("map_a").state as unknown as Loose).nodes[first].text).toBe("changed in Neo4j");
+    const lines = await store.readJournalAfter(seq);
+    expect(lines?.map((line) => line.intent)).toEqual(["database-edit"]);
+    // A Command made against the value Neo4j holds passes the check.
+    const now = store.getMapRow("map_a").state as unknown as Loose;
+    const next = clone(now);
+    next.nodes[first].text = "edited after";
+    expect(store.commitMapCommand("map_a", command(diffState(now, next), "edit-text", "after-direct"), ISSUER).ok).toBe(true);
+    await store.durable();
+  });
+
+  it("answers DATABASE_UNAVAILABLE instead of hanging when Neo4j stops answering", async () => {
+    const net = await import("net");
+    const target = new URL(connection.uri.replace("bolt://", "http://"));
+    let silent = false;
+    const sockets = new Set<import("net").Socket>();
+    const proxy = net.createServer((client) => {
+      sockets.add(client);
+      const upstream = net.connect(Number(target.port), target.hostname);
+      sockets.add(upstream);
+      client.on("data", (chunk) => { if (!silent) upstream.write(chunk); });
+      upstream.on("data", (chunk) => { if (!silent) client.write(chunk); });
+      const end = () => { client.destroy(); upstream.destroy(); };
+      client.on("error", end); upstream.on("error", end); client.on("close", end); upstream.on("close", end);
+    });
+    await new Promise<void>((done) => proxy.listen(0, "127.0.0.1", () => done()));
+    const port = (proxy.address() as import("net").AddressInfo).port;
+    const proxied = { ...connection, uri: `bolt://127.0.0.1:${port}` };
+    const name = `test-${randomUUID()}`;
+    names.push(name);
+    await RecordWorkspaceStore.createInNeo4j(proxied, name, snapshotOf([{ id: "map_a", state: richState() }]));
+    const store = await RecordWorkspaceStore.openNeo4j(proxied, name);
+    try {
+      expect((await store.mapRecordsFromDatabase("map_a")).length).toBeGreaterThan(0);
+      silent = true; // Neo4j stops answering; connections stay open.
+      const begun = Date.now();
+      await expect(store.mapRecordsFromDatabase("map_a")).rejects.toMatchObject({ code: "DATABASE_UNAVAILABLE" });
+      expect(Date.now() - begun).toBeLessThan(20000);
+      expect(() => store.listMaps()).toThrow(/not available/);
+    } finally {
+      silent = false;
+      for (const socket of sockets) socket.destroy();
+      await store.close().catch(() => undefined);
+      await new Promise<void>((done) => proxy.close(() => done()));
+    }
+  }, 60000);
 });

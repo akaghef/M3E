@@ -533,6 +533,69 @@ export class RecordWorkspaceStore {
     retry(500);
   }
 
+  /**
+   * Neo4j is the database: a record changed there without a commit of this store (by hand, by a
+   * tool) is what holds. Compares `fresh`, read from Neo4j, with the process state for the records
+   * in `scope`, and commits the differences as one journal line (intent `database-edit`, issuer
+   * `system`), so the checks, the clone and every device that pulls see them. Work is proportional
+   * to the records compared.
+   */
+  private reconcile(fresh: readonly SnapshotRecord[], inScope: (record: SnapshotRecord) => boolean, mapId: string): number {
+    const ignoreRev = (record: SnapshotRecord): string => {
+      const { rev: _rev, ...rest } = record as SnapshotRecord & { rev?: number };
+      return canonicalStringify(rest);
+    };
+    const seen = new Set<string>();
+    const seq = this.currentSeq + 1;
+    const ops: RecordOp[] = [];
+    for (const record of fresh) {
+      if (record.kind === "snapshot" || record.kind === "commit") continue;
+      const rk = recordRk(record);
+      seen.add(rk);
+      const known = this.all.get(rk);
+      if (known !== undefined && ignoreRev(known) === ignoreRev(record)) continue;
+      const put = jsonClone(record) as SnapshotRecord & { rev?: number };
+      if (hasOwn(put, "rev")) put.rev = seq;
+      ops.push({ op: "put", rk, record: put });
+    }
+    for (const [rk, record] of this.all) {
+      if (seen.has(rk) || record.kind === "commit" || !inScope(record)) continue;
+      ops.push({ op: "delete", rk });
+    }
+    if (ops.length === 0) return 0;
+    const line: JournalLine = { seq, issuer: "system", committedAt: this.now(), mapId, intent: "database-edit", ops };
+    this.appendTracked(line);
+    console.warn(`[record-store] ${ops.length} record(s) changed in Neo4j outside a commit; committed as ${seq}.`);
+    return ops.length;
+  }
+
+  /** Reconciles one map with the records just read from Neo4j for it (display reads). */
+  reconcileMap(mapId: string, fresh: readonly SnapshotRecord[]): number {
+    this.assertOpen();
+    return this.reconcile(fresh, (record) => (record.kind === "map" ? record.id : (record as { mapId?: unknown }).mapId) === mapId || record.kind === "extensionDef", mapId);
+  }
+
+  /** Reconciles the whole store with Neo4j (clone). */
+  async reconcileAll(): Promise<number> {
+    this.assertOpen();
+    const fresh = await this.durability!.allRecords();
+    return this.reconcile(fresh, () => true, "");
+  }
+
+  /** Reconciles the records a Command on these ids reads (push, before the checks). Proportional to the ids. */
+  async reconcileIds(ids: Iterable<string>): Promise<number> {
+    this.assertOpen();
+    const list = [...new Set(ids)].filter((id) => typeof id === "string" && id !== "");
+    if (list.length === 0) return 0;
+    const fresh = await this.durability!.recordsAbout(list);
+    const wanted = new Set(list);
+    const about = (record: SnapshotRecord): boolean => {
+      const r = record as { id?: unknown; nodeId?: unknown; target?: unknown };
+      return wanted.has(String(r.id)) || wanted.has(String(r.nodeId)) || wanted.has(String(r.target));
+    };
+    return this.reconcile(fresh, about, "");
+  }
+
   /** Resolves when Neo4j answers now. A read that serves state awaits this first, so nothing is served while Neo4j is down. */
   async reachable(): Promise<void> {
     this.assertOpen();

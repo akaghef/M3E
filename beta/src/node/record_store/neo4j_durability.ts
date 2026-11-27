@@ -102,7 +102,8 @@ function toNumber(value: unknown): number {
 
 function driverOf(connection: Neo4jConnection): Driver {
   const auth = connection.user !== undefined ? neo4j.auth.basic(connection.user, connection.password ?? "") : undefined;
-  return neo4j.driver(connection.uri, auth, { disableLosslessIntegers: false });
+  // Short connection timeouts: a request must get an answer (503) while Neo4j is down, not hang.
+  return neo4j.driver(connection.uri, auth, { disableLosslessIntegers: false, connectionTimeout: 3000, connectionAcquisitionTimeout: 5000, maxTransactionRetryTime: 5000 });
 }
 
 function encodeCommand(commandId: string, entry: StoredCommand): Record<string, unknown> {
@@ -501,15 +502,59 @@ export class Neo4jDurability {
     const { decodeRecord } = await import("../neo4j_store/encoding");
     const session = this.session(false);
     try {
-      const result = await session.run(
+      const result = await this.withTimeout(session.run(
         `MATCH (r:Rec {store: $store, f_mapId: $mapId}) RETURN properties(r) AS p
          UNION ALL MATCH (r:Rec {store: $store, id: $mapId}) WHERE r.kind = 'map' RETURN properties(r) AS p
          UNION ALL MATCH (r:Rec:ExtensionDef {store: $store}) RETURN properties(r) AS p`,
         { mapId, store: this.store },
-      );
+      ));
       return result.records.map((row) => decodeRecord(row.get("p") as never));
     } finally {
       await session.close();
+    }
+  }
+
+  /** Every record of the store, read now (clone, reconciliation). */
+  async allRecords(): Promise<SnapshotRecord[]> {
+    await this.durable();
+    return this.withTimeout(dump(this.driver, { database: this.database, store: this.store }));
+  }
+
+  /** Records whose id, nodeId or target is one of `ids`, read now: what a Command on those ids reads. */
+  async recordsAbout(ids: string[]): Promise<SnapshotRecord[]> {
+    if (ids.length === 0) return [];
+    await this.durable();
+    const { decodeRecord } = await import("../neo4j_store/encoding");
+    const session = this.session(false);
+    try {
+      const result = await this.withTimeout(session.run(
+        `UNWIND $ids AS id MATCH (r:Rec {store: $store, id: id}) RETURN properties(r) AS p
+         UNION MATCH (r:Rec {store: $store}) WHERE r.f_nodeId IN $ids RETURN properties(r) AS p
+         UNION MATCH (r:Rec {store: $store}) WHERE r.f_target IN $ids RETURN properties(r) AS p`,
+        { ids, store: this.store },
+      ));
+      return result.records.map((row) => decodeRecord(row.get("p") as never));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /** A read that does not answer in time marks Neo4j unavailable instead of hanging the request. */
+  private async withTimeout<T>(work: Promise<T>, ms = 10000): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("no answer from Neo4j")), ms);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (error) {
+      this.markUnavailable((error as Error).message);
+      throw this.unavailableError();
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
