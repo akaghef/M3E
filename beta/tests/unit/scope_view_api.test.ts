@@ -238,3 +238,60 @@ describe.each(["sqlite", "record store"])("scope view over HTTP (%s)", (mode) =>
     expect(full.body.scopeView).toBeUndefined();
   });
 });
+
+test("record-store map watch delivers tab and remote sync deltas through the real HTTP server", async () => {
+  const base = servers["record store"].base, mapId = "record-watch";
+  const route = `/api/maps/${mapId}`;
+  expect((await call(base, "POST", route, { version: 1, state: {
+    rootId: "root", nodes: { root: node("root", null, "Watch root") },
+  } })).status).toBe(200);
+  const abort = new AbortController();
+  const response = await fetch(base + route + "/watch", { signal: abort.signal });
+  const reader = response.body!.getReader();
+  let buffer = "";
+  const nextEvent = async (name: string): Promise<any> => {
+    const timer = setTimeout(() => abort.abort(), 10000);
+    try {
+      for (;;) {
+        const end = buffer.indexOf("\n\n");
+        if (end >= 0) {
+          const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+          if (frame.startsWith(`event: ${name}\n`)) return JSON.parse(frame.split("data: ")[1]);
+          continue;
+        }
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error("SSE ended before change");
+        buffer += new TextDecoder().decode(chunk.value);
+      }
+    } finally { clearTimeout(timer); }
+  };
+  try {
+    const ready = await nextEvent("map_watch_ready");
+    expect(ready).toMatchObject({ mapId, fullReadRequired: true });
+    let baseline = (await call(base, "GET", route + "/records")).body;
+    expect(baseline.revision).toBe(ready.revision);
+    const rootKey = baseline.records.find((item: any) => item.record?.kind === "node" && item.record.text === "Watch root").rk;
+    for (const [i, text] of ["Other tab", "Other device"].entries()) {
+      const cmd = { commandId: `watch-${i}`, actor: { kind: "human", id: "tab" }, intent: "rename", changes: [
+        { kind: "node", key: ["root"], op: "update", before: { text: i === 0 ? "Watch root" : "Other tab" }, after: { text } },
+      ] };
+      const saved = i === 0
+        ? await call(base, "POST", route + "/commands", cmd, { "X-M3E-Tab-Id": "writer" })
+        : await call(base, "POST", "/api/sync/push", { commands: [{ commandId: cmd.commandId, mapId, baseSeq: baseline.seq, command: cmd }] });
+      expect(saved.status).toBe(200);
+      if (i === 1) expect(saved.body.results[0].status).toBe("committed");
+      const event = await nextEvent("map_updated");
+      expect(event).toMatchObject({ mapId, previousRevision: baseline.revision });
+      expect(event.recordKeys).toContain(rootKey);
+      const delta = await call(base, "GET", route + `/records?since=${encodeURIComponent(baseline.revision)}`);
+      expect(delta.status).toBe(200);
+      expect(delta.body).toMatchObject({ full: false, revision: event.revision });
+      expect(delta.body.records.find((item: any) => item.rk === rootKey).record.text).toBe(text);
+      baseline = delta.body;
+    }
+    expect((await call(base, "GET", route + "/records?since=lost-revision"))).toMatchObject({ status: 409, body: { fullReadRequired: true } });
+    const full = await call(base, "GET", route + "/records");
+    expect(full.body).toMatchObject({ full: true, revision: baseline.revision });
+    expect((await call(base, "GET", route)).body.state.nodes.root.text).toBe("Other device");
+  } finally { abort.abort(); await reader.cancel().catch(() => {}); }
+}, 30000);

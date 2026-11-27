@@ -49,6 +49,25 @@
 
 ## 記録
 
+### 2026-11-27 通常の parent edge の移動を決定済みの LWW に合わせる
+
+- 種類: 問題
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: DB 仕様書 3.4・5.2・12.4、`beta/src/node/record_store/store.ts`
+- 中身: 通常の移動・兄弟順は後に確定した有効な位置を採用する。位置の比較前提だけを現在値に合わせ、内容の CAS、射影の書き戻しの位置 CAS、循環拒否、明示した map revision の guard は維持する。outbox と journal の再送 hash は元の要求を保持する。
+- 根拠: `parent_edge_commands.test.ts` の同じ node の競合移動は修正前に CONFLICT で失敗し、修正後は後の位置が勝つ。本文競合・循環拒否・射影位置 CAS と `record_store_bands.test.ts` の実書き戻しを検証。`local_sync_store.test.ts` で二つの local が同じ node をオフラインで移動し、古い基点の outbox を remote が受理し、pull 後に収束することを確認した。
+- 扱い: 実装で解消。決定本文は変更せず、DB 仕様書 3.4 と local-mode-design 3 節の実装記述を合わせた。
+
+### 2026-11-27 map watch と record 読取り口で変更分だけを配信する
+
+- 種類: 問題
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: `beta/src/node/record_store/map_changes.ts`、`map_changes_http.ts`、`store.ts`、`beta/src/node/start_viewer.ts`
+- 中身: journal 確定時の record key と map の変更 revision／seq を通知する。変更前後の所属から local rebase・rename・削除も捉える。map ごとの有限の履歴を revision で辿り、重複 key をまとめて現在の record だけを返す。世代違い・履歴脱落は全体読込みへ戻す。local sync 完了通知から全 map の listMaps を除いた。
+- 根拠: `map_record_changes.test.ts` で 50／20,000 node の通知時の record 本文読取りが 0 件、差分取得の本文読取りが 3／3 件、確定から取得までの record key lookup が 21／21 件、record 全体の列挙が 0／0 件であることを検証。別 map の確定、同じ key の複数回更新、再起動・履歴脱落、local rebase、削除、再送を検証。`scope_view_api.test.ts` の実 server で、別タブの Command と remote sync push から SSE を受け、その revision に対応する差分を HTTP で取得した。
+- 検証結果: `npm run build` 成功。`delta_proportional_judge.mjs` は 5/5（比率 0.8／0.8／0.9／1.3／1.2）、`local_mode_judge.mjs` は 16/16。`npm run test:unit` は 1,625 passed／2 failed／27 skipped。失敗は `vault_watch_api_integration.test.js` の 2 件で、空の一時ディレクトリに対する単独の `fs.watch` でも EMFILE を再現した。全単体試験の合格条件は未達で、sandbox 外での再実行が必要。field table への未対応欄の一時追加は `Unhandled viewer field node.unhandledProbe` で失敗し、欄を除去したライフサイクル試験は通過。Playwright／viewer judge は未実行（Director 依頼）。最終の対象試験は 56/56。commit は sandbox が共有 Git メタデータの index.lock 作成を Operation not permitted で拒否し、未実行のまま残る。
+- 扱い: server 側を実装で解消。wire 契約を Map Write Protocol と local-mode-design に反映。browser の受信・描画側は本作業の対象外。既存 MCP Context の reconcile は全体状態を読む経路が残り、今回の record 差分配信とは別に扱う。
+
 ### 2026-11-27 viewer の移動の保存作成は、変更した parent edge と隣接キーだけを読む
 
 - 種類: 問題
@@ -82,8 +101,8 @@
 - 書いた agent: 保存・同期の差分処理を担当した Codex
 - 対象: DB 仕様書 3.4、local-mode-design.md 3 節、`map_changes.ts`、`record_model/steady.ts`、`record_store/store.ts`
 - 中身: Command に `{parentId, ord}` を採用した。既存の `fractional-indexing` と保存済みの key を再利用でき、兄弟の index がずれても兄弟自身を書き換えずに済む。viewer の `edgeOrder` は入ってくる parent edge の key であり、node record の内容とは分ける。同一 scope 内の付け替えと並べ替え、通常の葉の挿入は、対象 record と親ごとの索引だけを更新し、子配列は読むときに構成する。index 形式の既存 Command も同時適用の意味を保って受け、journal / outbox は key 形式で書く。受信時と正規化後の hash を保持し、同じ Command の再送を判定する。
-- 根拠: `parent_edge_commands.test.ts` で 10 / 20,000 兄弟の移動・挿入・並べ替えが parent edge 1 件になること、別の兄弟と同じ node の CAS、旧形式の再起動・compaction 後の再送、viewer の連続保存を検証した。`record_store_delta.test.ts` で挿入位置に依らない非走査と、書込み失敗時の親・順序・record の rollback を検証した。`scope_view_api.test.ts` と `map_changes_invariants.test.ts` で HTTP の scope 操作とランダム変更・逆操作を検証した。 `npm run build` が成功し、差分量の受入判定は DJ1–DJ5 の 5/5、local mode の受入判定は 16/16 を通過した。全 unit suite は 1609 passed / 2 failed / 27 skipped。失敗は vault watch の 2 件で、一時ディレクトリへの最小の `fs.watch` 呼出しでも `EMFILE` を再現したため、sandbox 内では全体合格を確認できなかった。orchestrator が fec3c12 を sandbox 外で再実行し、1611 passed / 27 skipped / 0 failed を報告したため、全 unit suite の条件は合格として扱う。Playwright と viewer の受入判定は未実行（Director 依頼）。
-- 扱い: 仕様へ反映（DB 仕様書 3.4、local-mode-design.md 3 節）。同一 scope の経路と、上記の key 形式の部分木移動・scopen／unscopen・複合構造変更は実装で解消。viewer の移動の保存差分は書込み位置の集合から作る。書込み範囲が不明な配列だけの差分、index 形式や alias／observe の意味変更を含む全体射影は残る。DB 仕様書 5.2 の LWW は本作業で変更せず、本作業で要求された同一 node の CAS と決定との差は未対応として残す。
+- 根拠: `parent_edge_commands.test.ts` で 10 / 20,000 兄弟の移動・挿入・並べ替えが parent edge 1 件になること、別の兄弟の独立性、同じ node の LWW と射影書き戻しの CAS、旧形式の再起動・compaction 後の再送、viewer の連続保存を検証した。`record_store_delta.test.ts` で挿入位置に依らない非走査と、書込み失敗時の親・順序・record の rollback を検証した。`scope_view_api.test.ts` と `map_changes_invariants.test.ts` で HTTP の scope 操作とランダム変更・逆操作を検証した。 `npm run build` が成功し、差分量の受入判定は DJ1–DJ5 の 5/5、local mode の受入判定は 16/16 を通過した。全 unit suite は 1609 passed / 2 failed / 27 skipped。失敗は vault watch の 2 件で、一時ディレクトリへの最小の `fs.watch` 呼出しでも `EMFILE` を再現したため、sandbox 内では全体合格を確認できなかった。orchestrator が fec3c12 を sandbox 外で再実行し、1611 passed / 27 skipped / 0 failed を報告したため、全 unit suite の条件は合格として扱う。Playwright と viewer の受入判定は未実行（Director 依頼）。
+- 扱い: 仕様へ反映（DB 仕様書 3.4、local-mode-design.md 3 節）。同一 scope の経路と、上記の key 形式の部分木移動・scopen／unscopen・複合構造変更は実装で解消。viewer の移動の保存差分は書込み位置の集合から作る。書込み範囲が不明な配列だけの差分、index 形式や alias／observe の意味変更を含む全体射影は残る。DB 仕様書 5.2 の決定に合わせ、通常の移動は確定順の LWW、射影の書き戻しだけ位置も CAS とする実装で解消した。
 
 ### 2026-11-27 viewer の全 field の保存後の自己競合をライフサイクル試験で検出する
 
@@ -133,7 +152,7 @@
   - viewer の保存: 自動保存のたびに、map 全体について `diffState(base, state)` を取る（`viewer.ts` の `saveDocToLocalDb` と `save_command.ts`）。
   - local の rebase: 触った map の投影（warm）と近傍の索引を捨てるので、次に読むときに map 全体を投影し直す。commit の側も map 全体を複製しているので、今は同じ桁にとどまる。
 - 根拠: コードを読んだ。所要時間は測っていない（原則により、構造で判断する）。
-- 扱い: 一部解消。同一 scope 内の parent edge の移動・並べ替えと通常の葉の挿入は、変更 record だけの確定にした（2026-11-27 の記録）。viewer の移動の差分作成、key 形式の部分木移動・scopen／unscopen・通常 node の複合変更も差分に限定した（2026-11-27 の追記）。書込み範囲が不明な配列だけの差分、index 形式や alias／observe の意味変更を含む全体射影は残る。以下はこの記録時点の未対応部分であり、今回の S1–S3 以外の経路の完了判定は行っていない。remote の journal を通し番号で引けるようにする（行の位置の索引）、commit と保存の差分を変えた record に限る、の二つに設計が要る。名前付き snapshot の記録を確かめるため commit のたびに全 record を走査していた件は、このログと同じ commit で解消した（名前付き snapshot の record に触れない commit では何もしない）。
+- 扱い: 一部解消。同一 scope 内の parent edge の移動・並べ替えと通常の葉の挿入は、変更 record だけの確定にした（2026-11-27 の記録）。viewer の移動の差分作成、key 形式の部分木移動・scopen／unscopen・通常 node の複合変更も差分に限定した（2026-11-27 の追記）。書込み範囲が不明な配列だけの差分、index 形式や alias／observe の意味変更を含む全体射影は残る。journal の通し番号から byte offset を引く索引は実装済みで、DJ1・DJ2 が長い journal でも返す行数に比例することを確認した。map watch と viewer 用の record 読取り口も変更分に限定した（2026-11-27 の追記）。local rebase 後の warm 再構成、commitPlanned、MCP Context の reconcile、browser の受信・描画には全体を読む経路が残る。名前付き snapshot の記録を確かめるため commit のたびに全 record を走査していた件は、このログと同じ commit で解消した（名前付き snapshot の record に触れない commit では何もしない）。
 
 ### 2026-11-25 push と pull のたびに、working store を confirmed 全体の複製から作り直している
 

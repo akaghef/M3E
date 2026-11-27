@@ -32,7 +32,7 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
 - 同時に、その commit を outbox の entry として fsync する。entry は remote で compare-and-set（R7.1）できる形で持つ：
   - 内容の変更：`MapCommand`（`commandId`・`actor`・`intent`・`changes: RecordChange[]`、各 change は `before`/`after` を持つ）。`saveWholeMap` の差分（`diffState`）もこの形にする。
   - map 単位の操作：`{mapOp: "create" | "delete" | "rename" | "columns", ...}`。作成は初期内容を `changes` で運ぶ。
-- parent edge の変更は、子の ID と `{parentId, ord}` の `before` / `after` を持つ。兄弟の index をずらす変更は作らない。working store と remote は同じ子の親と順序キーを compare-and-set で照合する。`index` 形式の既存 entry は読み取れ、受理した変更は順序キー形式で journal / outbox に書く。どちらの形で再送しても同じ Command と判定する。
+- parent edge の変更は、子の ID と `{parentId, ord}` の `before` / `after` を持つ。兄弟の index をずらす変更は作らない。working store と remote は、通常の移動・兄弟順を確定順の LWW とし、古い基点の outbox の移動も受ける。循環は拒否し、他の field は CAS、射影の書き戻しは位置も CAS とする。`index` 形式の既存 entry は読み取れ、受理した変更は順序キー形式で journal / outbox に書く。どちらの形で再送しても同じ Command と判定する。
 - viewer の移動は、書込み位置で移動した node と前後の兄弟の順序キーを記録し、その parent edge だけを差分にする。新しい隣接 node にキーがなければ、その連続した範囲だけにキーを割り当てる。保存要求の作成・応答反映では、map の node 辞書と親の子配列を複製しない。応答待ちの間に行った次の移動は、先の応答で上書きしない。書込み範囲が不明な変更と全体置換は、完全な差分を使う。
 - key 形式の構造変更は、変更した node と parent edge、scopen／unscopen に伴う scope とその参照先だけを射影する。scope をまたぐ部分木移動では、所属が変わる子孫の parent edge も更新するため、その部分木に比例する。入れ子の scope の内側で所属が変わらない parent edge は辿らない。surface・linear text・annotation の変換と、拒否・書込み失敗時の rollback は全体射影と同じ結果にする。近傍と保存の guard の索引は読み込み時に構成し、確定ごとに差分更新する。
 - store が省く既定値・導出値は、viewer の値との比較時に同じ正規形で扱う。node、relation edge、scope、Surface View、parent edge の欄を production の field table と型定義から列挙し、viewer の前回の値を `before` にした create → update → delete を working store と remote で検証する。
@@ -92,3 +92,10 @@ remote 1 台と local 2 台（A・B）を別プロセス・別ディレクトリ
 | AC8 | A で編集後、push せずに A を再起動 | outbox が残り、再起動後の push で確定 |
 | AC9 | 別の workspace（historyId が違う remote）に A の push・pull を向ける | 409 `FENCED`、何も確定・取り込みしない |
 | AC10 | 全手順を通して | local の `confirmedSeq` は常に remote の seq のどれか。remote の journal に local 由来の重複確定がない |
+
+
+## viewer の record 差分受信
+
+server の map watch と `GET /api/maps/:mapId/records` は、[Map Write Protocol の wire 契約](../../../docs/protocols/map-write-protocol.md#viewer-の-record-差分受信)に従う。通常の保存、MCP の書込み、remote の sync push、working store の rebase を同じ journal の record key から通知する。rebase は `mapId` が空の内部 Command でも、変更前後の record の所属 map を使って通知する。
+
+`revision` は store インスタンスと map の変更位置を表す opaque string、`seq` はその store の journal の通し番号である。working store と remote の seq は直接比較しない。再起動・reclone で store を置き換えると revision の世代が変わる。履歴が届かない場合は `409 FULL_READ_REQUIRED` を返し、viewer は同じ record 読取り口から全体を取得する。通常の差分受信は変更した record に比例し、workspace の全 map や journal を列挙しない。

@@ -1,5 +1,6 @@
 "use strict";
 
+import { handleMapRecordsHttp, mapRecordChangeFrame } from "./record_store/map_changes_http";
 import { FlashJobs, InstalledFlashProvider, flashPublicError } from "./flash_jobs";
 
 import "dotenv/config";
@@ -403,13 +404,32 @@ function pruneSseClients<T extends { res: http.ServerResponse }>(clients: T[], m
   }
 }
 
+let watchedRecordStore: ReturnType<typeof activeRecordStore> = null;
+let unsubscribeRecordChanges: (() => void) | undefined;
+const broadcastRevisions = new Map<string, string>();
+function bindMapRecordWatchStore() {
+  const store = activeRecordStore();
+  if (store !== watchedRecordStore) {
+    unsubscribeRecordChanges?.();
+    watchedRecordStore = store;
+    broadcastRevisions.clear();
+    unsubscribeRecordChanges = store?.mapChanges.subscribe(event => {
+      broadcastMapUpdate(event.mapId, event.savedAt, null, localModeStore() !== null);
+    });
+  }
+  return store;
+}
+
 function addMapWatchClient(mapId: string, res: http.ServerResponse): void {
+  const store = bindMapRecordWatchStore();
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
   res.write(`retry: ${SSE_RETRY_MS}\n: connected\n\n`);
+  const ready = { mapId, ...(store?.mapChanges.cursor(mapId, store.seq()) ?? {}), fullReadRequired: true };
+  res.write(`event: map_watch_ready\ndata: ${JSON.stringify(ready)}\n\n`);
   mapWatchClients.push({ mapId, res });
   pruneSseClients(mapWatchClients, MAX_MAP_WATCH_CLIENTS);
   res.on("close", () => {
@@ -419,9 +439,12 @@ function addMapWatchClient(mapId: string, res: http.ServerResponse): void {
 }
 
 function broadcastMapUpdate(mapId: string, savedAt: string, sourceTabId: string | null, synchronized = false): void {
+  const store = bindMapRecordWatchStore();
+  const change = store?.mapChanges.latest(mapId, store.seq());
+  if (change && broadcastRevisions.get(mapId) === change.revision) return;
+  if (change) broadcastRevisions.set(mapId, change.revision);
   mcpService.notifyMapChanged(mapId);
-  const payload = JSON.stringify({ mapId, savedAt, sourceTabId, ...(synchronized ? { synchronized } : {}) });
-  const frame = `event: map_updated\ndata: ${payload}\n\n`;
+  const frame = mapRecordChangeFrame({ mapId, savedAt, sourceTabId, ...change, ...(synchronized ? { synchronized } : {}) });
   for (let i = mapWatchClients.length - 1; i >= 0; i--) {
     if (mapWatchClients[i].mapId === mapId) {
       try {
@@ -4348,10 +4371,10 @@ export function createAppServer(): http.Server {
     }
     if (await handleMcpApi(req, res, tailscaleGateEnabled)) return;
     if (await handleLocalSyncHttp(req, res, (mapIds) => {
-      const maps = new Map(activeRecordStore()?.listMaps().map((map) => [map.id, map.savedAt]));
-      for (const mapId of mapIds) broadcastMapUpdate(mapId, maps.get(mapId) ?? "", null, true);
+      for (const mapId of mapIds) broadcastMapUpdate(mapId, "", null, true);
     })) return;
     if (await handleRecordSyncHttp(req, res)) return;
+    if (handleMapRecordsHttp(req, res, bindMapRecordWatchStore())) return;
     if (orreryApi.handle(req, res)) return;
     if (await handleOpenLocalPathApi(req, res)) {
       return;
