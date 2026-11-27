@@ -60,6 +60,6 @@ export function parseSnapshot(text: string): SnapshotRecord[] {
   });
   const first = records[0];
   if (!first || first.kind !== "snapshot") throw new Error("Snapshot line 1 must be the header record.");
-  if (first.format !== 1 && first.format !== 2) throw new Error(`Unsupported snapshot format: ${String(first.format)}`);
+  if (first.format !== 1 && first.format !== 2 && first.format !== 3) throw new Error(`Unsupported snapshot format: ${String(first.format)}`);
   return records;
 }

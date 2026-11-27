@@ -889,6 +889,31 @@ describe("M3E MCP semantic service", () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 
+  test("certainty is set on create and content update, read back, and refused out of range or on an alias", () => {
+    const entity = model.addNode(model.state.rootId, "Entity");
+    const alias = model.addAlias(model.state.rootId, entity);
+    model.saveToSqlite(dbPath, mapId);
+    const context = enter();
+    const created = service.call("m3e_create", { kind: "node", context_id: context.context_id, text: "Likely", certainty: 75 });
+    expect(created.error).toBeUndefined();
+    const plain = service.call("m3e_create", { kind: "node", context_id: context.context_id, text: "Unset" });
+    expect(plain.ok).toBe(true);
+    const byText = (text: string) => Object.values(loaded().state.nodes).find((item) => item.text === text)!;
+    expect(byText("Likely").certainty).toBe(75);
+    expect(byText("Unset").certainty).toBeUndefined();
+    const update = (target: string, certainty: unknown) => service.call("m3e_update", { kind: "content", context_id: context.context_id, target: nodeUri(target), certainty });
+    expect(update(entity, 30).ok).toBe(true);
+    expect(loaded().state.nodes[entity].certainty).toBe(30);
+    const read = service.call("m3e_get", { kind: "state", context_id: context.context_id, target: nodeUri(entity) });
+    expect(read.nodes[0].certainty).toBe(30);
+    expect(update(entity, -1).ok).toBe(true);
+    expect(loaded().state.nodes[entity].certainty).toBeUndefined();
+    const before = saved();
+    for (const bad of [101, -2, 2.5, "50"]) expect(update(entity, bad).ok).toBe(false);
+    expect(update(alias, 40).error.code).toBe("INVALID_OPERATION");
+    expect(saved()).toEqual(before);
+  });
+
   test("attribute patches merge and remove explicit keys while preserving unrelated metadata", () => {
     const node = model.addNode(model.state.rootId, "Retain this title");
     Object.assign(model.state.nodes[node], {

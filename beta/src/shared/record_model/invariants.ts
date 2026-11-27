@@ -1,6 +1,7 @@
 // Invariants of post-migration-spec.md section 9, items 1-7, checked on the
 // final state of a whole record set (not on a single write).
 
+import { isCertainty } from "./certainty";
 import { extensionValueErrors } from "./extensions";
 import type {
   ConnectionRecord,
@@ -19,7 +20,7 @@ import { recordKeyString } from "./jsonl";
 
 export interface InvariantProblem {
   /** Item number in Database_Spec section 4. 0 marks a record set that is malformed before any item applies. */
-  rule: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 9 | 10;
+  rule: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 9 | 10 | 11;
   kind: string;
   key: string;
   message: string;
@@ -221,5 +222,10 @@ export function checkInvariants(records: SnapshotRecord[]): InvariantProblem[] {
     if (connection.type === "edge") checkCarrier(connection, "parentEdge", connection.extensions, connection.attributes);
     else checkCarrier(connection, "relationEdge", connection.extensions, connection.attributes);
   }
+  // 11: every node carries certainty, an integer from -1 to 100 (Database_Spec 3.2).
+  for (const node of nodes.values()) {
+    if (!isCertainty((node as { certainty?: unknown }).certainty)) add(11, node, "certainty must be an integer from -1 to 100");
+  }
+
   return problems;
 }

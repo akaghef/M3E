@@ -56,7 +56,7 @@ const idMapOf = (records: SnapshotRecord[]) => ofKind<IdMapRecord>(records, "idM
 describe("toSnapshot: header and seeded records (1, 3.5)", () => {
   it("emits the header, relation types, prefixes, account and commit", () => {
     const records = convert([]);
-    expect(records[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, seq: 0 });
+    expect(records[0]).toEqual({ kind: "snapshot", format: 3, workspaceId: WS, seq: 0 });
     expect(ofKind(records, "relationTypeDef")).toEqual([
       { kind: "relationTypeDef", name: "m3e:consist-of", reads: "source-to-target", rev: 0 },
       { kind: "relationTypeDef", name: "m3e:detail", reads: "source-to-target", rev: 0 },
@@ -205,8 +205,8 @@ describe("toSnapshot: node and details (3.2)", () => {
   })]);
 
   it("writes id, text and collapsed only when true", () => {
-    expect(nodeById(records, "root")).toEqual({ kind: "node", id: "root", mapId: "m1", text: "root", collapsed: true, rev: 0 });
-    expect(nodeById(records, "plain")).toEqual({ kind: "node", id: "plain", mapId: "m1", text: "plain", rev: 0 });
+    expect(nodeById(records, "root")).toEqual({ kind: "node", id: "root", mapId: "m1", text: "root", collapsed: true, certainty: -1, rev: 0 });
+    expect(nodeById(records, "plain")).toEqual({ kind: "node", id: "plain", mapId: "m1", text: "plain", certainty: -1, rev: 0 });
   });
 
   it("drops folder / leaf / missing nodeType and keeps the others", () => {
@@ -219,7 +219,7 @@ describe("toSnapshot: node and details (3.2)", () => {
   });
 
   it("drops scopeId and aliasOf, and moves unknown fields to extra as they are", () => {
-    expect(nodeById(records, "folder")).toEqual({ kind: "node", id: "folder", mapId: "m1", text: "folder", rev: 0 });
+    expect(nodeById(records, "folder")).toEqual({ kind: "node", id: "folder", mapId: "m1", text: "folder", certainty: -1, rev: 0 });
     expect(nodeById(records, "img").extra).toEqual({ type: "legacy", notes: ["n"], createdAt: "2026-01-01", updatedAt: 5 });
   });
 

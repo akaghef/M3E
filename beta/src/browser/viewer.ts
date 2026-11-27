@@ -3447,10 +3447,11 @@ function deriveFillFromUrgencyImportance(urgency: number, importance: number): s
   return `#${hex(r)}${hex(g)}${hex(b)}`;
 }
 
-function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
+function readNodeStyleAttrs(attrs: Record<string, string>, certainty?: number): NodeStyleAttrs {
   const nodeDrawStyle = normalizeNodeDrawStyle({
     styleJson: attrs["m3e:style"],
     legacy: attrs,
+    certainty,
   });
   return {
     bg: nodeDrawStyle.fill ?? null,
@@ -3525,7 +3526,7 @@ function shapeRx(shape: string | null, isRoot: boolean): number {
 }
 
 function effectiveNodeStyleAttrs(node: TreeNode): NodeStyleAttrs {
-  const base = readNodeStyleAttrs(node.attributes || {});
+  const base = readNodeStyleAttrs(node.attributes || {}, node.certainty);
   const view = surfaceNodeView(node.id);
   if (view?.shape) {
     base.shape = view.shape;
@@ -4795,7 +4796,7 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
     const visual = visualById.get(id) || shape;
     const lines = labelsById.get(id) || [uiLabel(visibleNode) || "(empty)"];
     const labelFontSize = labelElement ? Number.parseFloat(getComputedStyle(labelElement).fontSize) : Number.NaN;
-    const style = readNodeStyleAttrs(visibleNode.attributes || {});
+    const style = readNodeStyleAttrs(visibleNode.attributes || {}, visibleNode.certainty);
     const value: RenderNode = {
       id,
       opacity: filterScene.nodeOpacity(id),
@@ -5525,7 +5526,7 @@ function syncInlineEditorPosition(): void {
     return;
   }
   const isRootLabel = nodeId === map.state.rootId;
-  const nodeStyles = readNodeStyleAttrs(node.attributes || {});
+  const nodeStyles = readNodeStyleAttrs(node.attributes || {}, node.certainty);
   const label = isRootLabel ? uiLabel(node) : diagramLabel(node, nodeStyles);
   const labelLines = nodePos.labelLines || splitLabelLines(label || "(empty)");
   const fontSize = nodePos.fontSize ?? (isRootLabel ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
@@ -6018,7 +6019,7 @@ function computeFlowPreviewLayout(node: TreeNode | null | undefined): FlowPrevie
 
   childIds.forEach((childId, index) => {
     const child = map!.state.nodes[childId]!;
-    const childStyles = readNodeStyleAttrs(child.attributes || {});
+    const childStyles = readNodeStyleAttrs(child.attributes || {}, child.certainty);
     const childLabel = diagramLabel(child, childStyles);
     const measured = isLatexNode(child)
       ? measureLatex(child.text)
@@ -8490,7 +8491,7 @@ function renderScene(incremental: boolean): void {
       result += `<path class="edge edge-${structuredMode}" data-source-node-id="${nodeId}" data-target-node-id="${childId}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
 
       const childNode = state.nodes[childId];
-      const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
+      const childStyles = readNodeStyleAttrs(childNode?.attributes || {}, childNode?.certainty);
       const edgeLabel = childStyles.edgeLabel || parentChildLinkLabels.get(parentChildEdgeKey(nodeId, childId));
       if (edgeLabel) {
         result += `<text class="edge-label" data-node-id="${childId}" x="${edgePath.labelX}" y="${edgePath.labelY}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
@@ -8543,7 +8544,7 @@ function renderScene(incremental: boolean): void {
       const previewChild = state.nodes[previewChildId];
       const previewPos = previewLayout.positions[previewChildId];
       if (!previewChild || !previewPos) return;
-      const previewStyles = readNodeStyleAttrs(previewChild.attributes || {});
+      const previewStyles = readNodeStyleAttrs(previewChild.attributes || {}, previewChild.certainty);
       const previewLabel = escapeXml(diagramLabel(previewChild, previewStyles));
       const previewX = folderFrameX + previewPos.x;
       const previewY = folderFrameY + previewPos.y;
@@ -8629,7 +8630,7 @@ function renderScene(incremental: boolean): void {
       const frameY = Math.max(24, top);
       const frameW = Math.max(320, right - frameX);
       const frameH = Math.max(180, bottom - frameY);
-      const frameLabel = escapeXml(diagramLabel(displayRootNode, readNodeStyleAttrs(displayRootNode.attributes || {})));
+      const frameLabel = escapeXml(diagramLabel(displayRootNode, readNodeStyleAttrs(displayRootNode.attributes || {}, displayRootNode.certainty)));
       surfaceFrames += `<rect class="surface-scope-box" x="${frameX}" y="${frameY}" width="${frameW}" height="${frameH}" rx="20" />`;
       surfaceFrames += `<text class="surface-scope-title" x="${frameX + 22}" y="${frameY + 30}" text-anchor="start">${frameLabel}</text>`;
       maxX = Math.max(maxX, frameX + frameW + 28);

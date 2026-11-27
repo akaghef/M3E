@@ -20,6 +20,7 @@ import { initialKeys, isOrderKey, keysBetween } from "./order_key";
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
 import { writtenExtensions } from "./extensions";
+import { certaintyOfNode } from "./certainty";
 import { scopeFieldsOf } from "./scope_fields";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
 import {
@@ -40,7 +41,7 @@ const SCOPE_PREFIX = "scope:";
 const NODE_FIELDS = new Set([
   "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
-  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions", "valid", "copyOf",
+  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions", "valid", "copyOf", "certainty",
 ]);
 const LINK_FIELDS = new Set([
   "id", "sourceNodeId", "targetNodeId", "relationType", "label", "direction", "style", "color",
@@ -541,6 +542,7 @@ export class MapProjector {
           copyOf.ids = isDict(node.copyOf.ids) ? node.copyOf.ids : {};
           record.copyOf = copyOf;
         }
+        record.certainty = certaintyOfNode(id, node.certainty);
         const extra = collectExtra(node, NODE_FIELDS);
         if (extra) record.extra = extra;
         record.rev = undefined;
@@ -1027,6 +1029,7 @@ export class MapProjector {
       if (record.extensions !== undefined) restored.extensions = record.extensions;
       if (record.valid !== undefined) restored.valid = record.valid;
       if (record.copyOf !== undefined) restored.copyOf = record.copyOf;
+      if (record.certainty !== undefined && record.certainty !== -1) restored.certainty = record.certainty;
       const incoming = this.edgeByTarget.get(id);
       if (incoming?.relationType !== undefined) restored.edgeRelationType = incoming.relationType;
       if (incoming?.attributes !== undefined) restored.edgeAttributes = incoming.attributes;

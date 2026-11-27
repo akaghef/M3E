@@ -26,6 +26,7 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **map** | workspace 内で扱う 1 つの知識マップ | workspace, node, scope | （別表記）doc / document は非推奨。仕様語は `map`。実装の `docId` は互換名として残る |
 | **node** | 思考要素の最小単位。`nodeType` を持つ | nodeType, edge, scope, alias | 型の定義と例は `nodeType` の項を参照 |
 | **nodeType** | node の型。例: `text` / `image` / `folder` / `alias` / `agent` | node, agent | 自然言語では `node type` と表記する。例示は閉じた列挙ではない。用語としての型と、現在の保存・実装で対応する型一覧は区別する。後者は [Data Model](../03_Spec/Data_Model.md#nodetype-一覧) を参照 |
+| **確度** | node が表す命題や事象が成り立つ確からしさ。保存の欄は `certainty`。`0`〜`100` の整数は百分率で、`-1` は未設定 | node, alias | すべての node が必ず持つ。alias は自分の値を持たず、参照先の実体の値を読む。証明の有無を表さない。仕様は [Database_Spec.md](../03_Spec/Database_Spec.md) 3.2 |
 | **agent** | AI agent と human を合わせた上位集合。`agent = AI agent ∪ human` | nodeType, node | `agent` は node type の一例であり、agent を表す node に用いる。無修飾の agent を AI のみに限定しない |
 | **edge** | 2つの node 間の線の総称。parent edge と relation edge を含み、選択・表示の単位として扱う | node, parent edge, relation edge, edge port | 線のレコードの形は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) に従う |
 | **parent edge** | 親から子への線。木の所有関係と兄弟順序を表し、一つの scope に載る | edge, node, scope, EdgeStyle | root 以外の node は入ってくる parent edge をちょうど1本持ち、parent edge は循環しない |

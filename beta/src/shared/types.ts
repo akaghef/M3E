@@ -42,6 +42,8 @@ export interface TreeNode {
   /** Entity validity. Absent means the entity has no period. */
   valid?: { from?: string; to?: string };
   /** Copy provenance of this node (source, commit seq, arguments, id map). */
+  /** 0 to 100 as a percentage, -1 unset. Omitted in client state means -1 (Database_Spec 3.2). */
+  certainty?: number;
   copyOf?: { source: string; mapId?: string; seq: number; mode: string; ids: Record<string, string> };
 }
 

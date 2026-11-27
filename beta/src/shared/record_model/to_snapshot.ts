@@ -1,6 +1,7 @@
 // Current map rows -> snapshot records.
 // Contract: .kiro/specs/rapid-persistence-redesign/snapshot-format.md section 3.
 
+import { takeLegacyCertainty } from "./certainty";
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
 import { sha256Hex, type HashFn } from "./hash";
@@ -49,7 +50,7 @@ const SCOPE_PREFIX = "scope:";
 const NODE_FIELDS = new Set([
   "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
-  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions",
+  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions", "certainty",
 ]);
 const LINK_FIELDS = new Set([
   "id", "sourceNodeId", "targetNodeId", "relationType", "label", "direction", "style", "color",
@@ -245,6 +246,8 @@ function convertMap(
     if (Object.keys(alias).length > 0) record.alias = alias as AliasValue;
     const extensions = writtenExtensions(node.extensions);
     if (extensions) record.extensions = extensions;
+    record.certainty = takeLegacyCertainty({ certainty: node.certainty, attributes: record.attributes as { [key: string]: unknown } | undefined });
+    if (record.attributes && Object.keys(record.attributes as object).length === 0) delete record.attributes;
     const extra = collectExtra(node, NODE_FIELDS);
     if (extra) record.extra = extra;
     record.rev = 0;

@@ -1,5 +1,6 @@
 "use strict";
 
+import { isCertainty } from "../shared/record_model/certainty";
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -70,13 +71,20 @@ function resolvedDeleteOperation(value: unknown, node: TreeNode | undefined): De
   return value as DeleteOperation;
 }
 
+/** Sets a node's certainty (Database_Spec 3.2). An alias has none of its own; -1 is stored as absent. */
+function setCertainty(node: TreeNode, value: unknown): void {
+  if (!isCertainty(value)) fail("INVALID_ARGUMENT", "certainty must be an integer from -1 to 100.");
+  if (node.nodeType === "alias") fail("INVALID_OPERATION", "An alias has no certainty of its own; set it on the entity the alias points at.");
+  if (value === -1) delete node.certainty; else node.certainty = value;
+}
+
 function commandIntent(tool: string, args: Args): string {
   if (tool === "m3e_delete") return "delete";
   if (tool === "m3e_update") {
     if (args.kind === "move") return "reparent";
     if (args.kind === "scopen") return "scopen";
     if (args.kind === "unscopen") return "unscopen";
-    if (args.attributes !== undefined && args.text === undefined) return "set-attribute";
+    if ((args.attributes !== undefined || args.certainty !== undefined) && args.text === undefined) return "set-attribute";
     return "rename";
   }
   if (args.kind === "copy") return "clone";
@@ -476,7 +484,7 @@ export class M3eMcpService {
     const nodes = ids.map((id) => {
       const node = doc.state.nodes[id]!;
       const attributes = Object.fromEntries(Object.entries(node.attributes ?? {}).slice(0, 32).map(([key, value]) => [key.slice(0, 100), clip(String(value))]));
-      return { ...publicRef(refFor(ref.mapId, doc.state, id)), text: clip(node.text), details: clip(node.details), note: clip(node.note), link: clip(node.link), node_type: node.nodeType ?? "text", attributes, content_truncated: JSON.stringify({ text: node.text, details: node.details, note: node.note, link: node.link, attributes: node.attributes }) !== JSON.stringify({ text: clip(node.text), details: clip(node.details), note: clip(node.note), link: clip(node.link), attributes }), parent_uri: node.parentId ? refFor(ref.mapId, doc.state, node.parentId).uri : null, children: node.children.slice(0, 100).map((child) => refFor(ref.mapId, doc.state, child).uri), child_count: node.children.length, ...(node.targetNodeId ? { target_uri: `${mapUri(ref.mapId)}/nodes/${encodeURIComponent(node.targetNodeId)}`, alias_access: node.access ?? "read", is_broken: Boolean(node.isBroken) } : {}) };
+      return { ...publicRef(refFor(ref.mapId, doc.state, id)), text: clip(node.text), details: clip(node.details), note: clip(node.note), link: clip(node.link), node_type: node.nodeType ?? "text", attributes, certainty: node.certainty ?? -1, content_truncated: JSON.stringify({ text: node.text, details: node.details, note: node.note, link: node.link, attributes: node.attributes }) !== JSON.stringify({ text: clip(node.text), details: clip(node.details), note: clip(node.note), link: clip(node.link), attributes }), parent_uri: node.parentId ? refFor(ref.mapId, doc.state, node.parentId).uri : null, children: node.children.slice(0, 100).map((child) => refFor(ref.mapId, doc.state, child).uri), child_count: node.children.length, ...(node.targetNodeId ? { target_uri: `${mapUri(ref.mapId)}/nodes/${encodeURIComponent(node.targetNodeId)}`, alias_access: node.access ?? "read", is_broken: Boolean(node.isBroken) } : {}) };
     });
     const selected = new Set(ids);
     const links = Object.values(doc.state.links ?? {}).filter((link) => selected.has(link.sourceNodeId) || selected.has(link.targetNodeId)).map((link) => ({ uri: linkUri(ref.mapId, link.id), ...link, ...(link.label ? { label: clip(link.label) } : {}), ...(link.relationType ? { relationType: clip(link.relationType) } : {}) }));
@@ -491,7 +499,7 @@ export class M3eMcpService {
     return { ok: true, target: publicRef(ref), revision: revision(doc), nodes: result.items, links: linkResult.items, scope_payload: payloadResult.items, payload_total: payload.length, next_payload_offset: payloadResult.next, total: nodes.length, link_total: links.length, offset, limit, next_offset: result.next, next_link_offset: linkResult.next, ...(context ? { context_id: context.id, requires_refocus: context.invalidated, event_cursor: context.cursor } : {}) };
   }
   private mutate(tool: string, args: Args, context: Context): Args {
-    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "deep", "expected_revision", "command_id"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision", "command_id", "mode", "relation_type", "depth", "entities", "reason", "band", "name", "confirm", "snapshot_id", "nodes", "retention_ms", "retention_bytes", "scope_key", "entity", "unlink"] : ["context_id", "target", "expected_revision", "command_id", "operation", "parent", "at"];
+    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "certainty", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "deep", "expected_revision", "command_id"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "certainty", "parent", "expected_revision", "command_id", "mode", "relation_type", "depth", "entities", "reason", "band", "name", "confirm", "snapshot_id", "nodes", "retention_ms", "retention_bytes", "scope_key", "entity", "unlink"] : ["context_id", "target", "expected_revision", "command_id", "operation", "parent", "at"];
     fields(args, allowed);
     if (context.invalidated || !context.focus) fail("FOCUS_INVALIDATED", "The focused boundary disappeared. Explicitly focus a surviving target before writing.");
     const mapId = context.focus.mapId;
@@ -531,7 +539,7 @@ export class M3eMcpService {
     } else if (tool === "m3e_create") {
       const kind = str(args.kind, "kind", 30);
       const common = ["kind", "context_id", "target", "expected_revision", "command_id"];
-      fields(args, [...common, ...(kind === "node" ? ["text", "attributes", "deep"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : kind === "import_structure" ? ["structure", "import_key"] : kind === "link" ? ["source", "label", "relation_type", "direction"] : [])]);
+      fields(args, [...common, ...(kind === "node" ? ["text", "attributes", "certainty", "deep"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : kind === "import_structure" ? ["structure", "import_key"] : kind === "link" ? ["source", "label", "relation_type", "direction"] : [])]);
       if (kind !== "link" && model.state.nodes[target]!.nodeType === "alias") fail("INVALID_OPERATION", "Alias nodes cannot own children.");
       if (kind === "link") {
         // A GraphLink is a non-tree relation from source to target; it never changes ownership.
@@ -550,6 +558,7 @@ export class M3eMcpService {
       } else if (kind === "node") {
         const id = model.addNode(target, str(args.text, "text")); created.push(id);
         if (args.attributes !== undefined) this.patchAttributes(model.state.nodes[id]!, args.attributes);
+        if (args.certainty !== undefined) setCertainty(model.state.nodes[id]!, args.certainty);
         if (args.deep !== undefined) {
           if (args.deep === "new") intent = "create-deep";
           else if (args.deep && typeof args.deep === "object" && !Array.isArray(args.deep) && typeof (args.deep as { target?: unknown }).target === "string") {
@@ -626,14 +635,15 @@ export class M3eMcpService {
       const kind = str(args.kind, "kind", 40);
       const storeKinds = new Set(["project", "write-back", "link-entity", "set-band", "promote", "named-snapshot", "delete-named-snapshot"]);
       if (storeKinds.has(kind)) return this.storeUpdate(context, mapId, kind, args, target, commandId);
-      fields(args, ["kind", "context_id", "target", "expected_revision", "command_id", ...(kind === "content" ? ["text", "attributes"] : kind === "move" ? ["parent", "outside_scope"] : [])]);
+      fields(args, ["kind", "context_id", "target", "expected_revision", "command_id", ...(kind === "content" ? ["text", "attributes", "certainty"] : kind === "move" ? ["parent", "outside_scope"] : [])]);
       if (kind === "content") {
-        if (args.text === undefined && args.attributes === undefined) fail("INVALID_ARGUMENT", "Content update needs text or attributes.");
+        if (args.text === undefined && args.attributes === undefined && args.certainty === undefined) fail("INVALID_ARGUMENT", "Content update needs text, attributes or certainty.");
         if (args.text !== undefined) {
           const text = str(args.text, "text");
           if (model.state.nodes[target]!.nodeType === "alias") model.renameAlias(target, text); else model.editNode(target, text);
         }
         if (args.attributes !== undefined) this.patchAttributes(model.state.nodes[target]!, args.attributes);
+        if (args.certainty !== undefined) setCertainty(model.state.nodes[target]!, args.certainty);
       } else if (kind === "move") {
         const parent = this.resolve(args.parent);
         if (parent.ref.mapId !== mapId) fail("CROSS_MAP_MOVE", "Cross-map moves are not supported. Copy into the other map explicitly.");

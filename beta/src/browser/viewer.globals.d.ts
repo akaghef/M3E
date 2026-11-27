@@ -42,6 +42,8 @@ interface TreeNode {
   access?: AliasAccess;
   targetSnapshotLabel?: string;
   isBroken?: boolean;
+  /** 0 to 100 as a percentage; absent or -1 when unset (Database_Spec 3.2). */
+  certainty?: number;
 }
 
 interface GraphLink {

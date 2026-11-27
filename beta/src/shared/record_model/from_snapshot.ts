@@ -159,6 +159,7 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
       if (record.extensions !== undefined) node.extensions = record.extensions;
       if (record.valid !== undefined) node.valid = record.valid;
       if (record.copyOf !== undefined) node.copyOf = record.copyOf;
+      if (record.certainty !== undefined && record.certainty !== -1) node.certainty = record.certainty;
       if (edge?.relationType !== undefined) node.edgeRelationType = edge.relationType;
       if (edge?.attributes !== undefined) node.edgeAttributes = edge.attributes;
       if (edge?.extensions !== undefined) node.edgeExtensions = edge.extensions;
