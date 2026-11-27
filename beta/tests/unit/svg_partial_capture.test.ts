@@ -5,6 +5,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { captureSvgPaintScene, captureHiddenNodePaint, capturedNodeElements, refreshCapturedNodeFragment } from '../../src/rendering/webgl_scene_tiles';
 import { RetainedSvgScene } from '../../src/browser/incremental_scene';
 
+// Inspect a static list: jsdom eagerly refreshes a previously accessed live
+// HTMLCollection on each later child mutation, distorting the work being measured.
+const children=(root:Element)=>{const result:Element[]=[];for(let el=root.firstElementChild;el;el=el.nextElementSibling)result.push(el);return result;};
+
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();delete (SVGElement.prototype as any).getBBox;delete (SVGElement.prototype as any).transform;document.body.replaceChildren();});
 
 it.each([50,20000])('captures only changed fragments without exposing or growing the %i-node SVG',size=>{
@@ -40,16 +44,16 @@ it.each([50,20000])('captures only changed fragments without exposing or growing
     expect(result.commands).toHaveLength(1);
     expect(result.commands[0]!.matrix).toEqual([1,0,0,1,5,6]);
     expect(capturedNodeElements(root,'n0')).toHaveLength(1);
-    expect(root.children).toHaveLength(size);
+    expect(children(root)).toHaveLength(size);
     expect(document.querySelectorAll('[data-capture-stage]')).toHaveLength(0);
   }
   expect(style.mock.calls.length).toBe(50);
-  const viewport = new SvgViewport(root,new Map([...root.children].map((element,order)=>[String(order),{element:element as SVGGElement,order}])),()=>({x:10000,y:10000,width:20,height:10}));
+  const viewport = new SvgViewport(root,new Map([...children(root)].map((element,order)=>[String(order),{element:element as SVGGElement,order}])),()=>({x:10000,y:10000,width:20,height:10}));
   viewport.refresh({x:0,y:0,width:100,height:100});
-  expect(fragment.isConnected).toBe(false);expect(root.children).toHaveLength(0);
+  expect(fragment.isConnected).toBe(false);expect(children(root)).toHaveLength(0);
   const parked=captureHiddenNodePaint(root,new Set(['n0']));
   expect(parked.commands).toHaveLength(1);expect(parked.commands[0]!.matrix).toEqual([1,0,0,1,5,6]);
-  expect(root.children).toHaveLength(0);
+  expect(children(root)).toHaveLength(0);
   expect(mutations.takeRecords()).toHaveLength(0);mutations.disconnect();
 },30000);
 
@@ -73,7 +77,7 @@ it.each([50,20000])('reorders only the affected SVG interval and retains unrelat
   for(let i=0;i<10;i++) {
     const before=i%2?['node:n2','node:n1']:['node:n1','node:n2'];
     scene.reorder(before,[...before].reverse());
-    expect(root.children[1]).toBe(i%2?a:b);expect(root.children[2]).toBe(i%2?b:a);
+    expect(children(root)[1]).toBe(i%2?a:b);expect(children(root)[2]).toBe(i%2?b:a);
     expect(scene.element(`node:n${count-1}`)).toBe(unrelated);
     const mutations=observer.takeRecords();
     expect(mutations.reduce((n,record)=>n+record.removedNodes.length,0)).toBe(2);

@@ -4,7 +4,7 @@ import { SceneBounds } from './viewer_delta_scene';
 export interface ReorderPlan {
   parent: string; source: string; from: number; to: number;
   /** Visible subtrees in their old order. Unrelated siblings are never visited. */
-  roots: string[]; changed: string[]; offsets: Map<string, number>;
+  permutation?: string[]; roots: string[]; changed: string[]; offsets: Map<string, number>;
 }
 /** Retained Tree topology. Swapping sibling intervals preserves every span and
  * depth coordinate. Only the crossed intervals and their incoming edges move. */
@@ -57,6 +57,25 @@ export class TreeReorder {
     for (const id of roots) visit(id, id === source ? sign*displacement : -sign*(extent+gap));
     return {parent,source,from,to,roots,changed,offsets};
   }
+  /** Replay an overwritten child range (Undo/Redo or a peer delta). */
+  planRange(parent: string, index: number, values: readonly string[]): ReorderPlan | null {
+    if (!['right','left','down'].includes(this.direction)) return null;
+    const siblings=this.children.get(parent);
+    if(!siblings || index<0 || index+values.length>siblings.length || values.length<2) return null;
+    const roots=siblings.slice(index,index+values.length), remaining=new Set(roots);
+    if(values.some(id=>!remaining.delete(id)) || remaining.size || roots.every((id,i)=>id===values[i])) return null;
+    const breadth=(id:string)=>this.direction==='down'?this.layout.pos[id]!.x+this.layout.pos[id]!.w/2:this.layout.pos[id]!.y;
+    const extents=roots.map(id=>this.span(id));
+    if(extents.some(value=>value===undefined))return null;
+    const gap=breadth(roots[1]!)-breadth(roots[0]!)-(extents[0]!+extents[1]!)/2;
+    let top=breadth(roots[0]!)-extents[0]!/2;
+    const offsets=new Map<string,number>(),changed:string[]=[];
+    const visit=(id:string,offset:number)=>{changed.push(id);offsets.set(id,offset);for(const child of this.children.get(id)??[])visit(child,offset);};
+    const rootOffsets=new Map<string,number>();
+    for(const id of values){const size=this.span(id)!;rootOffsets.set(id,top+size/2-breadth(id));top+=size+gap;}
+    for(const id of roots)visit(id,rootOffsets.get(id)!);
+    return {parent,source:roots[0]!,from:index,to:index+values.length-1,roots,changed,offsets,permutation:[...values]};
+  }
   apply(plan: ReorderPlan): void {
     // The cached key describes the old topology. In-place positions must never
     // be returned for that key again, particularly after cancel/undo.
@@ -66,7 +85,8 @@ export class TreeReorder {
     const blocks = new Map<string,string[]>();
     const visit = (id: string, block: string[]) => {block.push(id); for(const child of this.children.get(id) ?? []) visit(child,block);};
     for (const root of plan.roots) {const block:string[]=[];visit(root,block);blocks.set(root,block);}
-    rotateRange(children,plan.from,plan.to);
+    if(plan.permutation)plan.permutation.forEach((id,i)=>children[plan.from+i]=id);
+    else rotateRange(children,plan.from,plan.to);
     let cursor = start;
     for (let i=Math.min(plan.from,plan.to);i<=Math.max(plan.from,plan.to);i++) {
       const root=children[i]!;this.indices.set(root,i);

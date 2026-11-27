@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { applyChangesReduced } from "../../src/node/record_store/apply_reduced";
-import { applyChanges, diffState, invertChanges, type RecordChange } from "../../src/shared/map_changes";
+import { acceptEdgeOrders, applyChanges, diffState, invertChanges, type RecordChange } from "../../src/shared/map_changes";
 import { bigState, clone, node, randomEdit, richState, rng, type Loose } from "./record_store_helpers";
 
 function both(state: Loose, changes: RecordChange[]): void {
@@ -24,6 +24,7 @@ describe("applyChangesReduced", () => {
         const after = clone(state);
         for (let k = 0; k < 1 + Math.floor(random() * 3); k += 1) randomEdit(after, random, counter);
         const changes = diffState(state, after);
+        acceptEdgeOrders(after, changes);
         both(state, changes);
         both(after, invertChanges(changes));
         // A command built on an older state: conflicts must be reported the same way.

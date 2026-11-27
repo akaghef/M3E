@@ -29,3 +29,15 @@ it('updates exact bounds after a former extremum shrinks', () => {
   expect(bounds.box).toEqual({ x: -100, y: -20, width: 110, height: 30 });
   bounds.set('unsupported', null); expect(bounds.box).toBeNull();
 });
+
+it.each([50,20000])('declared property edits retain layout without querying an owner child list (%i)',count=>{
+  const ids=Array.from({length:count},(_,i)=>`n${i}`),children=(id:string)=>id==='root'?ids:[];
+  const graph={nodeIds:['root',...ids],childrenOf:children};
+  const metrics=Object.fromEntries(graph.nodeIds.map(id=>[id,{w:100,h:40,fontSize:14,labelLines:['before']}]));
+  const current=layout(graph,metrics,'tree'),scene=new StableScenePatch(current);
+  scene.remember('root',ids,'same topology and style');
+  const measure=vi.fn(()=>({w:100,h:40,fontSize:14,labelLines:['after']})),draw=vi.fn();
+  expect(scene.apply({nodes:['root'],edges:[]},{children(){throw Error('unneeded child list');},childrenUnchanged:true,dependency:()=> 'same topology and style',measure,draw})).toBe(true);
+  expect(measure).toHaveBeenCalledTimes(1);expect(draw).toHaveBeenCalledTimes(1);
+  metrics.root!.labelLines=['after'];expect(current).toEqual(layout(graph,metrics,'tree'));
+});

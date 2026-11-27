@@ -3,7 +3,8 @@
  * The state transition is `changes`. `intent` is only the audit classification:
  * a viewer save may touch several record kinds at once, so it uses `assert`.
  */
-import { diffState, sameValue, type MapCommand, type RecordChange } from "../shared/map_changes";
+import { keysBetween, isOrderKey } from "../shared/record_model/order_key";
+import { applyChanges, diffState, nonEmptyChanges, acceptEdgeOrders, type MapCommand, type RecordChange } from "../shared/map_changes";
 
 const JSON_HEADERS = "application/json; charset=utf-8";
 
@@ -27,9 +28,7 @@ export function buildSaveCommand(before: object, after: object, tabId: string): 
 /** The Command for changes that are already computed (scope view). Same commandId rule as `buildSaveCommand`. */
 export function commandForChanges(changes: RecordChange[], tabId: string): MapCommand {
   // Undefined fields disappear on the wire; compare the actual JSON payload.
-  changes = JSON.parse(JSON.stringify(changes)) as RecordChange[];
-  changes = changes.filter(change => change.op !== "update"
-    || !sameValue(change.before ?? {}, change.after ?? {}));
+  changes = nonEmptyChanges(changes);
   const changesJson = JSON.stringify(changes);
   if (!unconfirmed || unconfirmed.changesJson !== changesJson) {
     unconfirmed = { commandId: newCommandId(), changesJson };
@@ -72,7 +71,9 @@ export async function postSaveCommand(
     unconfirmed = null;
     return fetch(saveUrl, { method: "POST", headers, body: wholeBody() });
   }
+  // A supplied capture owns acknowledgement, including edits made while awaiting this response.
   // Confirmed or rejected: either way the next save is a new Command.
+  if (response.ok && !changes) acceptEdgeOrders(state, command.changes);
   if (response.status < 500) unconfirmed = null;
   return response;
 }
@@ -84,20 +85,86 @@ const copy = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.s
 const has = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
 
 /** Complete write set for an edit. Omission means unknown, never "nothing changed". */
-export type SaveTouches = Partial<Record<"nodes" | "links" | "scopes" | "surfaces" | "annotations" | "linearNotesByScope" | "$map", readonly string[]>>;
+export type SaveTouches = Partial<Record<"nodes" | "links" | "scopes" | "surfaces" | "annotations" | "linearNotesByScope" | "$map" | "edges", readonly string[]>>;
 
 /** Owns a JSON baseline. Reads of the live state are ordinary object reads. */
 export class SaveStateTracker<T extends object> {
   private full = false;
   private dirty = new Map<string, Set<string>>();
+  private unknownTopology = false;
 
-  constructor(readonly base: T, readonly state: T) {}
+  private edgeChildren = new Map<string, Map<string, string>>();
+  private indexedEdges: boolean;
+
+  constructor(readonly base: T, readonly state: T, options: { indexedEdges?: boolean } = {}) {
+    this.indexedEdges = options.indexedEdges === true;
+    if (this.indexedEdges) this.indexBaseline();
+  }
+
+  private indexBaseline(): void {
+    this.indexedEdges = true; this.edgeChildren.clear();
+    // Called at load or a whole-state replacement, never on a keyed capture.
+    for (const node of Object.values((this.base as Bag).nodes ?? {}) as Bag[]) {
+      if (typeof node.parentId !== "string") continue;
+      if (!isOrderKey(node.edgeOrder)) { this.indexedEdges = false; this.edgeChildren.clear(); break; }
+      let children = this.edgeChildren.get(node.parentId);
+      if (!children) this.edgeChildren.set(node.parentId, children = new Map());
+      children.set(node.id, node.edgeOrder);
+    }
+  }
+
+  /** Called at the write site, where the new array position is already known. */
+  markParentEdge(id: string, index: number): void {
+    if (!this.indexedEdges) { this.mark(); return; }
+    const live = this.state as Bag, node = live.nodes[id], parent = live.nodes[node.parentId];
+    const list = parent.children as string[];
+    // Missing keys belong to newly inserted neighbours. Fill only that contiguous new block.
+    let lo = index, hi = index;
+    while (lo > 0 && !isOrderKey(live.nodes[list[lo - 1]]?.edgeOrder)) lo--;
+    while (hi + 1 < list.length && !isOrderKey(live.nodes[list[hi + 1]]?.edgeOrder)) hi++;
+    const left = lo ? live.nodes[list[lo - 1]].edgeOrder : undefined;
+    const right = hi + 1 < list.length ? live.nodes[list[hi + 1]].edgeOrder : undefined;
+    const keys = keysBetween(left, right, hi - lo + 1), ids: string[] = [];
+    for (let i = lo; i <= hi; i++) { live.nodes[list[i]].edgeOrder = keys[i - lo]; ids.push(list[i]); }
+    this.mark({ nodes: [...ids, node.parentId], edges: ids });
+  }
+
+  /** A peer's acknowledged delta updates only its baseline fields. Pending local
+   * edits remain dirty. The callback omits child slots when edge keys own order. */
+  acceptExternal(touches: SaveTouches, apply: (base: T, keyed: boolean) => void): void {
+    const keyed = this.indexedEdges && Boolean(touches.edges?.length);
+    const base = this.base as Bag, parents = new Set<string>();
+    if (keyed) for (const id of touches.edges!) {
+      const parent = base.nodes?.[id]?.parentId;
+      if (typeof parent === "string") { parents.add(parent); this.edgeChildren.get(parent)?.delete(id); }
+    }
+    apply(this.base, keyed);
+    if (keyed) for (const id of touches.edges!) {
+      const node = base.nodes?.[id], parent = node?.parentId;
+      if (typeof parent !== "string") continue;
+      parents.add(parent);
+      let children = this.edgeChildren.get(parent);
+      if (!children) this.edgeChildren.set(parent, children = new Map());
+      children.set(id, node.edgeOrder);
+    }
+    for (const parent of parents) this.installChildOrder(parent);
+  }
+
+  private installChildOrder(parent: string): void {
+    const base = this.base as Bag;
+    if (base.nodes[parent]) Object.defineProperty(base.nodes[parent], "children", {
+      enumerable: true, configurable: true, get: () => [...(this.edgeChildren.get(parent) ?? [])]
+        .sort((a, b) => a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0).map(([id]) => id),
+    });
+  }
 
   get needsFullSave(): boolean { return this.full; }
 
   mark(touches?: SaveTouches): void {
     if (!touches) { this.full = true; return; }
-    for (const [field, ids] of Object.entries(touches)) {
+    if (touches.nodes && !touches.edges) this.unknownTopology = true;
+    for (const [name, ids] of Object.entries(touches)) {
+      const field = name === "edges" ? "$edges" : name;
       const pending = this.dirty.get(field) ?? new Set<string>();
       for (const id of ids) pending.add(id);
       this.dirty.set(field, pending);
@@ -106,6 +173,8 @@ export class SaveStateTracker<T extends object> {
 
   capture(): { changes: RecordChange[]; materialize(): T; accept(): void; retry(): void } {
     const full = this.full;
+    const unknownTopology = this.unknownTopology;
+    const keyed = !full && !unknownTopology && this.indexedEdges && this.dirty.has("$edges");
     const dirty = this.dirty;
     const base = this.base as Bag;
     const live = this.state as Bag;
@@ -116,6 +185,7 @@ export class SaveStateTracker<T extends object> {
     const presence = new Map<string, boolean>();
     if (!full) {
       for (const [field, ids] of dirty) {
+        if (field === "$edges") continue;
         const patch: Bag = {};
         if (field === "$map") {
           for (const id of ids) patch[id] = copy(live[id]);
@@ -126,14 +196,27 @@ export class SaveStateTracker<T extends object> {
             this.full = true;
             return this.capture();
           }
-          for (const id of ids) patch[id] = copy(live[field]?.[id]);
+          for (const id of ids) {
+            const value = live[field]?.[id];
+            if (keyed && field === "nodes" && value && base.nodes?.[id]) {
+              const node: Bag = {};
+              for (const key of Object.keys(value)) if (key !== "children") node[key] = copy(value[key]);
+              patch[id] = node;
+            } else patch[id] = copy(value);
+          }
         }
         patches.set(field, patch);
       }
     }
-    const changes = diffState(base, snapshot ?? live, full ? undefined : dirty);
+    const diffEntries = !keyed && dirty.has("$edges") ? new Map([...dirty].filter(([key]) => key !== "$edges")) : dirty;
+    const changes = diffState(base, snapshot ?? live, full ? undefined : diffEntries);
+    const submittedEdges = new Map((keyed ? [] : changes.filter(change => change.kind === "edge")).map(change => {
+      const node = live.nodes?.[change.key[0]];
+      return [change.key[0], [node?.parentId, node?.edgeOrder]] as const;
+    }));
     this.full = false;
     this.dirty = new Map();
+    this.unknownTopology = false;
     const apply = (target: Bag, ownCollections: boolean): void => {
       for (const [field, patch] of patches) {
         if (field !== "$map" && !presence.get(field)) { delete target[field]; continue; }
@@ -141,7 +224,11 @@ export class SaveStateTracker<T extends object> {
           : (target[field] = ownCollections ? { ...target[field] } : target[field] ?? {});
         for (const [id, value] of Object.entries(patch)) {
           if (value === undefined) delete destination[id];
-          else destination[id] = value;
+          else if (keyed && field === "nodes" && !has(value, "children")) {
+            const previous = destination[id];
+            destination[id] = { ...value };
+            Object.defineProperty(destination[id], "children", Object.getOwnPropertyDescriptor(previous, "children") ?? { value: [], enumerable: true, configurable: true, writable: true });
+          } else destination[id] = value;
         }
       }
     };
@@ -150,6 +237,11 @@ export class SaveStateTracker<T extends object> {
       // Whole-map POST is rare (404/force); pay for the dictionary copies only then.
       materialize: () => {
         if (snapshot) return snapshot as T;
+        if (keyed) {
+          const result = applyChanges(base, changes);
+          if (!result.ok) throw new Error("Captured save no longer matches its baseline.");
+          return result.state as T;
+        }
         const submitted = { ...base };
         apply(submitted, true);
         return submitted as T;
@@ -159,9 +251,31 @@ export class SaveStateTracker<T extends object> {
           for (const key of Object.keys(base)) delete base[key];
           Object.assign(base, snapshot);
         } else apply(base, false);
+        acceptEdgeOrders(base, changes);
+        if (!keyed) acceptEdgeOrders(live, changes.filter(change => {
+          const submitted = submittedEdges.get(change.key[0]), node = live.nodes?.[change.key[0]];
+          return submitted && node?.parentId === submitted[0] && node?.edgeOrder === submitted[1];
+        }));
+        if (snapshot) this.indexBaseline();
+        else if (this.indexedEdges) {
+          const parents = new Set<string>();
+          for (const change of changes) {
+            if (change.kind !== "edge") continue;
+            const id = change.key[0], from = change.before?.parentId, to = change.after?.parentId;
+            if (typeof from === "string") { parents.add(from); this.edgeChildren.get(from)?.delete(id); }
+            if (typeof to === "string") {
+              parents.add(to);
+              let children = this.edgeChildren.get(to);
+              if (!children) this.edgeChildren.set(to, children = new Map());
+              children.set(id, change.after!.ord as string);
+            }
+          }
+          for (const parent of parents) this.installChildOrder(parent);
+        }
       },
       retry: () => {
         if (full) this.full = true;
+        this.unknownTopology ||= unknownTopology;
         for (const [field, ids] of dirty) {
           const pending = this.dirty.get(field) ?? new Set<string>();
           for (const id of ids) pending.add(id);

@@ -1,6 +1,6 @@
 import RBush from 'rbush';
 
-export interface SvgBox { x:number; y:number; width:number; height:number }
+export interface SvgBox { x:number; y:number; width:number; height:number; ahead?:SvgBox }
 export interface SvgPart { element:SVGGElement; order:number }
 interface Entry { minX:number; minY:number; maxX:number; maxY:number; key:string }
 const parkedRoots=new WeakMap<Element,SVGSVGElement>();
@@ -33,7 +33,11 @@ export class SvgViewport {
     if(box)this.view=box;
     if(!this.view)return;
     this.active=true;
-    const b=this.view,live=new Set([...this.pinned,...this.tree.search({minX:b.x,minY:b.y,maxX:b.x+b.width,maxY:b.y+b.height}).map(e=>e.key)]);
+    // Two separate queries: a long camera move must not mount the corridor between them.
+    const live=new Set(this.pinned);
+    for(const b of [this.view,this.view.ahead]) if(b) {
+      for(const entry of this.tree.search({minX:b.x,minY:b.y,maxX:b.x+b.width,maxY:b.y+b.height})) live.add(entry.key);
+    }
     for(const key of this.mounted) if(!live.has(key))this.parking.append(this.parts.get(key)!.element);
     const ordered=[...live].sort((a,b)=>this.parts.get(a)!.order-this.parts.get(b)!.order);
     let cursor=this.root.firstElementChild;
@@ -53,4 +57,11 @@ export class SvgViewport {
 /** CSS-pixel overscan stays constant as the camera zoom changes. */
 export function viewportBox(x:number,y:number,zoom:number,width:number,height:number,margin=256):SvgBox {
   return {x:(-x-margin)/zoom,y:(-y-margin)/zoom,width:(width+2*margin)/zoom,height:(height+2*margin)/zoom};
+}
+
+export function cameraViewport(current:{cameraX:number;cameraY:number;zoom:number}, width:number, height:number,
+  destination?:{cameraX:number;cameraY:number;zoom:number}):SvgBox {
+  const box=viewportBox(current.cameraX,current.cameraY,current.zoom,width,height);
+  if(destination)box.ahead=viewportBox(destination.cameraX,destination.cameraY,destination.zoom,width,height);
+  return box;
 }

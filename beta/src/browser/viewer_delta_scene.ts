@@ -11,25 +11,28 @@ export class StableScenePatch {
   }
   apply(touches: SaveTouches, access: {
     children(id: string): string[];
+    childrenUnchanged?: boolean;
     dependency(id: string): string;
     measure(id: string): LayoutNodeMetric | undefined;
     beforeDraw?(): void;
     draw(id: string): void;
   }): boolean {
-    if (Object.keys(touches).some(field => field !== 'nodes')) return false;
+    if (Object.keys(touches).some(field => field !== 'nodes' && field !== 'edges')) return false;
     const changes: Array<[string, LayoutNodeMetric]> = [];
     for (const id of new Set(touches.nodes)) {
       const old = this.entries.get(id), position = this.layout.pos[id];
       if (!old || !position || old.dependency !== access.dependency(id)) return false;
-      const children = access.children(id);
-      if (old.children.length !== children.length || old.children.some((child, i) => child !== children[i])) return false;
+      if (!access.childrenUnchanged) {
+        const children = access.children(id);
+        if (old.children.length !== children.length || old.children.some((child, i) => child !== children[i])) return false;
+      }
       const metric = access.measure(id);
       if (!metric || metric.w !== position.w || metric.h !== position.h) return false;
       changes.push([id, metric]);
     }
     access.beforeDraw?.();
     for (const [id, metric] of changes) {
-      Object.assign(this.layout.pos[id]!, metric);
+      Object.assign(this.layout.pos[id]!, metric, {fontSize:metric.fontSize,labelLines:metric.labelLines});
       access.draw(id);
     }
     return true;

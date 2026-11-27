@@ -195,7 +195,7 @@ describe.each(["sqlite", "record store"])("scope view over HTTP (%s)", (mode) =>
     const edge = before.state.nodes.E!;
     const response = await call(base(), "POST", `/api/maps/${MAP}/commands`, command([
       { kind: "edge", key: ["E"], op: "delete", before: { parentId: "S", index: 2 } },
-      { kind: "node", key: ["E"], op: "delete", before: { ...edge, children: undefined, parentId: undefined, attributes: {} } },
+      { kind: "node", key: ["E"], op: "delete", before: { ...edge, children: undefined, parentId: undefined, edgeOrder: undefined, attributes: {} } },
     ].map((change) => JSON.parse(JSON.stringify(change))), "cmd-delete-entry"), { "X-M3E-Scope-View": "S" });
     // Not a conflict (409): the Command applies, and the result is refused because e1 and e2 would have no parent.
     expect(response.status).toBe(400);
@@ -216,6 +216,7 @@ describe.each(["sqlite", "record store"])("scope view over HTTP (%s)", (mode) =>
     const expected = JSON.parse(JSON.stringify(before.state)) as AppState;
     expected.nodes.a!.text = "A edited";
     expected.nodes.b!.parentId = "E";
+    if (before.state.nodes.b!.edgeOrder !== undefined) expected.nodes.b!.edgeOrder = "a2";
     expected.nodes.S!.children = ["a", "E"];
     expected.nodes.E!.children = ["e1", "e2", "b"];
     expect(after.state).toEqual(expected);

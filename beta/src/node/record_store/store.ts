@@ -17,7 +17,7 @@ import { createHash, randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { applyChanges, diffState, type FieldConflict, type MapCommand, type RecordChange } from "../../shared/map_changes";
+import { applyChanges, diffState, nonEmptyChanges, type FieldConflict, type MapCommand, type RecordChange } from "../../shared/map_changes";
 import { advanceDecay, readDecay } from "../../shared/record_model/decay";
 import { extensionDefShapeError, fillRequiredDefaults } from "../../shared/record_model/extensions";
 import { fromSnapshot } from "../../shared/record_model/from_snapshot";
@@ -218,6 +218,7 @@ const ALIAS_RECORD_RK: Record<Exclude<AliasKind, "surface">, string> = { node: "
 interface CommandEntry {
   seq: number;
   hash: string;
+  canonicalHash?: string;
 }
 
 type Dict = Record<string, unknown>;
@@ -615,7 +616,7 @@ export class RecordWorkspaceStore {
     if (fs.existsSync(indexPath)) {
       const index = JSON.parse(fs.readFileSync(indexPath, "utf8")) as {
         mapSeq?: Record<string, number>;
-        commands?: Array<[string, string, number, string]>;
+        commands?: Array<[string, string, number, string, string?]>;
         snapshot?: { seq: number; sha256: string };
         retired?: Record<string, string>;
       };
@@ -624,8 +625,8 @@ export class RecordWorkspaceStore {
         if (typeof body === "string") this.retired.set(id, body);
       }
       for (const [mapId, value] of Object.entries(index.mapSeq ?? {})) this.mapSeq.set(mapId, value);
-      for (const [mapId, commandId, commandSeq, hash] of index.commands ?? []) {
-        this.commands.set(commandKey(mapId, commandId), { seq: commandSeq, hash });
+      for (const [mapId, commandId, commandSeq, hash, canonicalHash] of index.commands ?? []) {
+        this.commands.set(commandKey(mapId, commandId), { seq: commandSeq, hash, canonicalHash });
       }
     }
 
@@ -998,7 +999,7 @@ export class RecordWorkspaceStore {
     // 1. A command id seen before: the first result again, or a refusal when the content differs.
     const known = this.commands.get(commandKey(mapId, command.commandId));
     if (known) {
-      if (known.hash === hashChanges(command.changes)) {
+      if (known.hash === hashChanges(command.changes) || known.canonicalHash === hashChanges(command.changes)) {
         return { ok: true, savedAt: this.committedAtOf(known.seq), seq: known.seq, replayed: true };
       }
       return this.failure(
@@ -1016,10 +1017,11 @@ export class RecordWorkspaceStore {
     }
     let changes: RecordChange[];
     try {
-      changes = jsonClone(command.changes);
+      changes = jsonClone(command.changes).filter(change => change.op !== "update" || !sameJson(change.before ?? {}, change.after ?? {}));
     } catch {
       return this.failure("INVALID_COMMAND", entry ? this.currentOf(entry) : null, "changes cannot be written as JSON.");
     }
+    if (entry && changes.length === 0) return { ok: true, savedAt: this.savedAtOf(entry), seq: this.currentSeq, replayed: false, noOp: true };
     let provenance: Provenance | undefined;
     try {
       provenance = normalizeProvenance(command.provenance);
@@ -1616,7 +1618,7 @@ export class RecordWorkspaceStore {
       .slice(-COMMAND_INDEX_RETAIN)
       .map(([key, value]) => {
         const cut = key.indexOf("\u0000");
-        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash];
+        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash, ...(value.canonicalHash ? [value.canonicalHash] : [])];
       });
     const body: Dict = {
       format: 1,
@@ -1847,6 +1849,7 @@ export class RecordWorkspaceStore {
   private warm(entry: MapEntry): NonNullable<MapEntry["warm"]> {
     if (entry.warm) return entry.warm;
     this.attachExtensionDefs(entry);
+    this.guardIndex(entry.id); // Build with the loaded map, before any in-place commit projection.
     const records = [...entry.records.values()];
     const restored = fromSnapshot(records).rows[0]?.state ?? ({ nodes: {} } as unknown as AppState);
     const projector = new MapProjector(this.workspaceId);
@@ -1920,6 +1923,11 @@ export class RecordWorkspaceStore {
     // and projection; the projector installs those nodes with a rollback after validation.
     const contentOnly = warm !== undefined && validationUnaffected(changes)
       && warm.projector.canProjectContent(entry!.records);
+    const parentEdgesOnly = warm !== undefined && warm.validationErrors === 0 && warm.problems.size === 0
+      && warm.projector.canProjectContent(entry!.records) && warm.projector.canProjectParentEdges(warm.state, changes);
+    let structurePlan = !parentEdgesOnly && !contentOnly && warm && warm.validationErrors === 0 && warm.problems.size === 0
+      && warm.projector.canProjectContent(entry!.records) ? warm.projector.prepareStructure(warm.state, changes) : undefined;
+    if (structurePlan && changes.some(change => change.kind === "node" && change.op === "create" && entry?.graph?.hasAliasesTo(change.key[0]))) structurePlan = undefined;
     let appendPlan: ReturnType<typeof appendedLeaves>;
     // 2. Compare-and-set on the `before` values.
     let applied: ReturnType<typeof applyChanges>;
@@ -1927,26 +1935,31 @@ export class RecordWorkspaceStore {
       appendPlan = warm && warm.validationErrors === 0 && warm.problems.size === 0
         && warm.projector.canProjectContent(entry!.records) ? appendedLeaves(warm.state, changes) : undefined;
       if (appendPlan && [...appendPlan.parents.values()].some((ids) => ids.some((id) => entry?.graph?.hasAliasesTo(id)))) appendPlan = undefined;
-      let input: object = warm ? warm.state : {};
-      if (contentOnly) {
+      let input: object = structurePlan?.input ?? (warm ? warm.state : {});
+      if (contentOnly || parentEdgesOnly) {
         const nodes: Dict = {};
         for (const change of changes) {
           const id = change.key[0];
-          if (hasOwn(warm!.state.nodes, id)) nodes[id] = warm!.state.nodes[id];
+          if (hasOwn(warm!.state.nodes, id)) {
+            const source = warm!.state.nodes[id] as unknown as Dict, node: Dict = { children: [] };
+            for (const key of Object.keys(source)) if (key !== "children") node[key] = source[key];
+            nodes[id] = node;
+          }
         }
         input = { ...warm!.state, nodes };
       }
       applied = appendPlan ? { ok: true, state: { ...input, nodes: appendPlan.nodes } }
+        : parentEdgesOnly || structurePlan ? applyChanges(input, changes, meta.syncHash !== undefined)
         : applyChangesReduced(input, changes, meta.syncHash !== undefined);
     } catch (error) {
       return this.failure("INVALID_COMMAND", current(), (error as Error).message);
     }
     if (!applied.ok) return this.failure("CONFLICT", current(), undefined, clientConflicts(applied.conflicts));
-    if (!contentOnly) this.fillExtensionDefaults(warm?.state, applied.state, changes);
+    if (!contentOnly && !parentEdgesOnly) this.fillExtensionDefaults(warm?.state, applied.state, changes);
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
     // A Command that only edits node content cannot change what validation reports.
-    const validationErrors = warm && (appendPlan !== undefined || validationUnaffected(changes))
+    const validationErrors = warm && (parentEdgesOnly || structurePlan !== undefined || appendPlan !== undefined || validationUnaffected(changes))
       ? warm.validationErrors
       : commitValidationErrorCount(applied.state);
     const allowedErrors = warm ? warm.validationErrors : 0;
@@ -1964,12 +1977,17 @@ export class RecordWorkspaceStore {
       // `revert` puts it back when the commit is refused further down.
       result = appendPlan
         ? projector.projectAppendedLeaves(mapId, warm!.state, appendPlan.nodes, appendPlan.parents, entry!.records)
+        : structurePlan
+        ? projector.projectStructure(mapId, warm!.state, applied.state as AppState, changes, structurePlan, entry!.records)
+        : parentEdgesOnly
+        ? projector.projectParentEdges(warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
         : contentOnly
         ? projector.projectContent(mapId, warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
         : projector.project(row, previous, { inPlace: entry !== undefined });
     } catch (error) {
       return this.failure("INVALID_STATE", current(), (error as Error).message);
     }
+    if (structurePlan || parentEdgesOnly || appendPlan || contentOnly) projector.indexChanges(result);
     let undoGraph: (() => void) | undefined;
     let postGraph: NeighbourhoodIndex | undefined;
     const refuse = (message: string): CommitFailure => {
@@ -2060,15 +2078,32 @@ export class RecordWorkspaceStore {
     if (meta.actor !== undefined) line.actor = meta.actor;
     if (meta.provenance !== undefined) line.provenance = meta.provenance;
     if (meta.reason !== undefined && meta.reason !== "") line.reason = meta.reason;
-    // The journal keeps a Command's changes as the client sent them: a repeated command id is
-    // compared with them, and a reader of the committed Command gets its own ids back.
-    line.changes = translated?.sent ?? changes;
-    line.changesHash = hashChanges(line.changes);
+    // Keep client ids, but write parent assignments with stable keys even for legacy requests.
+    // Preserve the original hash separately so retries of either representation are idempotent.
+    const sentChanges = translated?.sent ?? changes;
+    line.changes = nonEmptyChanges(sentChanges.map((sent, index) => {
+      if (sent.kind !== "edge" || !(hasOwn(sent.before ?? {}, "index") || hasOwn(sent.after ?? {}, "index"))) return sent;
+      const id = changes[index].key[0];
+      const beforeNode = warm?.state.nodes[id], afterNode = result.state.nodes[id];
+      const clientParent = (parent: string): string => {
+        if (!translated) return parent;
+        return (entry ? this.aliasesOf(entry).out.node.get(parent) : undefined)
+          ?? translated.aliases.find(alias => alias.recordKind === "node" && alias.newId === parent)?.oldId ?? parent;
+      };
+      const assignment = (node: AppState["nodes"][string] | undefined, wire: Record<string, unknown> | undefined) =>
+        node && typeof node.parentId === "string" ? { parentId: typeof wire?.parentId === "string" ? wire.parentId : clientParent(node.parentId), ord: node.edgeOrder } : undefined;
+      return { ...sent,
+        ...(sent.op !== "create" ? { before: assignment(beforeNode, sent.before) } : {}),
+        ...(sent.op !== "delete" ? { after: assignment(afterNode, sent.after) } : {}),
+      };
+    }));
+    // Repeated legacy requests still compare with the bytes accepted at the boundary.
+    line.changesHash = hashChanges(meta.sent ?? sentChanges);
     const aliasRecords = translated?.aliases ?? [];
     const userOps = aliasRecords.length === 0
       ? ops
       : [...ops, ...aliasRecords.map((record): RecordOp => ({ op: "put", rk: recordRk(record), record }))];
-    if (meta.syncHash !== undefined && entry && userOps.length === 0) {
+    if (entry && userOps.length === 0 && (meta.syncHash !== undefined || line.changes.length === 0)) {
       undoGraph?.();
       result.revert?.();
       return { ok: true, savedAt: this.savedAtOf(entry), seq: this.currentSeq, replayed: false, noOp: true };
@@ -2092,13 +2127,13 @@ export class RecordWorkspaceStore {
         const command: MapCommand = {
           commandId: meta.commandId, intent: meta.intent, actor: meta.actor,
           provenance: meta.provenance, reason: meta.reason, confirm: meta.confirm || undefined,
-          changes: meta.sent ?? line.changes,
+          changes: line.changes,
         };
         const payload: SyncCommand = { mapId, command, ...(entry ? {} : { mapOp: "create" }) };
         const state = result.state as AppState;
         const root = state.nodes?.[state.rootId];
         this.capture(payload, issuer, committedAt, this.mapName(entry) || root?.text || "");
-        line.changesHash = hashChanges(command.changes);
+        line.changesHash = hashChanges(meta.sent ?? command.changes);
       }
       this.append(line);
     } catch (error) {
@@ -2379,6 +2414,7 @@ export class RecordWorkspaceStore {
       this.commands.set(commandKey(line.mapId, line.commandId), {
         seq: line.seq,
         hash: line.changesHash ?? hashChanges(line.changes),
+        canonicalHash: line.changesHash && line.changesHash !== hashChanges(line.changes) ? hashChanges(line.changes) : undefined,
       });
     }
   }
@@ -2387,7 +2423,7 @@ export class RecordWorkspaceStore {
   private guardIndex(mapId: string): CommitGuardIndex {
     let index = this.guardIndexes.get(mapId);
     if (!index) {
-      index = new CommitGuardIndex(this.all.values(), mapId);
+      index = new CommitGuardIndex(this.maps.get(mapId)?.records.values() ?? [], mapId);
       this.guardIndexes.set(mapId, index);
     }
     return index;

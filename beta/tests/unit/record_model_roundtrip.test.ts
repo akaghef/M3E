@@ -5,6 +5,8 @@ import { parseSnapshot, serializeSnapshot, sortRecords } from "../../src/shared/
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import type { IdMapRecord, SnapshotRecord, SnapshotRow } from "../../src/shared/record_model/types";
 
+import { withOrderKeys } from "./record_store_helpers";
+
 const WS = "ws_roundtrip";
 const NOW = "2026-11-17T00:00:00.000Z";
 type Loose = Record<string, unknown>;
@@ -67,7 +69,7 @@ function canonicalRows(): SnapshotRow[] {
 function withSurfaceIds(rows: SnapshotRow[], records: SnapshotRecord[]): SnapshotRow[] {
   const copy = JSON.parse(JSON.stringify(rows)) as SnapshotRow[];
   for (const row of copy) {
-    const state = row.state as Loose;
+    const state = withOrderKeys(row.state as unknown as Loose);
     const ids = new Map(
       records
         .filter((r): r is IdMapRecord => r.kind === "idMap" && r.recordKind === "surface" && r.mapId === row.id)
@@ -126,8 +128,8 @@ describe("record model round trip", () => {
       rootId: "root",
       nodes: {
         root: { id: "root", parentId: null, children: ["b", "a"], nodeType: "text", text: "root", collapsed: false, details: "", note: "", attributes: {}, link: "" },
-        a: { id: "a", parentId: "root", children: [], nodeType: "text", text: "a", collapsed: false, details: "", note: "", attributes: {}, link: "" },
-        b: { id: "b", parentId: "root", children: [], nodeType: "folder", text: "b", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        a: { id: "a", parentId: "root", edgeOrder: "a1", children: [], nodeType: "text", text: "a", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        b: { id: "b", parentId: "root", edgeOrder: "a0", children: [], nodeType: "folder", text: "b", collapsed: false, details: "", note: "", attributes: {}, link: "" },
       },
       links: { l: { id: "l", sourceNodeId: "a", targetNodeId: "b" } },
       scopes: {

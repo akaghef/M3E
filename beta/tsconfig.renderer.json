@@ -21,6 +21,7 @@
     "src/browser/viewer_delta_presence.ts",
     "src/browser/edge_graphlink_selection_adapter.ts",
     "src/browser/viewer_delta_model.ts",
+    "src/browser/viewer_delta_alias.ts",
     "src/browser/viewer_delta_state.ts",
     "src/browser/viewer_delta_broadcast.ts",
     "src/browser/scope_view_client.ts"

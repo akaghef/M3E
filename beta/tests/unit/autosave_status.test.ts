@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { AliasIndex } from "../../src/browser/viewer_delta_alias";
 import { SaveStateTracker } from "../../src/browser/save_command";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -12,7 +13,7 @@ const listeners = source.statements.filter(s => ts.isExpressionStatement(s) && /
 const code = ts.transpileModule([...functions, ...listeners].map(s => s.getText(source)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
 
 function setup(fetch: ReturnType<typeof vi.fn>, snapshotError = false) {
-  return new Function("fetch", "snapshotError", "showConflictPanel", "SaveStateTracker", `
+  return new Function("fetch", "snapshotError", "showConflictPanel", "SaveStateTracker", "AliasIndex", `
     const map = { version: 1, savedAt: "initial", state: { rootId: "root", nodes: { root: { text: "Root" } } } };
     const statusEl = { textContent: "", style: {} }, linearMetaEl = { textContent: "" };
     const handlers = {}, linearTextEl = { value: "memo", addEventListener: (name, fn) => handlers[name] = fn };
@@ -21,6 +22,7 @@ function setup(fetch: ReturnType<typeof vi.fn>, snapshotError = false) {
     let localSaveFailure = null, localSaveRevision = 0, localSavedRevision = -1;
     let saveStateTracker = null, saveInFlight = null, preparedSaveState = null, preparedSaveView = "";
     let lastServerSavedAt = "initial", lastServerBaseState = { original: true };
+    const aliasIndex = new AliasIndex();
     const deltaBroadcast = null, agentNodePresence = { change() {} };
     const grabSession = null, collabEntityId = null, collabToken = null, cloudSyncEnabled = false;
     const LOCAL_MAP_ID = "test", TAB_ID = "test-tab", AUTOSAVE_DELAY_MS = 700;
@@ -38,7 +40,7 @@ function setup(fetch: ReturnType<typeof vi.fn>, snapshotError = false) {
       edit: (value) => { linearTextEl.value = value; handlers.input(); },
       enter: () => handlers.keydown({ key: "Enter", preventDefault() {} }),
       baseline: () => ({ lastServerSavedAt, lastServerBaseState }) };
-  `)(fetch, snapshotError, vi.fn(), SaveStateTracker);
+  `)(fetch, snapshotError, vi.fn(), SaveStateTracker, AliasIndex);
 }
 
 function response(status: number, payload: object = {}) {

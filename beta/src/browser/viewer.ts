@@ -1,9 +1,11 @@
-import { viewportBox } from "../rendering/svg_viewport";
+import { AliasIndex } from "./viewer_delta_alias";
+const aliasIndex = new AliasIndex();
+import { cameraViewport } from "../rendering/svg_viewport";
 import { TreeReorder, rotateRange, type ReorderPlan } from "./viewer_delta_reorder";
 import { NodePresence } from "./viewer_delta_presence";
 import { focusBoard } from "./viewer_delta_selection";
 import { DeltaBroadcast } from "./viewer_delta_broadcast";
-import { captureStatePatch, applyStatePatch, inverseStatePatch, ChildOrderHistory, type StatePatch } from "./viewer_delta_state";
+import { captureNodeFields, cloneState, captureStatePatch, applyStatePatch, inverseStatePatch, ChildOrderHistory, type StatePatch } from "./viewer_delta_state";
 import { createMapNormalizer } from "./viewer_delta_model";
 import { captureHiddenNodePaint, refreshCapturedNodeFragment } from "./webgl_scene_tiles";
 import { StableScenePatch, SceneBounds } from "./viewer_delta_scene";
@@ -584,12 +586,12 @@ function saveViewKey(): string {
 function trackSavedState(): void {
   if (!map) return;
   lastServerBaseState = cloneStateForSave(map.state);
-  saveStateTracker = new SaveStateTracker(lastServerBaseState!, map.state);
+  saveStateTracker = new SaveStateTracker(lastServerBaseState!, map.state, { indexedEdges: true });
   preparedSaveState = null;
 }
 
 function markSaveChanges(touches?: SaveTouches): void {
-  if (map) agentNodePresence.change(map.state, touches?.nodes, !touches);
+  if (map) { agentNodePresence.change(map.state, touches?.nodes, !touches); aliasIndex.change(map.state,touches?.nodes,!touches); }
   deltaBroadcast?.mark(touches);
   if (!map || !lastServerBaseState) return;
   if (!saveStateTracker || saveStateTracker.state !== map.state || saveStateTracker.base !== lastServerBaseState) {
@@ -663,7 +665,7 @@ const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
 const edgeSvgCache = new DerivedNodeCache<string>();
 let treeSpanCache = activeLayoutCache.spans;
 const retainedSvgScene = new RetainedSvgScene<MarkupBox>();
-const currentSvgViewport = () => viewportBox(viewState.cameraX, viewState.cameraY, viewState.zoom, _boardViewportRect.width, _boardViewportRect.height);
+const currentSvgViewport = () => cameraViewport(viewState, _boardViewportRect.width, _boardViewportRect.height, cameraMotion?.to);
 const filterScene = new ViewerFilterScene();
 function applyViewFilter(): void {
   const { result, selection } = viewerFilter.getSnapshot();
@@ -680,7 +682,7 @@ viewerFilter.subscribe(() => {
   applyViewFilter();
   if (webglSurfaceSupported()) scheduleWebGLProjectionActivation();
 });
-let patchDocumentScene: ((touches: SaveTouches, reorder?: ReorderPlan) => boolean) | null = null;
+let patchDocumentScene: ((touches: SaveTouches, reorder?: ReorderPlan, childrenUnchanged?: boolean) => boolean) | null = null;
 let retainedTree: TreeReorder | null = null;
 const retainedSceneBounds = new SceneBounds();
 let incrementalProjection = false;
@@ -2618,7 +2620,7 @@ function syncMapModelStateFromRuntime(touches?: SaveTouches): void {
   if (!map) {
     return;
   }
-  if (touches && Object.keys(touches).every(field => field === "nodes")) {
+  if (touches && Object.keys(touches).every(field => field === "nodes" || field === "edges")) {
     const normalized = normalizeTouched(map.state, touches.nodes || []);
     if (normalized) {
       const surfaceId = inferredSurfaceId(currentScopeRootId(), surfaceKindForViewMode(viewState.surfaceViewMode));
@@ -4191,20 +4193,12 @@ function uiLabel(node: TreeNode | null | undefined): string {
 }
 
 function syncAliasDisplayForTarget(targetNodeId: string): string[] {
-  if (!map) {
-    return [];
+  if (!map) return [];
+  const target=map.state.nodes[targetNodeId], changed:string[]=[];
+  for(const id of aliasIndex.forTarget(map.state,targetNodeId)) {
+    const node=map.state.nodes[id];
+    if(target && node.text!==target.text){node.text=target.text;changed.push(id);}
   }
-  const changed: string[] = [];
-  Object.values(map.state.nodes).forEach((node) => {
-    if (!isAliasNode(node) || node.targetNodeId !== targetNodeId || node.aliasLabel || node.isBroken) {
-      return;
-    }
-    const target = map!.state.nodes[targetNodeId];
-    if (target && node.text !== target.text) {
-      node.text = target.text;
-      changed.push(node.id);
-    }
-  });
   return changed;
 }
 
@@ -4288,7 +4282,7 @@ function restoreConcretenessSnapshot(snapshot: UndoSnapshot): void {
   concretenessView = null;
   if (snapshot.delta) {
     applyStatePatch(map!.state, snapshot.delta);
-    restoreIndex(map!.state, snapshot.delta.touches);
+    restoreIndex(map!.state, snapshot.delta.touches);aliasIndex.change(map!.state,snapshot.delta.touches.nodes);
   } else { map!.state = snapshot.state; prepareConcretenessView(); }
   viewState.currentScopeId = viewState.currentScopeRootId = map!.state.nodes[snapshot.scopeRootId || ""] ? snapshot.scopeRootId! : map!.state.rootId;
   viewState.scopeHistory = scopePathIds(viewState.currentScopeRootId).slice(0, -1);
@@ -4328,18 +4322,14 @@ function moveConcretenessLevel(delta: -1 | 1): void {
   focusBoard(board);
 }
 
-function cloneState(state: AppState): AppState {
-  return JSON.parse(JSON.stringify(state)) as AppState;
-}
-
-function pushUndoSnapshot(touches?: SaveTouches): void {
+function pushUndoSnapshot(touches?: SaveTouches, fields?: readonly string[]): void {
   if (!map) {
     return;
   }
   if (viewState.concretenessLevel !== 0 || concretenessView) touches = undefined;
   undoStack.push({
     state: touches ? canonicalMapState() : cloneState(canonicalMapState()),
-    delta: touches ? captureStatePatch(canonicalMapState(), touches) : undefined,
+    delta: touches ? fields ? captureNodeFields(canonicalMapState(),touches.nodes||[],fields) : captureStatePatch(canonicalMapState(), touches) : undefined,
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
@@ -4352,26 +4342,37 @@ function pushUndoSnapshot(touches?: SaveTouches): void {
   redoStack = [];
 }
 
-function undoLastChange(): void {
-  if (!map || undoStack.length === 0) {
-    setStatus("Nothing to undo.");
+function drawStatePatch(patch: StatePatch): boolean {
+  if (patch.children?.length) {
+    if (patch.children.length !== 1 || patch.records.length || patch.fields?.some(field=>field.collection!=="nodes"||field.key!=="edgeOrder")) return false;
+    const range=patch.children[0], plan=retainedTree?.planRange(range.id,range.index,range.values);
+    return Boolean(plan && patchDocumentScene?.({nodes:plan.changed},plan));
+  }
+  return !Object.keys(patch.touches).some(field=>!["nodes","scopes","surfaces","edges"].includes(field)) && Boolean(patchDocumentScene?.({nodes:patch.touches.nodes},undefined,!patch.records.length && Boolean(patch.fields?.length) && patch.fields!.every(field=>field.collection==="nodes" && ["text","link","aliasLabel","attributes"].includes(field.key))));
+}
+function undoLastChange(): void { restoreHistory(undoStack,redoStack,"Undo"); }
+function redoLastChange(): void { restoreHistory(redoStack,undoStack,"Redo"); }
+
+function restoreHistory(source: UndoSnapshot[], target: UndoSnapshot[], label: string): void {
+  if (!map || source.length === 0) {
+    setStatus(`Nothing to ${label.toLowerCase()}.`);
     return;
   }
 
-  redoStack.push({
-    state: undoStack[undoStack.length - 1]?.delta ? canonicalMapState() : cloneState(canonicalMapState()),
-    delta: undoStack[undoStack.length - 1]?.delta ? inverseStatePatch(canonicalMapState(), undoStack[undoStack.length - 1]!.delta!) : undefined,
+  target.push({
+    state: source[source.length - 1]?.delta ? canonicalMapState() : cloneState(canonicalMapState()),
+    delta: source[source.length - 1]?.delta ? inverseStatePatch(canonicalMapState(), source[source.length - 1]!.delta!) : undefined,
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
   });
-  if (redoStack.length > MAX_UNDO_STEPS) {
-    redoStack.shift();
+  if (target.length > MAX_UNDO_STEPS) {
+    target.shift();
   }
 
-  const snapshot = undoStack.pop()!;
+  const snapshot = source.pop()!;
   stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
   restoreConcretenessSnapshot(snapshot);
   if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
@@ -4385,52 +4386,11 @@ function undoLastChange(): void {
   normalizeSelectionState();
   map.savedAt = nowIso();
   markSaveChanges(snapshot.delta?.touches);
-  if (!snapshot.delta || !patchDocumentScene?.({ nodes: snapshot.delta.touches.nodes })) render();
+  if (!snapshot.delta || !drawStatePatch(snapshot.delta)) render();
   else scheduleSelectionRefresh();
   scheduleAutosave(Boolean(snapshot.delta));
-  if (snapshot.delta) { preparedSaveState = map.state; preparedSaveView = saveViewKey(); broadcastState(); }
-  setStatus("Undo applied.");
-  focusBoard(board);
-}
-
-function redoLastChange(): void {
-  if (!map || redoStack.length === 0) {
-    setStatus("Nothing to redo.");
-    return;
-  }
-
-  undoStack.push({
-    state: redoStack[redoStack.length - 1]?.delta ? canonicalMapState() : cloneState(canonicalMapState()),
-    delta: redoStack[redoStack.length - 1]?.delta ? inverseStatePatch(canonicalMapState(), redoStack[redoStack.length - 1]!.delta!) : undefined,
-    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
-    collapsedIds: Array.from(viewState.collapsedIds),
-    selectedNodeId: viewState.selectedNodeId,
-    selectedNodeIds: Array.from(viewState.selectedNodeIds),
-    selectionAnchorId: viewState.selectionAnchorId,
-  });
-  if (undoStack.length > MAX_UNDO_STEPS) {
-    undoStack.shift();
-  }
-
-  const snapshot = redoStack.pop()!;
-  stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
-  restoreConcretenessSnapshot(snapshot);
-  if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
-  const redoState = map.state;
-  viewState.selectedNodeId = redoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : redoState.rootId;
-  viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(redoState.nodes[nodeId])));
-  viewState.selectionAnchorId = snapshot.selectionAnchorId && redoState.nodes[snapshot.selectionAnchorId]
-    ? snapshot.selectionAnchorId
-    : null;
-  viewState.reparentSourceIds.clear();
-  normalizeSelectionState();
-  map.savedAt = nowIso();
-  markSaveChanges(snapshot.delta?.touches);
-  if (!snapshot.delta || !patchDocumentScene?.({ nodes: snapshot.delta.touches.nodes })) render();
-  else scheduleSelectionRefresh();
-  scheduleAutosave(Boolean(snapshot.delta));
-  if (snapshot.delta) { preparedSaveState = map.state; preparedSaveView = saveViewKey(); broadcastState(); }
-  setStatus("Redo applied.");
+  if (snapshot.delta) { deltaBroadcast?.childOrder(snapshot.delta.children||[],snapshot.delta.fields); preparedSaveState = map.state; preparedSaveView = saveViewKey(); broadcastState(); }
+  setStatus(`${label} applied.`);
   focusBoard(board);
 }
 
@@ -5349,6 +5309,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     primed: false,
     durationMs,
   };
+  retainedSvgScene.refreshViewport(currentSvgViewport());
   board.dataset.cameraMoving = "true";
 
   const step = (now: number): void => {
@@ -5373,8 +5334,8 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     viewState.zoom = lerp(motion.from.zoom, motion.to.zoom, t);
     applyZoom({ syncDependents: false });
     if (rawT >= 1) {
-      applyCameraTarget(motion.to);
       cameraMotion = null;
+      applyCameraTarget(motion.to);
       delete board.dataset.cameraMoving;
       return;
     }
@@ -7943,7 +7904,7 @@ function render(incremental = false): void {
 
 function renderScene(incremental: boolean): void {
   patchDocumentScene = null; retainedTree = null;
-  if (map) agentNodePresence.change(map.state, undefined, true);
+  if (map) { agentNodePresence.change(map.state, undefined, true); aliasIndex.change(map.state,undefined,true); }
   scopeView.guardScope();
   prepareConcretenessView();
   board.dataset.concretenessLevel = String(viewState.concretenessLevel);
@@ -8000,7 +7961,7 @@ function renderScene(incremental: boolean): void {
     !scatterSurface || nodeId !== displayRootId;
 
   const stableScene = new StableScenePatch(layout);
-  const paintDependency = (id: string) => JSON.stringify([state.nodes[id]?.text, state.nodes[id]?.parentId, effectiveNodeStyleAttrs(state.nodes[id]), state.nodes[id]?.targetNodeId]);
+  const paintDependency = (id: string) => JSON.stringify([state.nodes[id]?.parentId, effectiveNodeStyleAttrs(state.nodes[id]), state.nodes[id]?.targetNodeId]);
   const pos = layout.pos;
   lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}:${viewState.concretenessLevel}`);
   const nodeExtents = new SceneBounds();
@@ -8692,15 +8653,15 @@ function renderScene(incremental: boolean): void {
   if (state === map.state && viewState.surfaceViewMode === "tree") {
     const retainedContext = saveViewKey();
     const tree = retainedTree = new TreeReorder(layout, id => visibleChildren(state.nodes[id]), id => treeSpanCache.span(id), viewState.surfaceLayoutDirection, () => activeLayoutCache.result.begin(true));
-    patchDocumentScene = (touches, reorder) => {
+    patchDocumentScene = (touches, reorder, childrenUnchanged) => {
       if (map?.state !== state || retainedContext !== saveViewKey() || viewerFilter.getSnapshot().result.active || !retainedSceneBounds.box) return false;
       const changed = new Set(touches.nodes);
-      if (changed.has(displayRootId) || (reorder && (structuredMode !== "tree" || orreryNetwork.enabled || lineSelection.hasGraphLinks(reorder.changed)))) return false;
+      if ((changed.has(displayRootId) && !childrenUnchanged) || (reorder && (structuredMode !== "tree" || orreryNetwork.enabled || lineSelection.hasGraphLinks(reorder.changed)))) return false;
       // Components and previews can own geometry beyond their measured node box.
       for (const id of changed) if (!state.nodes[id] || parseNodeComponent(state.nodes[id]) || nodeAuxMarkup.get(id)) return false;
       const applied = stableScene.apply(touches, {
-        children: id => visibleChildren(state.nodes[id]), dependency: paintDependency,
-        measure: id => cachedLayoutNode(state, id, displayRootId, structuredLayoutConfig(structuredMode)),
+        children: id => visibleChildren(state.nodes[id]), childrenUnchanged, dependency: paintDependency,
+        measure: id => childrenUnchanged ? measureLayoutNode(state,id,displayRootId,structuredLayoutConfig(structuredMode)) : cachedLayoutNode(state, id, displayRootId, structuredLayoutConfig(structuredMode)),
         beforeDraw: () => { if (reorder) tree.apply(reorder); },
         draw: id => {
           const input = toNodeDrawInput(state.nodes[id], pos[id], effectiveNodeStyleAttrs(state.nodes[id]));
@@ -12141,7 +12102,7 @@ function colorizeScatterEdge(linkId: string): void {
   if (!map?.state.links?.[linkId]) {
     return;
   }
-  pushUndoSnapshot();
+  pushUndoSnapshot({links:[linkId]});
   map.state.links[linkId] = normalizeGraphLink({
     ...map.state.links[linkId]!,
     color: SCATTER_DEFAULT_EDGE_COLOR,
@@ -12184,7 +12145,7 @@ function setGraphLinkEndpointPort(
     }
   }
   if (withUndo) {
-    pushUndoSnapshot();
+    pushUndoSnapshot(replacementNodeId ? undefined : {links:[linkId]});
   }
   map.state.links[linkId] = normalizeGraphLink({
     ...current,
@@ -12279,12 +12240,17 @@ function cycleSelectedGraphLinkPort(endpoint: "source" | "target"): boolean {
   const ports: EdgeAnchorSide[] = ["right", "bottom", "left", "top"];
   const current = sanitizeLinkPort(normalized[key]);
   const next = ports[((current ? ports.indexOf(current) : -1) + 1) % ports.length] || "right";
-  pushUndoSnapshot();
+  pushUndoSnapshot({links:[link.id]});
   link[key] = next;
   selectedGraphLinkId = link.id;
   touchDocument();
   setStatus(`${endpoint === "source" ? "Source" : "Target"} port: ${next}`);
   return true;
+}
+
+function touchNodeFields(ids: string[], fields: string[]): void {
+  const patch=captureNodeFields(map!.state,ids,fields);
+  touchDocument(true,patch.touches,false,patch);
 }
 
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
@@ -12305,12 +12271,12 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       if (target.text === next) {
         return true;
       }
-      pushUndoSnapshot();
+      pushUndoSnapshot({nodes:[target.id,...aliasIndex.forTarget(map!.state,target.id)]},["text"]);
       latexMetricsCache.delete(target.text);
       latexHtmlCache.delete(target.text);
       target.text = next;
       const aliases = syncAliasDisplayForTarget(target.id);
-      touchDocument(true, { nodes: [target.id, ...aliases] });
+      touchNodeFields([target.id,...aliases],["text"]);
       preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
       nudgeNodeIntoView(nodeId, { animate: false });
       return true;
@@ -12318,10 +12284,10 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     if ((node.aliasLabel || node.text) === next) {
       return true;
     }
-    pushUndoSnapshot();
+    pushUndoSnapshot({nodes:[node.id]},["text","aliasLabel"]);
     node.aliasLabel = next;
     node.text = next;
-    touchDocument(true, { nodes: [node.id] });
+    touchNodeFields([node.id],["text","aliasLabel"]);
     preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
     nudgeNodeIntoView(nodeId, { animate: false });
     return true;
@@ -12339,14 +12305,14 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     ) {
       return true;
     }
-    pushUndoSnapshot();
+    pushUndoSnapshot({nodes:[node.id,...aliasIndex.forTarget(map!.state,node.id)]},["text","link","attributes"]);
     latexMetricsCache.delete(node.text);
     latexHtmlCache.delete(node.text);
     node.text = applied.text;
     node.link = applied.link;
     node.attributes = applied.attributes;
     const aliases = syncAliasDisplayForTarget(node.id);
-    touchDocument(true, { nodes: [node.id, ...aliases] });
+    touchNodeFields([node.id,...aliases],["text","link","attributes"]);
     preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
     nudgeNodeIntoView(nodeId, { animate: false });
     return true;
@@ -12354,12 +12320,12 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   if (node.text === next) {
     return true;
   }
-  pushUndoSnapshot();
+  pushUndoSnapshot({nodes:[node.id,...aliasIndex.forTarget(map!.state,node.id)]},["text"]);
   latexMetricsCache.delete(node.text);
   latexHtmlCache.delete(node.text);
   node.text = next;
   const aliases = syncAliasDisplayForTarget(node.id);
-  touchDocument(true, { nodes: [node.id, ...aliases] });
+  touchNodeFields([node.id,...aliases],["text"]);
   preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
   nudgeNodeIntoView(nodeId, { animate: false });
   return true;
@@ -12418,7 +12384,7 @@ function moveGrab(key: string): void {
       && plan.roots.every((id, i) => parent.children[Math.min(plan.from,plan.to)+i] === id)) {
       if (patchDocumentScene?.({nodes:plan.changed}, plan)) {
         grab.orderHistory.record(parent.id,parent.children,plan.from,plan.to);
-        rotateRange(parent.children,plan.from,plan.to);grab.before.delta=grab.orderHistory.patch();grab.moved=true;viewState.reparentSourceIds.delete(grab.sourceId);
+        rotateRange(parent.children,plan.from,plan.to);grab.orderHistory.recordEdgeOrders(map!.state,grab.sourceId,plan.to);saveStateTracker?.markParentEdge(grab.sourceId,plan.to);grab.before.delta=grab.orderHistory.patch();grab.moved=true;viewState.reparentSourceIds.delete(grab.sourceId);
         return;
       }
     }
@@ -12452,7 +12418,7 @@ function finishGrab(commit: boolean): void {
     viewState.selectedNodeId = grab.before.selectedNodeId;
     viewState.selectedNodeIds = new Set(grab.before.selectedNodeIds);
     viewState.selectionAnchorId = grab.before.selectionAnchorId;
-    render();
+    if (!grab.before.delta || !drawStatePatch(grab.before.delta)) render();
     if (grab.pendingSave) scheduleAutosave();
     setStatus("Grab canceled.");
     return;
@@ -12461,8 +12427,8 @@ function finishGrab(commit: boolean): void {
     undoStack.push(grab.before);
     if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
     redoStack = [];
-    touchDocument(false, grab.before.delta?.touches, Boolean(grab.before.delta), grab.before.delta ? inverseStatePatch(map!.state,grab.before.delta) : undefined);
-  } else if (grab.pendingSave) scheduleAutosave();
+    touchDocument(true, {nodes:[grab.sourceId],edges:[grab.sourceId]}, Boolean(grab.before.delta), grab.before.delta ? inverseStatePatch(map!.state,grab.before.delta) : undefined);
+  } else { if (grab.before.delta) applyStatePatch(map!.state,grab.before.delta); if (grab.pendingSave) scheduleAutosave(); }
   setStatus("Navigate · Grab finished.");
 }
 
@@ -12512,7 +12478,7 @@ function applyIncomingEdgeLabelEdit(nodeId: string, nextRaw: string): boolean {
   if (current === next) {
     return true;
   }
-  pushUndoSnapshot();
+  pushUndoSnapshot({nodes:[node.id]},["attributes"]);
   node.attributes = node.attributes || {};
   if (next) {
     node.attributes["m3e:edge-label"] = next;
@@ -13388,13 +13354,14 @@ function initBroadcastSync(): void {
       if (!map) return;
       if (message.savedAt) lastServerSavedAt = message.savedAt;
       if (message.patch) {
-        if (!message.patch.records.length && !message.patch.children?.length) return;
+        if (!message.patch.records.length && !message.patch.children?.length && !message.patch.fields?.length) return;
         finishGrab(false);
         applyStatePatch(map.state, message.patch);
-        agentNodePresence.change(map.state, message.patch.touches.nodes);
-        if (lastServerBaseState) applyStatePatch(lastServerBaseState, message.patch);
+        agentNodePresence.change(map.state, message.patch.touches.nodes);aliasIndex.change(map.state,message.patch.touches.nodes);
+        if (saveStateTracker) saveStateTracker.acceptExternal(message.patch.touches,(base,keyed)=>applyStatePatch(base,message.patch!,keyed));
+        else if (lastServerBaseState) applyStatePatch(lastServerBaseState, message.patch);
         restoreIndex(map.state, message.patch.touches);
-        if (!message.patch.touches.nodes?.length || Object.keys(message.patch.touches).some(field => !["nodes", "scopes", "surfaces"].includes(field)) || !patchDocumentScene?.({ nodes: message.patch.touches.nodes })) scheduleRender();
+        if (!drawStatePatch(message.patch)) scheduleRender();
       } else if (message.state && isValidAppState(message.state)) {
         finishGrab(false); stopScatterAnimation(false); disperseForce.invalidate();
         map.state = message.state; trackSavedState(); scheduleRender();
@@ -13670,7 +13637,7 @@ function touchDocument(incremental = false, touches?: SaveTouches, alreadyDrawn 
     return;
   }
   markSaveChanges(touches);
-  if (patch?.children) deltaBroadcast?.childOrder(patch.children);
+  if (patch) deltaBroadcast?.childOrder(patch.children||[],patch.fields);
   if (incremental && localEditBatchDepth) {
     localEditBatchPending = true;
     return;
@@ -13678,7 +13645,7 @@ function touchDocument(incremental = false, touches?: SaveTouches, alreadyDrawn 
   if (!touches) syncLinearNotesToDocState();
   if (!alreadyDrawn) syncMapModelStateFromRuntime(touches);
   map.savedAt = nowIso();
-  if (!alreadyDrawn && (!touches || !patchDocumentScene?.(touches))) render(incremental);
+  if (!alreadyDrawn && (patch ? !drawStatePatch(patch) : !touches || !patchDocumentScene?.(touches))) render(incremental);
   else if (new URLSearchParams(location.search).get("deltaDebug") === "1") {
     const markup = canvas.innerHTML, layout = JSON.stringify(lastLayout);
     render();
@@ -15344,8 +15311,10 @@ function applyMoveByParentAndIndex(
   sourceNode.parentId = targetParentId;
   placeEdgeOnOpenScope(sourceNode);
   viewState.reparentSourceIds.delete(sourceId);
+  // Save bookkeeping uses the position already known by the write site.
+  saveStateTracker?.markParentEdge(sourceId, boundedIndex);
   if (withTouch) {
-    touchDocument();
+    touchDocument(true, { nodes: [sourceId, targetParentId], edges: [sourceId] });
   }
   if (withStatus) {
     if (oldParent.id === newParent.id) {

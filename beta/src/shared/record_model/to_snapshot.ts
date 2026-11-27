@@ -46,12 +46,12 @@ const ID_MAX_LENGTH = 64;
 const ID_PATTERN = /^[A-Za-z0-9_.:-]*$/;
 const SCOPE_PREFIX = "scope:";
 
-const NODE_FIELDS = new Set([
-  "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
+export const NODE_FIELDS = new Set([
+  "id", "parentId", "children", "edgeOrder", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
   "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions",
 ]);
-const LINK_FIELDS = new Set([
+export const LINK_FIELDS = new Set([
   "id", "sourceNodeId", "targetNodeId", "relationType", "label", "direction", "style", "color",
   "sourcePort", "targetPort", "attributes", "extensions",
 ]);
@@ -65,7 +65,7 @@ const STATE_FIELDS = new Set([
   "linearTextFontScale", "linearPanelWidth", "extensionDefs", "namedSnapshots",
 ]);
 const STATE_DROPPED_FIELDS = new Set(["selectedId", "scopeId", "savedAt"]);
-const NODE_VIEW_FIELDS = ["x", "y", "flowCol", "flowRow", "shape"] as const;
+export const NODE_VIEW_FIELDS = ["x", "y", "flowCol", "flowRow", "shape"] as const;
 
 function isDict(value: unknown): value is Dict {
   return typeof value === "object" && value !== null && !Array.isArray(value);

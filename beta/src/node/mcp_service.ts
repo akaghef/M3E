@@ -677,6 +677,7 @@ export class M3eMcpService {
     });
     if (errors.length) fail("INVALID_STATE", "The requested operation violates the Core invariants.");
     const changes = diffState(current.state, model.state);
+    if (changes.length === 0) return { ok: true, ...this.summary(context), changed: { created: 0, updated: 0, deleted: 0 }, created: [], created_truncated: false };
     const sentCommandId = commandId ?? randomUUID();
     const committed = commitMapCommand(this.options.dbPath(), mapId, {
       commandId: sentCommandId,

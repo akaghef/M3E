@@ -148,6 +148,7 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
         attributes,
         link: body?.link ?? "",
       };
+      if (edge) node.edgeOrder = edge.ord;
       const alias = record.alias;
       if (alias) {
         if (alias.target !== undefined) node.targetNodeId = alias.target;

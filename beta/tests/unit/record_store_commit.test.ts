@@ -13,7 +13,7 @@ import {
   type EngineCommit,
   type EngineSource,
 } from "../../src/node/record_store";
-import { applyChanges, diffState, type RecordChange } from "../../src/shared/map_changes";
+import { acceptEdgeOrders, applyChanges, diffState, type RecordChange } from "../../src/shared/map_changes";
 import { fromSnapshot } from "../../src/shared/record_model/from_snapshot";
 import { checkInvariants } from "../../src/shared/record_model/invariants";
 import { serializeSnapshot, sortRecords } from "../../src/shared/record_model/jsonl";
@@ -502,7 +502,9 @@ describe("record store: whole-map saves and map-level operations", () => {
     nodesOf(state).leaf.text = "whole save";
     nodesOf(state).w1 = node("w1", "root");
     (nodesOf(state).root.children as string[]).push("w1");
+    const expectedOrders = diffState(stateOf(store), state);
     const saved = ok(store.saveWholeMap("map_a", state as unknown as AppState, ISSUER));
+    acceptEdgeOrders(state, expectedOrders);
     expect(saved).toMatchObject({ seq: 1, replayed: false });
     expect(stateOf(store)).toEqual(state);
     // Nothing changed: no commit.
@@ -513,6 +515,7 @@ describe("record store: whole-map saves and map-level operations", () => {
     expect(store.hasMap("map_c")).toBe(false);
     ok(store.saveWholeMap("map_c", created as unknown as AppState, ISSUER, "import"));
     expect(store.hasMap("map_c")).toBe(true);
+    acceptEdgeOrders(created, diffState({}, created));
     expect(stateOf(store, "map_c")).toEqual(created);
     expect(store.listMaps().map((item) => [item.id, item.nodeCount, item.rootText])).toEqual([
       ["map_a", 7, "text of root"],

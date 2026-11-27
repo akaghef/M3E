@@ -30,3 +30,18 @@ it('keeps relation membership and order equal to full normalization across neste
     const expected = structuredClone(state); create().sanitizeMapModelState(expected); expect(state).toEqual(expected);
   }
 });
+
+it.each([50,20000])('normalizes an owner text edit without visiting its descendants (%i)',count=>{
+  const ids=Array.from({length:count},(_,i)=>`n${i}`);
+  const state:AppState={rootId:'root',nodes:{root:node('root',null,ids),...Object.fromEntries(ids.map(id=>[id,node(id,'root')]))},links:{}};
+  const normalizer=create();normalizer.sanitizeMapModelState(state);
+  state.nodes.root!.text='edited';
+  const children=state.nodes.root!.children;let reads=0;
+  Object.defineProperty(state.nodes.root!,'children',{get(){reads++;return children;},configurable:true});
+  const scope=state.scopes!['scope:root']!,relations=scope.relationIds;
+  Object.defineProperty(scope,'relationIds',{get(){throw Error('unchanged relation collection read');},configurable:true});
+  expect(normalizer.normalizeTouched(state,['root'])).toEqual({scopes:[],surfaces:[]});expect(reads).toBe(0);
+  Object.defineProperty(scope,'relationIds',{value:relations,writable:true,configurable:true});
+  Object.defineProperty(state.nodes.root!,'children',{value:children,writable:true,configurable:true});
+  const expected=structuredClone(state);create().sanitizeMapModelState(expected);expect(state).toEqual(expected);
+});

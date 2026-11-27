@@ -49,6 +49,60 @@
 
 ## 記録
 
+### 2026-11-27 viewer の移動の保存作成は、変更した parent edge と隣接キーだけを読む
+
+- 種類: 問題
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: `beta/src/shared/map_changes.ts`、`beta/src/browser/save_command.ts`、`beta/src/browser/viewer.ts` の保存呼出し
+- 中身: 書込み位置で親と新しい配列位置が分かるため、隣接キーから移動する parent edge のキーを作る。`diffState` に明示した parent edge の集合を渡し、全 node の `edgesOf` と兄弟全体のキー割当てを行わない。保存の基点は parent edge の索引で差分更新し、親の子配列は実際に読むときに構成する。要求送信後に動かした node を前の応答で上書きしない。不明な書込み範囲と全体置換は完全な差分へ戻る。
+- 根拠: `structural_delta_work.test.ts` が 50 / 20,000 node で保存作成と応答反映の node・子配列読取りを計数する。修正前の同じ試験は 50 / 20,000 node で 511 / 200,011 回となり失敗し、修正後は両方とも 17 回だった。`save_state_tracker.test.ts` は応答待ち中の移動、キーのない隣接 node、明示していない構造変更との混在、保存基点への反映を検証する。
+- 扱い: 実装で解消。DB 仕様書 3.4 と local-mode-design 3 節へ反映。browser の変更は `save_command.ts` と `viewer.ts` の保存呼出しだけ。`finishGrab` の全体 JSON 化と描画には手を加えていない。DV3 と Playwright は未実行（Director 依頼）。
+
+### 2026-11-27 scopen／unscopen と scope をまたぐ部分木移動を差分で射影する
+
+- 種類: 問題
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: `beta/src/shared/record_model/steady.ts`、`beta/src/node/record_store/store.ts`
+- 中身: 既存の node 射影、parent edge 索引と近傍検査を使い、key 形式の複合構造変更を変更 node とその境界の record に限って適用する。内容変更を伴う移動、通常 node の作成・削除、scopen／unscopen、surface の一部変更を扱う。所属が変わる部分木では必要な子孫の parent edge を辿り、入れ子の scope の内側で所属が変わらない枝は辿らない。scope の消失・生成に伴う surface・linear text・annotation の変換も参照索引から行う。状態・record・索引を同じ rollback に入れる。初回 commit で guard が workspace 全体を読む処理は、map 読込み時の索引構築へ移した。
+- 根拠: `structural_delta_work.test.ts` は、全体射影を使った別 store と、複数回の構造変更後の状態・全 record を比較する。循環を作る移動の拒否、fsync 失敗後の状態・record 復元、同じ Command の再実行も検証する。50 / 20,000 node と同数の node view を持つ状態で、node と record の読取り回数を計数し、scopen、unscopen、部分木移動、内容変更との混在、子の作成・削除が map の大きさに依存しないことを検証する。
+- 扱い: 上記の key 形式の経路は実装で解消。DB 仕様書 3.4 と local-mode-design 3 節へ反映。子孫の parent edge を再所属させる場合は部分木に比例する。index 形式、不明な全体変更、alias の意味変更、observe projection の変更は従来の全体射影を維持する。
+
+### 2026-11-27 保存と構造変更の処理量を修正前後の同じ試験で比較する
+
+- 種類: 気づき
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: `beta/tests/unit/structural_delta_work.test.ts`、`beta/tests/unit/save_state_tracker.test.ts`
+- 中身: 所要時間だけではなく、固定した変更量に対する node・子配列・record の読取り回数を比較する。読み込みと試験入力の作成は計数の外、Command の確定は計数の内にする。保存には 200 回未満、構造変更には node 500 回未満・record 1,000 回未満を要求し、50 / 20,000 node の比も 2 以下に固定する。
+- 根拠: 基点 c722b51 の実装へ一時的に戻すと保存と構造変更の両方が失敗し、作業中の実装へ戻すと同じ試験が通過した。構造変更 6 操作の node 読取りは両サイズとも 13 / 28 / 57 / 88 / 90 / 102 回、record 読取りは 78 / 81 / 127 / 105 / 71 / 56 回だった。試験の閾値は変えていない。`npm run build` が成功し、`delta_proportional_judge.mjs .` は 5/5（比 0.4 / 0.5 / 1.4 / 1.4 / 1.3）だった。全 suite の sandbox 外での 1611 passed / 27 skipped / 0 failed は `store-r2.md` に記載された orchestrator の独立検証結果であり、本 session の測定ではない。本 session の最終再実行は 1615 passed / 27 skipped、既知の `fs.watch: EMFILE` による 2 failed だった。`local_mode_judge.mjs .` は 16/16 通過した。
+- 扱い: 実装で解消。受入 judge は変更していない。DV3 は未実行（Director 依頼）。
+
+### 2026-11-27 parent edge の Command は変更した子の親と順序キーだけを運ぶ
+
+- 種類: 気づき
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: DB 仕様書 3.4、local-mode-design.md 3 節、`map_changes.ts`、`record_model/steady.ts`、`record_store/store.ts`
+- 中身: Command に `{parentId, ord}` を採用した。既存の `fractional-indexing` と保存済みの key を再利用でき、兄弟の index がずれても兄弟自身を書き換えずに済む。viewer の `edgeOrder` は入ってくる parent edge の key であり、node record の内容とは分ける。同一 scope 内の付け替えと並べ替え、通常の葉の挿入は、対象 record と親ごとの索引だけを更新し、子配列は読むときに構成する。index 形式の既存 Command も同時適用の意味を保って受け、journal / outbox は key 形式で書く。受信時と正規化後の hash を保持し、同じ Command の再送を判定する。
+- 根拠: `parent_edge_commands.test.ts` で 10 / 20,000 兄弟の移動・挿入・並べ替えが parent edge 1 件になること、別の兄弟と同じ node の CAS、旧形式の再起動・compaction 後の再送、viewer の連続保存を検証した。`record_store_delta.test.ts` で挿入位置に依らない非走査と、書込み失敗時の親・順序・record の rollback を検証した。`scope_view_api.test.ts` と `map_changes_invariants.test.ts` で HTTP の scope 操作とランダム変更・逆操作を検証した。 `npm run build` が成功し、差分量の受入判定は DJ1–DJ5 の 5/5、local mode の受入判定は 16/16 を通過した。全 unit suite は 1609 passed / 2 failed / 27 skipped。失敗は vault watch の 2 件で、一時ディレクトリへの最小の `fs.watch` 呼出しでも `EMFILE` を再現したため、sandbox 内では全体合格を確認できなかった。orchestrator が fec3c12 を sandbox 外で再実行し、1611 passed / 27 skipped / 0 failed を報告したため、全 unit suite の条件は合格として扱う。Playwright と viewer の受入判定は未実行（Director 依頼）。
+- 扱い: 仕様へ反映（DB 仕様書 3.4、local-mode-design.md 3 節）。同一 scope の経路と、上記の key 形式の部分木移動・scopen／unscopen・複合構造変更は実装で解消。viewer の移動の保存差分は書込み位置の集合から作る。書込み範囲が不明な配列だけの差分、index 形式や alias／observe の意味変更を含む全体射影は残る。DB 仕様書 5.2 の LWW は本作業で変更せず、本作業で要求された同一 node の CAS と決定との差は未対応として残す。
+
+### 2026-11-27 viewer の全 field の保存後の自己競合をライフサイクル試験で検出する
+
+- 種類: 気づき
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: `record_model/field_tables.ts`、`map_changes.ts`、`viewer_field_lifecycle.ts`、`viewer_field_lifecycle.test.ts`、`local_sync_store.test.ts`、`AGENTS.md`
+- 中身: production の field table と viewer の型定義から node、relation edge、scope、Surface View、parent edge の欄を列挙する。既定値と非既定値で create → update → delete を実 store と working store に通し、前提は store の読戻しでなく viewer が持つ直前の値から作る。空の extensions・edgeAttributes・valid、valid の空文字、copyOf.ids の省略、空の edgeRelationType、自動 port、scope の band・retention・projection の比較を保存側の正規形に合わせた。未対応の欄は試験を失敗させ、field table や正規化の変更時にこの試験を要求する規則を AGENTS.md に置いた。
+- 根拠: 実 store と local mode の試験が通過。field table に `unhandledProbe` を一時追加すると `Unhandled viewer field node.unhandledProbe` で失敗したことを確認し、probe は削除した。valid の空文字と copyOf.ids の省略でも修正前の自己競合を再現し、射影と比較に共通の正規化処理で修正した。local mode は実際の push まで行い、conflicts が 0 件であることも検証した。
+- 扱い: 実装で解消。skill の変更・mirror 同期は不要。全ての値の組合せを証明するものではなく、欄の追加と既定値の脱落を継続して検出する。
+
+### 2026-11-27 空の update を Command builder と store 境界で除外する
+
+- 種類: 問題
+- 書いた agent: 保存・同期の差分処理を担当した Codex
+- 対象: `map_changes.ts`、`browser/save_command.ts`、`node/mcp_service.ts`、`record_store/store.ts`、`local_sync_store.test.ts`
+- 中身: JSON 化で消える undefined も考慮し、送信形で before / after が等しい update を共有処理で除く。`diffState` と viewer の保存経路でこの処理を使い、変更がなければ viewer / MCP は送信・確定しない。store に直接届く空 update も capture より前に no-op として返し、journal・outbox の行を増やさない。既存 viewer builder にも空判定はあったが、store 境界はその条件を保証していなかった。過去の実 outbox の発行経路は本作業では特定していない。
+- 根拠: `empty viewer-shaped updates never enter the working journal or outbox` は修正前に `noOp: true` が返らず失敗し、修正後に通過した。builder と MCP のコードを調べ、空の結果で送信・確定に進まないことを確認した。
+- 扱い: 実装で解消（空 update と 0 件の Command の流入防止）。過去の発行操作の特定は未確認。実 Beta データには触れていない。
+
 ### 2026-11-25 push の前に outbox の Command をまとめていない（作ってすぐ消した node も remote に残る）
 
 - 種類: 問題
@@ -65,7 +119,7 @@
 - 対象: MacBook の Beta workspace の outbox（2026-11-25 時点の 52 件目）、`beta/src/shared/map_changes.ts` の `diffState`
 - 中身: intent が `rename` で、変更が 1 件だけの Command が outbox にあった。その 1 件は node の update で、`before` も `after` も `{}` だった。working store で commit し直すと no-op になり、journal に行を残さない。push すれば remote でも no-op になるが、outbox の 1 件、push の 1 件、当て直しの 1 回を無駄に使う。どの経路が空の update を作ったかは確かめていない（viewer の改名の保存と思われる）。local 側は、この no-op を飛ばして再開できるように直した（このログと同じ commit）。
 - 根拠: `sync/outbox.jsonl` と working store の journal を突き合わせた。
-- 扱い: 未対応（空の update を作る経路を特定し、Command に入れないようにする）
+- 扱い: 空 update と 0 件の Command の流入防止は実装で解消（2026-11-27 の記録）。JSON 化した差分を builder と store 境界で除外する。過去の発行操作の特定は未確認。
 
 ### 2026-11-25 書き込み・同期・表示更新の経路に、まだ全体に比例する処理がある
 
@@ -79,7 +133,7 @@
   - viewer の保存: 自動保存のたびに、map 全体について `diffState(base, state)` を取る（`viewer.ts` の `saveDocToLocalDb` と `save_command.ts`）。
   - local の rebase: 触った map の投影（warm）と近傍の索引を捨てるので、次に読むときに map 全体を投影し直す。commit の側も map 全体を複製しているので、今は同じ桁にとどまる。
 - 根拠: コードを読んだ。所要時間は測っていない（原則により、構造で判断する）。
-- 扱い: 未対応。remote の journal を通し番号で引けるようにする（行の位置の索引）、commit と保存の差分を変えた record に限る、の二つに設計が要る。名前付き snapshot の記録を確かめるため commit のたびに全 record を走査していた件は、このログと同じ commit で解消した（名前付き snapshot の record に触れない commit では何もしない）。
+- 扱い: 一部解消。同一 scope 内の parent edge の移動・並べ替えと通常の葉の挿入は、変更 record だけの確定にした（2026-11-27 の記録）。viewer の移動の差分作成、key 形式の部分木移動・scopen／unscopen・通常 node の複合変更も差分に限定した（2026-11-27 の追記）。書込み範囲が不明な配列だけの差分、index 形式や alias／observe の意味変更を含む全体射影は残る。以下はこの記録時点の未対応部分であり、今回の S1–S3 以外の経路の完了判定は行っていない。remote の journal を通し番号で引けるようにする（行の位置の索引）、commit と保存の差分を変えた record に限る、の二つに設計が要る。名前付き snapshot の記録を確かめるため commit のたびに全 record を走査していた件は、このログと同じ commit で解消した（名前付き snapshot の record に触れない commit では何もしない）。
 
 ### 2026-11-25 push と pull のたびに、working store を confirmed 全体の複製から作り直している
 
@@ -779,3 +833,16 @@
 - 中身: 既存 RBush で fragment bounds を索引化し、viewport + 256 CSS px の範囲だけをlive SVGに接続する。画面外は切り離して保持し、全Layout・hit geometry・paintは維持する。pan/zoomはmounted集合の差分だけ更新。全capture中は仮想化を一時停止し同じtaskで戻す。fitは保持した全fragmentのboundsを使う。morphdomを追加し、animation/full renderでも同じnode-hit要素を保持する。フィルタバーはboard内の編集をpanel再検索の対象から除外し、ResizeObserverとFrameInvalidationでgeometryをまとめて読んでからstyleを書く。
 - 根拠: DirectorのR4実測（00e11a1）はDV1 PASS、DV2 32.4 / 168.3 msでFAIL、DV4 32.4 / 181.6 msでFAIL。scope_layout_diffのsvgは再試行で通過。scatter traceではSVGはhiddenではなく、animation中にnode-hitが差し替わる経路があった。25フレーム＋node/edge追加のendpoint同一性試験は旧実装で失敗し変更後は通過。50 / 20,000件のviewport接続数はいずれも5件、反復panのbounds取得0、画面外1件patchのbounds取得1。切り離したSVGの部分capture・paint順・capture中の全接続と復帰・panelの変更時だけの配置もunitで検証。最終build成功、全unitは1,638通過・27 skipped・2失敗（既存vault-watchのEMFILE、2 unhandled error）。viewer.tsは基準17,593行に対し17,592行。browserは未実行（Director 依頼）。
 - 扱い: 部分実装、goal未完了。元のscatter Playwrightの通過、DV2/DV4、画素・pan/zoom・検索・fit・scope入出・fallback・load時間はDirectorの独立再実行を要する。DV3と保存差分の内部はSTORE worker担当で未変更。全unitの途中に20,000件の試験が30秒で失敗したが、jsdomのlive HTMLCollectionが観察によって二乗時間になることを実装と段階計測で確認し、同じ件数を静的一覧で確認する形に直した。assertionとtimeoutは不変、最終全unitでは解消。寸法変更・巨大部分木のlazy offset・対応外Undo/受信描画・active filterの差分化は未達として継続する。
+
+
+### 2026-11-27 parent edge の保存経路を viewer の履歴・配信・描画へ統合した
+
+- 種類: 実装・未達・他担当への依存
+- 書いた agent: Codex（delta-all-viewer、R5）
+- 対象: codex/delta-all の統合、Grab / Undo / peer配信、camera移動中のSVG接続、rename
+- 中身: store側のmarkParentEdgeとedges hintをretained geometry / range undoと統合。order keyのfield履歴、受信時の保存基準索引更新、同一親の区間順序をUndo / Redo・取消・受信描画へ接続した。camera移動開始時に現在位置と移動先を別々の空間queryで接続する。同寸法rename、alias参照索引、nodeのfield履歴、親・scopeの状態が変わらない正規化の子孫走査省略を実装。viewer.tsは17,561行（基準17,593、前回17,592）。
+- 根拠: R5外部測定では前回checkpointのDV1 / DV2 / DV4がPASS、DV3がFAIL。今回buildは成功。50 / 20,000でorder keyの取消・Redo・保存・peer反映、遅延基準getterの読取り0、区間Layoutの全再計算一致、camera移動先接続数7/3、field履歴・alias参照・正規化・同寸法描画のwork countを検査する。全unitの最終値は同節の追記参照。browserは未実行（Director 依頼）。部分capture試験のlive HTMLCollectionによるjsdomの二乗時間を静的観察へ修正し、assertion・件数・30秒制限は維持。
+- 扱い: 部分実装、goal未完了。scope復帰の元のPlaywright、全visual、全4judgeはDirectorの独立再測定が必要。寸法変更・巨大部分木のlazy offset、構造操作などの残るUndo入口は未実装。server同期通知はsavedAt等だけで差分recordがないため、編集禁止のbeta/src/node/でcommit / sync差分と連続性revisionを通知する契約が必要。未達をunknown fallbackへ分類し直して合格扱いにしない。
+
+
+R5 checkpoint のローカル検証: `npm run test:unit` の build:test / 全typecheckは成功、unitは1,675通過・27 skipped・2失敗（vault_watch_api_integration.test.jsの既存EMFILE、2 unhandled error）。autosaveの新規8失敗は、抽出したviewer関数へ新しいAliasIndex依存を渡していなかった試験setupを実クラスへ接続して解消した。部分captureのtimeoutも最終runでは解消。最後の正規化のmetadata fast pathについて、変更後に関連42試験を再実行し通過した。server-side同期の差分通知とlazy offsetの未達は上記のまま。受入判定を合格へ変更していない。

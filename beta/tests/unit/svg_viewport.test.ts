@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import {afterEach,expect,it,vi} from 'vitest';
 import {RetainedSvgScene} from '../../src/browser/incremental_scene';
-import {logicalSvgRoot,viewportBox,type SvgBox} from '../../src/rendering/svg_viewport';
+import {logicalSvgRoot,viewportBox,cameraViewport,type SvgBox} from '../../src/rendering/svg_viewport';
 
 afterEach(()=>{vi.restoreAllMocks();document.body.replaceChildren();});
 // A static inventory: jsdom eagerly rebuilds an accessed live HTMLCollection on
@@ -57,3 +57,19 @@ it('preserves canonical order across mounted and parked sibling moves',()=>{
   scene.refreshViewport({x:0,y:0,width:100,height:500});expect(mounted(root)).toHaveLength(4);
   expect(viewportBox(-100,-200,2,400,300,100)).toEqual({x:0,y:50,width:300,height:250});
 });
+
+it.each([50,20000])('preloads the destination at scope camera start, without mounting the corridor (%i)',count=>{
+  const root=svg(),scene=new RetainedSvgScene();
+  scene.update(root,Array.from({length:count},(_,i)=>[`node:n${i}`,`<rect class="node-hit" data-node-id="n${i}"/>`]));
+  const bounds=vi.fn((key:string)=>({x:0,y:Number(key.slice(6))*100,width:20,height:20}));
+  const from={cameraX:0,cameraY:0,zoom:1},to={cameraX:0,cameraY:-(count-1)*100,zoom:1};
+  scene.virtualize(root,cameraViewport(from,100,100),bounds);bounds.mockClear();
+  const endpoint=scene.element(`node:n${count-1}`)!.firstElementChild;
+  expect(endpoint!.isConnected).toBe(false);
+  scene.refreshViewport(cameraViewport(from,100,100,to));
+  expect(endpoint!.isConnected).toBe(true);expect(mounted(root)).toHaveLength(7);
+  expect(scene.element(`node:n${Math.floor(count/2)}`)!.isConnected).toBe(false);
+  scene.refreshViewport(cameraViewport(to,100,100));
+  expect(mounted(root)).toHaveLength(3);expect(endpoint!.isConnected).toBe(true);
+  expect(scene.element('node:n0')!.isConnected).toBe(false);expect(bounds).not.toHaveBeenCalled();
+},30000);

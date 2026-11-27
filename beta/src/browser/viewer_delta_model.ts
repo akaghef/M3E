@@ -10,6 +10,7 @@ export function createMapNormalizer(h: {
 }) {
   const { rawAttr, isFolderNode, uiLabel, surfaceLayoutForKind } = h;
   let indexedState: AppState | null = null;
+  const topology = new Map<string,{parent:string|null;folder:boolean;kind:SurfaceKind}>();
   const incident = new Map<string, Set<string>>();
   const linkOrder = new Map<string, number>();
   const linkScopes = new Map<string, Set<string>>();
@@ -25,6 +26,8 @@ export function createMapNormalizer(h: {
   }
   function index(state: AppState): void {
     indexedState = state; linkOrder.clear(); incident.clear(); linkScopes.clear(); scopeLinks.clear(); scopeSurfaces.clear();
+    topology.clear();
+    for(const node of Object.values(state.nodes))topology.set(node.id,{parent:node.parentId,folder:isFolderNode(node),kind:defaultSurfaceKindForScopeNode(node)});
     for (const link of Object.values(state.links || {})) {
       linkOrder.set(link.id, linkOrder.size);
       for (const id of [link.sourceNodeId, link.targetNodeId]) {
@@ -79,6 +82,7 @@ export function createMapNormalizer(h: {
   }
   function restoreIndex(state: AppState, touches: SaveTouches): void {
     if (state !== indexedState || touches.links?.length || touches.$map?.length) { indexedState = null; return; }
+    for(const id of touches.nodes||[]){const node=state.nodes[id];if(node)topology.set(id,{parent:node.parentId,folder:isFolderNode(node),kind:defaultSurfaceKindForScopeNode(node)});else topology.delete(id);}
     // Restore only affected ownership buckets after an exact undo/redo patch.
     for (const scope of touches.scopes || []) {
       for (const id of scopeLinks.get(scope) || []) linkScopes.get(id)?.delete(scope);
@@ -95,14 +99,21 @@ export function createMapNormalizer(h: {
   function normalizeTouched(state: AppState, ids: readonly string[]): SaveTouches | null {
     if (state !== indexedState || ids.some(id => !state.nodes[id])) return null;
     const affectedScopes = new Set<string>(), affectedLinks = new Set<string>(), visited = new Set<string>();
-    const visit = (id: string, start: boolean) => {
+    const visit = (id: string, start: boolean, descend = true) => {
       if (visited.has(id)) return;
       visited.add(id);
       const node = state.nodes[id]; if (!node) return;
       incident.get(id)?.forEach(link => affectedLinks.add(link));
-      if (start || !isFolderNode(node)) node.children.forEach(child => visit(child, false));
+      if (descend && (start || !isFolderNode(node))) node.children.forEach(child => visit(child, false));
     };
-    for (const id of ids) { affectedScopes.add(inferredScopeId(id)); visit(id, true); }
+    for (const id of ids) {
+      const node=state.nodes[id]!,old=topology.get(id);
+      const structural=!old||old.parent!==node.parentId||old.folder!==isFolderNode(node);
+      if (!structural && old.kind===defaultSurfaceKindForScopeNode(node)) continue;
+      affectedScopes.add(inferredScopeId(id));
+      visit(id,true,structural);
+    }
+    for(const id of visited){const node=state.nodes[id]!;topology.set(id,{parent:node.parentId,folder:isFolderNode(node),kind:defaultSurfaceKindForScopeNode(node)});}
     for (const id of affectedLinks) {
       const link = state.links?.[id];
       const next = new Set(link ? [scopeOf(state, link.sourceNodeId), scopeOf(state, link.targetNodeId)] : []);

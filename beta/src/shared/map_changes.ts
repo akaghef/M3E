@@ -1,3 +1,7 @@
+import { writtenNodeValid, writtenNodeCopyOf } from "./record_model/field_tables";
+import { scopeFieldsOf } from "./record_model/scope_fields";
+import { writtenExtensions } from "./record_model/extensions";
+import { assignOrderKeys, isOrderKey } from "./record_model/order_key";
 /**
  * Field-level changes between two map states.
  * The storage shape stays the current map state. Command application compares
@@ -60,11 +64,13 @@ export interface MapCommand {
 }
 
 const STRUCTURED = new Set(["nodes", "links", "scopes", "surfaces", "annotations", "linearNotesByScope"]);
-const NODE_SPLIT = new Set(["parentId", "children", "attributes"]);
+const NODE_SPLIT = new Set(["parentId", "children", "attributes", "edgeOrder"]);
 const SHELL_FIELDS = new Set(["attributes", "nodeViews"]);
 
 type Bag = Record<string, unknown>;
-type EdgeAssign = { parentId: string; index: number };
+export const PARENT_EDGE_FIELDS = ["parentId", "ord"] as const;
+type EdgeAssign = { parentId: string; index: number; ord?: string };
+const edgeOrders = new WeakMap<object, Map<string, EdgeAssign>>();
 
 function isBag(value: unknown): value is Bag {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -152,6 +158,10 @@ function pushPair(changes: RecordChange[], kind: RecordKind, key: string[], befo
   if (!before && after) changes.push({ kind, key, op: "create", after: clone(after) });
   else if (before && !after) changes.push({ kind, key, op: "delete", before: clone(before) });
   else if (before && after) {
+    if (kind === "edge") {
+      if (!sameValue(before, after)) changes.push({ kind, key, op: "update", before: clone(before), after: clone(after) });
+      return;
+    }
     const fields = changedFields(before, after);
     if (fields) changes.push({ kind, key, op: "update", before: fields.before, after: fields.after });
   }
@@ -161,14 +171,31 @@ function valueBag(value: unknown): Bag {
   return { value: clone(value) };
 }
 
-function edgesOf(state: Bag): Map<string, EdgeAssign> {
+function edgesOf(state: Bag, previous?: Map<string, EdgeAssign>): Map<string, EdgeAssign> {
+  if (!previous && edgeOrders.has(state)) return edgeOrders.get(state)!;
   const nodes = dict(state, "nodes");
-  const found = new Map<string, EdgeAssign>();
+  const groups = new Map<string, string[]>();
   for (const [id, raw] of Object.entries(nodes)) {
     if (!isBag(raw) || typeof raw.parentId !== "string") continue;
-    const parent = bagOf(nodes[raw.parentId]);
-    const children = parent && Array.isArray(parent.children) ? parent.children as unknown[] : [];
-    found.set(id, { parentId: raw.parentId, index: children.indexOf(id) });
+    let group = groups.get(raw.parentId);
+    if (!group) groups.set(raw.parentId, group = []);
+    group.push(id);
+  }
+  const found = new Map<string, EdgeAssign>();
+  for (const [parentId, group] of groups) {
+    const parent = bagOf(nodes[parentId]);
+    const members = new Set(group);
+    const listed = Array.isArray(parent?.children) ? parent.children : [];
+    const ids: string[] = [];
+    for (const id of listed) if (typeof id === "string" && members.delete(id)) ids.push(id);
+    ids.push(...members);
+    const keys = assignOrderKeys(ids.map(id => {
+      const node = bagOf(nodes[id]);
+      if (previous) return previous.get(id)?.parentId === parentId
+        ? (isOrderKey(node?.edgeOrder) ? node.edgeOrder : previous.get(id)?.ord) : undefined;
+      return isOrderKey(node?.edgeOrder) ? node.edgeOrder : undefined;
+    }));
+    ids.forEach((id, index) => found.set(id, { parentId, index, ord: keys[index] }));
   }
   return found;
 }
@@ -191,7 +218,7 @@ function diffAttributes(changes: RecordChange[], ownerKind: "node" | "graph-link
   }
 }
 
-/** Optional entry keys observed by a mutable-state caller; omitted means a full diff. */
+/** Optional write set; `$edges` names all changed incoming edges with explicit `edgeOrder`. Omission means a full diff. */
 export type DiffEntries = ReadonlyMap<string, ReadonlySet<string>>;
 
 function diffIds(left: Bag, right: Bag, field: string, entries?: DiffEntries): string[] {
@@ -202,41 +229,32 @@ function diffNodes(before: Bag, after: Bag, changes: RecordChange[], entries?: D
   const left = dict(before, "nodes");
   const right = dict(after, "nodes");
   const ids = new Set(diffIds(left, right, "nodes", entries));
-  const edgeIds = new Set<string>();
-  if (entries) {
-    for (const id of ids) {
-      const from = bagOf(left[id]);
-      const to = bagOf(right[id]);
-      if (!from || !to || from.parentId !== to.parentId) edgeIds.add(id);
-      if (!sameValue(from?.children, to?.children)) {
-        for (const child of [...(Array.isArray(from?.children) ? from.children : []), ...(Array.isArray(to?.children) ? to.children : [])]) {
-          if (typeof child === "string") edgeIds.add(child);
-        }
-      }
-    }
-    for (const id of edgeIds) ids.add(id);
-  }
-  const selectedEdges = (nodes: Bag): Map<string, EdgeAssign> => {
-    const found = new Map<string, EdgeAssign>();
-    const parentIndices = new Map<string, Map<string, number>>();
+  let leftEdges: Map<string, EdgeAssign>, rightEdges: Map<string, EdgeAssign>;
+  if (entries?.has("$edges")) {
+    // Write sites provide the edited incoming edges, with their neighbour-derived keys.
+    // Parent children arrays are a read model, never a second set of changes to scan.
+    const edgeIds = entries.get("$edges")!;
+    leftEdges = new Map(); rightEdges = new Map();
     for (const id of edgeIds) {
-      const node = bagOf(nodes[id]);
-      if (typeof node?.parentId !== "string") continue;
-      let indices = parentIndices.get(node.parentId);
-      if (!indices) {
-        indices = new Map();
-        const parent = bagOf(nodes[node.parentId]);
-        if (Array.isArray(parent?.children)) parent.children.forEach((child, index) => {
-          if (typeof child === "string" && !indices!.has(child)) indices!.set(child, index);
-        });
-        parentIndices.set(node.parentId, indices);
-      }
-      found.set(id, { parentId: node.parentId, index: indices.get(id) ?? -1 });
+      ids.add(id);
+      const from = bagOf(left[id]), to = bagOf(right[id]);
+      if (typeof from?.parentId === "string") leftEdges.set(id, { parentId: from.parentId, index: 0, ord: from.edgeOrder as string });
+      if (typeof to?.parentId === "string") rightEdges.set(id, { parentId: to.parentId, index: 0, ord: to.edgeOrder as string });
     }
-    return found;
-  };
-  const leftEdges = entries ? selectedEdges(left) : edgesOf(before);
-  const rightEdges = entries ? selectedEdges(right) : edgesOf(after);
+  } else {
+    // Array-only callers use the previous assignment; explicit order keys survive wire/restart.
+    const topologyChanged = !entries || [...ids].some(id => {
+      const from = bagOf(left[id]), to = bagOf(right[id]);
+      return from?.parentId !== to?.parentId || from?.edgeOrder !== to?.edgeOrder || !sameValue(from?.children, to?.children);
+    });
+    leftEdges = topologyChanged ? edgesOf(before) : new Map<string, EdgeAssign>();
+    rightEdges = topologyChanged ? edgesOf(after, leftEdges) : leftEdges;
+    if (topologyChanged) edgeOrders.set(after, rightEdges);
+    if (entries) for (const [id, edge] of rightEdges) {
+      const old = leftEdges.get(id);
+      if (!old || old.parentId !== edge.parentId || old.ord !== edge.ord) ids.add(id);
+    }
+  }
   for (const id of [...ids].sort()) {
     const from = bagOf(left[id]);
     const to = bagOf(right[id]);
@@ -259,7 +277,7 @@ function diffNodes(before: Bag, after: Bag, changes: RecordChange[], entries?: D
 }
 
 function edgeBag(edge: EdgeAssign | undefined): Bag | null {
-  return edge ? { parentId: edge.parentId, index: edge.index } : null;
+  return edge ? { parentId: edge.parentId, ord: edge.ord } : null;
 }
 
 function diffLinks(before: Bag, after: Bag, changes: RecordChange[], entries?: DiffEntries): void {
@@ -398,7 +416,13 @@ export function diffState(before: object, after: object, entries?: DiffEntries):
   diffSurfaces(from, to, changes, entries);
   diffAnnotations(from, to, changes, entries);
   diffMapFields(from, to, changes, entries);
-  return changes;
+  return nonEmptyChanges(changes);
+}
+
+/** Compare the JSON value sent on the wire, including nested undefined fields. */
+export function nonEmptyChanges(changes: readonly RecordChange[]): RecordChange[] {
+  const wire = JSON.parse(JSON.stringify(changes)) as RecordChange[];
+  return wire.filter(change => change.op !== "update" || !sameValue(change.before ?? {}, change.after ?? {}));
 }
 
 function touched(before: Bag | undefined, after: Bag | undefined): string[] {
@@ -442,6 +466,20 @@ function present(bag: Bag, field: string): boolean {
  * Without this, a viewer that holds `isBroken: false` or a `scopeId` conflicts with itself.
  */
 function sameField(left: Bag, right: Bag, field: string, kind?: RecordChange["kind"]): boolean {
+  if ((kind === "node" || kind === "graph-link") && (field === "extensions" || field === "edgeExtensions")) {
+    return sameValue(writtenExtensions(left[field]), writtenExtensions(right[field]));
+  }
+  if (kind === "node" && field === "valid") return sameValue(writtenNodeValid(left[field]), writtenNodeValid(right[field]));
+  if (kind === "node" && field === "copyOf") return sameValue(writtenNodeCopyOf(left[field]), writtenNodeCopyOf(right[field]));
+  if (kind === "node" && field === "edgeAttributes") {
+    const value = (bag: Bag) => isBag(bag[field]) && Object.keys(bag[field] as Bag).length ? bag[field] : undefined;
+    return sameValue(value(left), value(right));
+  }
+  if (kind === "node" && field === "edgeRelationType") return (left[field] || undefined) === (right[field] || undefined);
+  if (kind === "graph-link" && (field === "sourcePort" || field === "targetPort")) return (left[field] ?? "auto") === (right[field] ?? "auto");
+  if (kind === "scope-setting" && ["band", "projection", "retention"].includes(field)) {
+    return sameValue((scopeFieldsOf(left) as Bag)[field], (scopeFieldsOf(right) as Bag)[field]);
+  }
   if (emptyShell(left, field) && emptyShell(right, field)) return true;
   if (kind === "node") {
     if (NODE_NOT_KEPT.has(field)) return true;
@@ -479,6 +517,8 @@ class Draft {
   constructor(source: object) {
     this.original = source as Bag;
     this.state = { ...this.original };
+    const orders = edgeOrders.get(this.original);
+    if (orders) edgeOrders.set(this.state, orders);
   }
 
   private own(field: string): Bag {
@@ -552,6 +592,7 @@ function attributeTarget(draft: Draft, ownerKind: string, ownerId: string): Bag 
 function applicationEdges(state: Bag): Map<string, EdgeAssign> {
   const nodes = dict(state, "nodes");
   const positions = new Map<string, Map<unknown, number>>();
+  let fallback: Map<string, EdgeAssign> | undefined;
   const found = new Map<string, EdgeAssign>();
   for (const [id, raw] of Object.entries(nodes)) {
     if (!isBag(raw) || typeof raw.parentId !== "string") continue;
@@ -562,15 +603,16 @@ function applicationEdges(state: Bag): Map<string, EdgeAssign> {
       const children = isBag(parent) && Array.isArray(parent.children) ? parent.children : [];
       for (let i = 0; i < children.length; i += 1) if (!indexes.has(children[i])) indexes.set(children[i], i);
     }
-    found.set(id, { parentId: raw.parentId, index: indexes.get(id) ?? -1 });
+    found.set(id, { parentId: raw.parentId, index: indexes.get(id) ?? -1, ord: edgeOrders.get(state)?.get(id)?.ord ?? (typeof raw.edgeOrder === "string" ? raw.edgeOrder : (fallback ??= edgesOf(state)).get(id)?.ord) });
   }
   return found;
 }
 
-function applyEdges(draft: Draft, changes: readonly RecordChange[]): void {
+function applyEdges(draft: Draft, changes: readonly RecordChange[], original?: Map<string, EdgeAssign>, exposeEdgeOrders?: boolean): void {
   const edges = changes.filter((change) => change.kind === "edge");
   if (!edges.length) return;
-  const assign = applicationEdges(draft.state);
+  const assign = original ? new Map(original) : applicationEdges(draft.state);
+  const exposeOrders = exposeEdgeOrders ?? Object.values(dict(draft.state, "nodes")).some(node => isBag(node) && has(node, "edgeOrder"));
   const affected = new Set<string>();
   for (const change of edges) {
     const id = change.key[0] ?? "";
@@ -585,32 +627,49 @@ function applyEdges(draft: Draft, changes: readonly RecordChange[]): void {
     else {
       const parentId = typeof change.after?.parentId === "string" ? change.after.parentId : previous?.parentId;
       const index = typeof change.after?.index === "number" ? change.after.index : previous?.index;
-      if (typeof parentId === "string" && typeof index === "number") assign.set(id, { parentId, index });
+      const ord = typeof change.after?.ord === "string" ? change.after.ord : previous?.parentId === parentId ? previous?.ord : undefined;
+      if (typeof parentId === "string") assign.set(id, { parentId, index: index ?? 0, ord });
     }
   }
   const nodes = draft.ensure("nodes");
+  const keyed = edges.some(e => has(e.after ?? {}, "ord"));
+  const groups = new Map<string, Array<[string, EdgeAssign]>>();
+  for (const item of assign) {
+    if (!affected.has(item[1].parentId)) continue;
+    let group = groups.get(item[1].parentId);
+    if (!group) groups.set(item[1].parentId, group = []);
+    group.push(item);
+  }
   for (const parentId of affected) {
     if (!isBag(nodes[parentId])) continue;
     const parent = draft.node(parentId);
     if (!parent) continue;
-    parent.children = [...assign.entries()]
-      .filter(([, edge]) => edge.parentId === parentId)
-      .sort((left, right) => left[1].index - right[1].index || (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
+    parent.children = (groups.get(parentId) ?? [])
+      .sort((left, right) => (keyed ? (left[1].ord! < right[1].ord! ? -1 : left[1].ord! > right[1].ord! ? 1 : 0) : left[1].index - right[1].index) || (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
       .map(([id]) => id);
+    if (!keyed) {
+      const ids = parent.children as string[];
+      const keys = assignOrderKeys(ids.map(id => assign.get(id)?.ord));
+      ids.forEach((id, i) => { assign.get(id)!.ord = keys[i]; });
+    }
   }
   const changedIds = new Set(edges.map((change) => change.key[0]));
   for (const [id, edge] of assign) {
     if (!affected.has(edge.parentId) && !changedIds.has(id)) continue;
     const current = nodes[id];
-    if (isBag(current) && current.parentId === edge.parentId) continue;
+    if (isBag(current) && current.parentId === edge.parentId && (!changedIds.has(id) || current.edgeOrder === edge.ord)) continue;
     const node = draft.node(id);
-    if (node) node.parentId = edge.parentId;
+    if (node) {
+      node.parentId = edge.parentId;
+      Object.defineProperty(node, "edgeOrder", { value: edge.ord, writable: true, configurable: true, enumerable: exposeOrders });
+    }
   }
   for (const change of edges) {
     if (change.op !== "delete") continue;
     const node = draft.node(change.key[0] ?? "");
-    if (node) node.parentId = null;
+    if (node) { node.parentId = null; delete node.edgeOrder; }
   }
+  edgeOrders.set(draft.state, assign);
 }
 
 function applyAnnotations(draft: Draft, changes: readonly RecordChange[]): void {
@@ -644,7 +703,8 @@ function locate(state: Bag, change: RecordChange, edges?: Map<string, EdgeAssign
   if (change.kind === "node") return bagOf(dict(state, "nodes")[change.key[0] ?? ""]);
   if (change.kind === "edge") {
     const edge = edges?.get(change.key[0] ?? "");
-    return edge ? { parentId: edge.parentId, index: edge.index } : null;
+    return edge ? (has(change.before ?? {}, "ord") || has(change.after ?? {}, "ord")
+      ? { parentId: edge.parentId, ord: edge.ord } : { parentId: edge.parentId, index: edge.index }) : null;
   }
   if (change.kind === "attribute") {
     const owner = change.key[0] === "graph-link" ? bagOf(dict(state, "links")[change.key[1] ?? ""]) : bagOf(dict(state, "nodes")[change.key[1] ?? ""]);
@@ -710,7 +770,7 @@ function alreadyApplied(change: RecordChange, current: Bag | null): boolean {
     .every((field) => matchesField(current, change.after ?? {}, field, change.kind));
 }
 
-export function applyChanges(state: object, changes: readonly RecordChange[], allowAfter = false): ApplyResult {
+export function applyChanges(state: object, changes: readonly RecordChange[], allowAfter = false, exposeEdgeOrders?: boolean): ApplyResult {
   const source = state as Bag;
   const conflicts: FieldConflict[] = [];
   const pending: RecordChange[] = [];
@@ -747,7 +807,7 @@ export function applyChanges(state: object, changes: readonly RecordChange[], al
     }
     applyOne(draft, change);
   }
-  applyEdges(draft, pending);
+  applyEdges(draft, pending, edges, exposeEdgeOrders);
   applyAnnotations(draft, pending);
   for (const change of deferred) applyMapField(draft, change);
   return { ok: true, state: draft.state };
@@ -870,4 +930,17 @@ export function invertChanges(changes: readonly RecordChange[]): RecordChange[] 
     if (change.op === "delete") return { kind: change.kind, key: [...change.key], op: "create", after: clone(change.before ?? {}) };
     return { kind: change.kind, key: [...change.key], op: "update", before: clone(change.after ?? {}), after: clone(change.before ?? {}) };
   });
+}
+
+/** Advance a viewer baseline after acknowledgment without copying its node table. */
+export function acceptEdgeOrders(state: object, changes: readonly RecordChange[]): void {
+  const nodes = dict(state as Bag, "nodes");
+  for (const change of changes) {
+    if (change.kind !== "edge") continue;
+    const node = bagOf(nodes[change.key[0]]);
+    if (!node) continue;
+    if (change.op === "delete") delete node.edgeOrder;
+    else if (isOrderKey(change.after?.ord)) node.edgeOrder = change.after.ord;
+  }
+  edgeOrders.delete(state);
 }

@@ -1,3 +1,4 @@
+import { initialKeys } from "../../src/shared/record_model/order_key";
 // Synthetic data for the record store tests. Nothing here comes from a real workspace.
 
 import fs from "fs";
@@ -16,10 +17,21 @@ export function node(id: string, parentId: string | null, children: string[] = [
   return { id, parentId, children, nodeType: "text", text: `text of ${id}`, collapsed: false, details: "", note: "", attributes: {}, link: "", ...more };
 }
 
+/** Expected initial parent-edge metadata exposed by a fresh record-store read. */
+export function withOrderKeys<T extends Loose>(state: T): T {
+  const nodes = state.nodes as Record<string, Loose>;
+  for (const parent of Object.values(nodes)) {
+    const children = parent.children as string[];
+    const keys = initialKeys(children.length);
+    children.forEach((id, i) => { if (nodes[id] && nodes[id].edgeOrder === undefined) nodes[id].edgeOrder = keys[i]; });
+  }
+  return state;
+}
+
 /** A state already in the shape the reverse conversion gives (surface ids aside). */
 export function richState(prefix = ""): Loose {
   const p = (id: string): string => prefix + id;
-  return {
+  return withOrderKeys({
     rootId: p("root"),
     futureTopLevel: [1, 2],
     linearTextFontScale: 1.1,
@@ -49,7 +61,7 @@ export function richState(prefix = ""): Loose {
       [p("sf2")]: { id: p("sf2"), scopeId: `scope:${p("f1")}`, kind: "tree", layout: "tree" },
     },
     linearNotesByScope: { [p("root")]: "root text", [p("f1")]: "f1 text", [p("leaf")]: "kept", "no such": "kept too" },
-  };
+  });
 }
 
 /** A map of `groups` folders with `perGroup` leaves each (plus the root). */

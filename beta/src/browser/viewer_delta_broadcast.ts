@@ -1,5 +1,5 @@
 import type { SaveTouches } from './save_command';
-import { captureStatePatch, type StatePatch, type ArrayRange } from './viewer_delta_state';
+import { captureStatePatch, type StatePatch, type ArrayRange, type StateField } from './viewer_delta_state';
 
 type Message<T> = { type: 'STATE_UPDATE'; fromTabId: string; state: T; savedAt: string; sequence?: number; to?: string }
   | { type: 'STATE_DELTA'; fromTabId: string; patch: StatePatch; savedAt: string; sequence: number }
@@ -11,12 +11,13 @@ export class DeltaBroadcast<T extends object> {
   private peers = new Map<string, number>();
   private pending: SaveTouches | undefined = {};
   private children: ArrayRange[] = [];
+  private fields: StateField[] = [];
   constructor(private channel: Pick<BroadcastChannel, 'postMessage'>, private id: string,
     private read: () => { state: T; savedAt: string } | null,
     private receive: (message: { state?: T; patch?: StatePatch; savedAt: string }) => void) {}
   start(): void { this.channel.postMessage({ type: 'STATE_REQUEST', fromTabId: this.id }); }
   mark(touches?: SaveTouches): void {
-    if (!touches) { this.pending = undefined; this.children = []; return; }
+    if (!touches) { this.pending = undefined; this.children = []; this.fields = []; return; }
     if (!this.pending) return;
     for (const [field, ids] of Object.entries(touches)) {
       const key = field as keyof SaveTouches;
@@ -25,24 +26,24 @@ export class DeltaBroadcast<T extends object> {
   }
   /** The caller has just marked a pure child-order transaction. Its parent
    * records need only the overwritten slots, not their full children arrays. */
-  childOrder(ranges: ArrayRange[]): void {
+  childOrder(ranges: ArrayRange[], fields:StateField[] = []): void {
     if (!this.pending) return;
-    const ids = new Set(ranges.map(range=>range.id));
+    const ids = new Set([...ranges.map(range=>range.id),...fields.map(field=>field.id)]);
     this.pending.nodes = this.pending.nodes?.filter(id=>!ids.has(id));
-    this.children.push(...ranges);
+    this.children.push(...ranges);this.fields.push(...fields);
   }
   send(): void {
     const value = this.read(); if (!value) return;
     const sequence = ++this.sequence;
     const patch = this.pending ? captureStatePatch(value.state, this.pending) : undefined;
-    if (patch && this.children.length) {
-      patch.children=this.children;
-      patch.touches.nodes=[...new Set([...(patch.touches.nodes||[]),...this.children.map(range=>range.id)])];
+    if (patch && (this.children.length || this.fields.length)) {
+      patch.children=this.children;patch.fields=this.fields;
+      patch.touches.nodes=[...new Set([...(patch.touches.nodes||[]),...this.children.map(range=>range.id),...this.fields.map(field=>field.id)])];
     }
     this.channel.postMessage(patch
       ? { type: 'STATE_DELTA', fromTabId: this.id, patch, savedAt: value.savedAt, sequence }
       : { type: 'STATE_UPDATE', fromTabId: this.id, ...value, sequence });
-    this.pending = {}; this.children = [];
+    this.pending = {}; this.children = []; this.fields = [];
   }
   accept(message: Message<T>): void {
     if (message.fromTabId === this.id || ('to' in message && message.to && message.to !== this.id)) return;

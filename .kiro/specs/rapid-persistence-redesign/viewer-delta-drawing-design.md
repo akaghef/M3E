@@ -8,7 +8,7 @@
 
 | 区間 | 実装 | 現在の範囲 |
 |---|---|---|
-| undo / redo | `viewer_delta_state.ts` の record 単位の before image。逆方向も同じ write set を capture する | scopen / unscopen の入口が node と派生 scope / Surface View の write set を宣言する。従来の全 snapshot と混在可能。未知の操作・Concreteness は従来 snapshot |
+| undo / redo | `viewer_delta_state.ts` の record 単位の before image。逆方向も同じ write set を capture する | scopen / unscopen の入口が node と派生 scope / Surface View の write set を宣言する。rename / alias label / incoming edge label は property before image。edge color / port は link record。従来の全 snapshot と混在可能。構造的に未対応の操作・Concreteness は従来 snapshot |
 | 正規化 | `viewer_delta_model.ts`。初回に node→incident relation edge、scope→relation edge / Surface View の索引を構築。既知 node の編集は対象部分木と影響先だけ更新 | Surface View の nodeViews は対象 node の項目のみ更新。relationIds の順序は全正規化と同じ。未知の変更・state の入替は全正規化 |
 | Layout / SVG | `viewer_delta_scene.ts:StableScenePatch`。全再描画時に子集合と描画依存を保持。既知の編集では対象 node の依存、子集合、寸法を検査し、全対象の検査成功後に SVG fragment を patch | Tree で寸法・子集合・描画依存が変わらない更新。scopen / unscopen もこの判定を通る。キー・node ID・node 数による分岐はない |
 | Grab の兄弟順序変更 | `viewer_delta_reorder.ts`。全描画時に親・子順・preorder と subtree span を保持し、交差した兄弟区間を rotation する | 右・左・下向き Tree の同一親の移動。対象部分木の座標・入射 edge・SVG順・paint順・WebGL hit geometry・bounds を更新。親 children 全体の splice / filter は行わない |
@@ -32,10 +32,10 @@ load / import / map 切替 / Surface View 切替 / write set 不明の場合は 
 | 未達 | 理由・残る仕事 |
 |---|---|
 | 寸法変更、可視子集合変更、reparent と対応外の reorder | `buildLayout` と `TreeSpanCache.prepare` が全可視 node を走査する。兄弟間移動は交差した部分木だけ更新するが、大きい部分木の移動には全子孫の費用が残る。prefix sum・lazy offset と viewport に限った座標展開は未実装 |
-| rename / Style の変更 | 現在の描画依存判定で full path。alias 参照先、接続 edge、filter の変更依存を索引化して通知する必要がある |
+| 寸法・Style・filter の変更 | 同寸法 rename と alias 参照の更新は差分化した。寸法が変わる rename、Style が edge / layout へ与える影響、filter の変更依存は未対応 |
 | Tree 以外、component、preview、active filter、display root の変更 | 追加の描画依存をまだ差分化していない。意味や pixels を変えないため既存 full path |
 | 大きい scope の relationIds | scope record が配列全体を所有するため、その scope を更新すると配列の再構成・順序合わせ・before image の費用が残る |
-| scopen / unscopen と対応する Grab 以外の undo | 多数の編集入口がまだ従来 `pushUndoSnapshot()` を使う。Grab の Undo / Redo は区間 before image を使うが、描画と受信側の順序変更は full path。write set の宣言と逆操作への移行が残る |
+| scopen / unscopen と対応する Grab 以外の undo | 多数の編集入口がまだ従来 `pushUndoSnapshot()` を使う。Grab の Undo / Redo・取消・受信描画は同じ区間 plan を使う。rename / alias label / incoming edge label と一部の edge 編集以外の write set 宣言が残る |
 | load 時の負荷 | live browser の比較を未実行。bounds と所有者索引の構築分を含め、悪化しないことを Director が計測する |
 
 ## 検証
@@ -101,3 +101,37 @@ viewport の構造試験は50 / 20,000 fragmentの同じ画面範囲で接続数
 
 
 R4 checkpoint のローカル検証は build 成功、全unit 1,638通過・27 skipped・2失敗。失敗は既存vault-watchのEMFILE（2 unhandled error）で、viewport試験の途中失敗は最終runで解消。新しい依存 `morphdom` があるため、別checkoutでの再実行は `npm install` を先に行う。viewer.tsは17,592行（基準17,593行）。
+
+
+## R5 の統合と再検証条件
+
+Director の `2b70fcd` 測定は DV1 0.4 / 0.5 ms、DV2 31.9 / 32.5 ms（比率1.0）、DV4 31.9 / 32.9 ms（比率1.0）が PASS。DV3 0.7 / 61.4 ms は FAIL。全unitは1,640通過・27 skipped・0失敗。visualは181 expected / 59 unexpected / 2 flakyで、darwin snapshotの不足2件は基準snapshotで通過し、画素一致が確認された。残る新規回帰は concreteness_axis.spec.js:89 の scope 復帰直後の hit target 欠落。これは変更前の Director 測定であり、R5 の測定ではない。
+
+`codex/delta-all` を merge し、parent edge の order key を保持する保存経路と retained geometry / range undo を両立させた。Grab が書き換えた edgeOrder は field before image に含める。連続した新規隣接 node に order key が付く場合も、その block だけを履歴に含める。往復して元の配列順へ戻った場合は元の key も戻す。保存用 edges hint を AppState の collection として配信しない。
+
+保存基準の children は order key の索引から遅延構成される。受信した children slot をその getter の戻り値へ書いても基準は更新されないため、`SaveStateTracker.acceptExternal` で changed edge の索引を更新し、基準側の slot 書込みを省く。ローカルの dirty 集合は消去しない。50 / 20,000 の試験で、基準の全 children getter を読まずに、peer 順序反映後の保存・次の移動が同じ順序になることを検査する。
+
+scope 切替は anchor に合わせた旧 camera から新 scope の fit へ動く。viewport は移動開始時点で現在位置と移動先を別々の RBush query として取得する。間を囲む巨大な矩形は作らず、途中の frame では現在位置を更新し、終了時は移動先だけに戻す。50 / 20,000 fragmentの遠距離移動で接続数はともに開始時7件・終了時3件、移動先の hit 要素は同一、途中区間の接続と bounds 再取得は0。元の browser regression の通過は未検証。
+
+兄弟順序の Undo / Redo・取消・BroadcastChannel 受信は、retained Tree の旧順序と受信 slot から同じ区間 plan を作って描画する。50 / 20,000 の3兄弟順序変更で、遠い node の座標読取りは0で全再計算 Layout と一致する。大きい部分木の全子孫を訪ねる費用はまだ残る。
+
+rename / alias label / incoming edge label は node の field before image を持ち、children 全体を複製しない。alias 参照は target 別の索引で取得する。親・scope の状態が変わらない正規化では子孫を訪ねない。同寸法 rename は既存の measure / renderNodeSvg を使い、子集合の同一性が field patch から分かる場合は子配列を読まない。scope の relationIds が大きい場合の配列再構成、寸法変更、Style、active filter、未対応の編集入口は残る。
+
+同期からの差分描画には server 側の変更が必要。現在の `beta/src/node/start_viewer.ts:broadcastMapUpdate` は mapId / savedAt / sourceTabId / synchronized しか送らず、viewer の `applyExternalUpdate` は全 payload を取得する。既存通知から変更 record を復元できない。server の commit / sync 適用結果から changed records と連続性を確認する revision を渡し、初回・欠落だけ全取得する契約が必要。`beta/src/node/` はこの worker の編集禁止範囲なので、今回は変更していない。viewer 側で全 payload を diff して差分と称する回避は行わない。
+
+部分 capture の20,000件試験が一度30秒を超えた。既存の試験が root.children の live HTMLCollection を観察した後に20,000要素を切り離すため、jsdomが各変更でそのcollectionを再構築していた。同じassertion・30秒制限を保って静的な子一覧を観察するようにした。単独5試験は約5秒で通過。判定条件や対象件数は変更していない。
+
+browser: **未実行（Director 依頼）**。基準パスは repository root。`beta/` で以下を実行する。
+
+```sh
+npm run build
+npm run test:unit
+npx playwright test tests/visual/concreteness_axis.spec.js --retries=1
+node tests/acceptance/delta_viewer_judge.mjs .
+npx playwright test --retries=1
+```
+
+加えて `?deltaDebug=1` で同寸法rename・alias label・Grab・取消・Undo / Redo・別タブ受信、camera移動の開始・中断・終了時の描画とhit testingを確認する。現在のcheckpointは全経路の完了ではない。寸法変更のlazy offset、大きい部分木の移動、構造操作などの残るUndo入口、server同期通知の契約を継続する。
+
+
+R5 のローカル結果: `npm run test:unit` は1,675通過・27 skipped・2失敗（既存vault-watchのEMFILE、2 unhandled error）。build:testと全typecheckは成功。最終のmetadata正規化変更後の関連42試験も通過した。viewer.tsは17,561行。autosaveの関数抽出試験へ実AliasIndexを接続して依存不足の8失敗を解消し、部分captureのtimeoutも最終runで解消した。全unitの成功を報告するにはDirector環境で既存watch試験を含む再実行が必要。

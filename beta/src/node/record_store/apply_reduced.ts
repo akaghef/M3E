@@ -8,6 +8,7 @@
 // The outcome (state or conflicts) is the same as that of `applyChanges` on the full state;
 // tests/unit/record_store_apply_reduced.test.ts holds the two against each other.
 
+import { isOrderKey } from "../../shared/record_model/order_key";
 import { applyChanges, type ApplyResult, type RecordChange } from "../../shared/map_changes";
 
 type Dict = Record<string, unknown>;
@@ -57,7 +58,10 @@ export function applyChangesReduced(state: object, changes: readonly RecordChang
   for (const id of ids) {
     if (hasOwn(nodes, id)) reducedNodes[id] = nodes[id];
   }
-  const result = applyChanges({ ...source, nodes: reducedNodes }, changes, allowAfter);
+  // Preserve the complete viewer state's metadata visibility even when its only keyed
+  // node is outside the reduced set (legacy array-only states omit these properties).
+  const exposeOrders = Object.values(nodes).some(node => isDict(node) && hasOwn(node, "edgeOrder"));
+  const result = applyChanges({ ...source, nodes: reducedNodes }, changes, allowAfter, exposeOrders);
   if (!result.ok) return result;
   const applied = result.state as Dict;
   const appliedNodes = applied.nodes;
@@ -104,28 +108,32 @@ export function appendedLeaves(state: object, changes: readonly RecordChange[]):
     created.add(id);
   }
   if (created.size === 0) return undefined;
-  const positions = new Map<string, Array<{ id: string; index: number }>>();
+  const positions = new Map<string, Array<{ id: string; index: number; stable: boolean }>>();
   const edged = new Set<string>();
   for (const change of changes) {
     if (change.kind === "node") continue;
     if (change.kind === "attribute" && change.key[0] === "node" && created.has(change.key[1])) continue;
     if (change.kind !== "edge" || change.op !== "create" || !created.has(change.key[0]) || edged.has(change.key[0])) return undefined;
     const parentId = change.after?.parentId;
-    const index = change.after?.index;
+    const parent = nodes[parentId as string];
+    const ord = change.after?.ord;
+    const index = isOrderKey(ord) ? positions.get(parentId as string)?.length ?? 0 : change.after?.index;
     if (typeof parentId !== "string" || typeof index !== "number" || !Number.isSafeInteger(index)) return undefined;
-    const parent = nodes[parentId];
-    if (!isDict(parent) || !Array.isArray(parent.children)) return undefined;
+    if (!isDict(parent)) return undefined;
     edged.add(change.key[0]);
     let group = positions.get(parentId);
     if (!group) positions.set(parentId, group = []);
-    group.push({ id: change.key[0], index });
+    group.push({ id: change.key[0], index, stable: isOrderKey(ord) });
   }
   if (edged.size !== created.size) return undefined;
   const parents = new Map<string, string[]>();
   for (const [id, group] of positions) {
     group.sort((a, b) => a.index - b.index);
-    const length = ((nodes[id] as Dict).children as unknown[]).length;
-    if (group.some((entry, i) => entry.index !== length + i)) return undefined;
+    const stable = group.every(entry => entry.stable);
+    if (!stable) {
+      const length = ((nodes[id] as Dict).children as unknown[]).length;
+      if (group.some((entry, i) => entry.index !== length + i)) return undefined;
+    }
     parents.set(id, group.map((entry) => entry.id));
   }
   const applied = applyChanges({ ...source, nodes: {} }, changes);

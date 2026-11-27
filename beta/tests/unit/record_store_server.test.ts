@@ -1,3 +1,4 @@
+import { withOrderKeys } from "./record_store_helpers";
 // The real server on the record store (M3E_STORE_DIR) against the same server on SQLite.
 //
 // Two server processes are started from dist/ on temporary data: one in the default mode, one in
@@ -125,8 +126,9 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const COLLECTIONS = ["links", "annotations", "scopes", "surfaces", "linearNotesByScope"];
 
 /**
- * The record store gives a map state back in the normal form of its records. Three things differ
+ * The record store gives a map state back in the normal form of its records. Four things differ
  * from the text SQLite stores, none of them content:
+ *   - parent-edge order keys are carried as node.edgeOrder for compare-and-set;
  *   - an empty collection (`links: {}` ...) is left out;
  *   - a GraphLink port "auto" (the default) is left out;
  *   - the scope of the map root is always listed (`scopes["scope:<root>"]` with its label and root).
@@ -134,6 +136,7 @@ const COLLECTIONS = ["links", "annotations", "scopes", "surfaces", "linearNotesB
  */
 function normalForm(state: Json): Json {
   const out: Json = { ...state };
+  if (out.nodes) out.nodes = Object.fromEntries(Object.entries(out.nodes).map(([id, value]) => { const node = { ...(value as Json) }; delete node.edgeOrder; return [id, node]; }));
   if (out.links) {
     out.links = Object.fromEntries(Object.entries(out.links as Json).map(([id, link]) => {
       const copy: Json = { ...(link as Json) };
@@ -479,7 +482,7 @@ describe("the server on the record store answers like the server on SQLite", () 
 
   test("maps seeded with the same ids are all created, read back with those ids, and edited apart", async () => {
     const base = storeServer!.base;
-    const feel = (): Json => ({
+    const feel = (): Json => withOrderKeys({
       rootId: "root",
       nodes: {
         root: node("root", null, ["A", "B", "C"], "Feel Root"),
@@ -504,7 +507,7 @@ describe("the server on the record store answers like the server on SQLite", () 
     const command = { commandId: "feel-2-cmd", actor: { kind: "human", id: "parity" }, intent: "edit", changes: diffState(before.state, after) };
     expect((await call(base, "POST", "/api/maps/feel-2/commands", command)).status).toBe(200);
     let current = (await call(base, "GET", "/api/maps/feel-2")).body as Json;
-    expect(current.state.nodes).toEqual(after.nodes);
+    expect(normalForm(current.state).nodes).toEqual(normalForm(after).nodes);
     const whole = clone(current.state);
     whole.nodes.C.text = "Charlie of the second map";
     expect((await call(base, "POST", "/api/maps/feel-2", { state: whole, baseSavedAt: current.savedAt })).status).toBe(200);
