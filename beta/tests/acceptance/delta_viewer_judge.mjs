@@ -8,6 +8,7 @@
 // key), release M; DV3 is building its save, DV4 from pressing M to the second frame after releasing it.
 // Usage: node delta_viewer_judge.mjs <beta dir>
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -19,12 +20,28 @@ const SERVER = path.join(BETA, "dist/node/start_viewer.js");
 const require = createRequire(import.meta.url);
 const { toSnapshot } = require(path.join(BETA, "dist/shared/record_model/to_snapshot.js"));
 const { RecordWorkspaceStore } = require(path.join(BETA, "dist/node/record_store/store.js"));
+const { Neo4jDurability, neo4jConnectionFromEnv } = require(path.join(BETA, "dist/node/record_store/neo4j_durability.js"));
 const { chromium } = require(path.join(BETA, "node_modules/playwright"));
 const WS = "ws_delta_viewer_judge";
 const RATIO = 3;
 const TOGGLES = 9;
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-delta-viewer-judge-"));
 const results = [];
+const made = [];
+const connection = neo4jConnectionFromEnv(process.env, "M3E_TEST_NEO4J");
+if (!connection || /:7687\b/.test(connection.uri)) {
+  throw new Error("M3E_TEST_NEO4J_BOLT must name the disposable test Neo4j (not port 7687).");
+}
+
+function serverNeo4jEnv() {
+  const env = { M3E_NEO4J_BOLT: connection.uri };
+  if (connection.user) {
+    env.M3E_NEO4J_USER = connection.user;
+    env.M3E_NEO4J_PASSWORD = connection.password ?? "";
+  }
+  if (connection.database) env.M3E_NEO4J_DATABASE = connection.database;
+  return env;
+}
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -49,16 +66,20 @@ function mapState(count) {
 }
 
 async function start(name, count) {
-  const storeDir = path.join(root, name, "store");
-  fs.mkdirSync(path.dirname(storeDir), { recursive: true });
-  RecordWorkspaceStore.create(storeDir, toSnapshot(WS, [{ id: "m", state: mapState(count) }]));
+  const storeName = `${name}-${randomUUID()}`;
+  made.push(storeName);
+  await RecordWorkspaceStore.createInNeo4j(connection, storeName, toSnapshot(WS, [{ id: "m", state: mapState(count) }]));
+  const dataDir = path.join(root, name);
+  fs.mkdirSync(dataDir, { recursive: true });
   const port = await freePort();
   const env = {
-    ...process.env, M3E_FORBID_LIVE_DATA: "1", M3E_PORT: String(port), M3E_WORKSPACE_ID: WS, M3E_STORE_DIR: storeDir,
-    M3E_DATA_DIR: path.dirname(storeDir), M3E_OPEN_BROWSER: "0", M3E_CLOUD_SYNC: "0", M3E_AUTO_SYNC: "0",
+    ...process.env, M3E_FORBID_LIVE_DATA: "1", M3E_PORT: String(port), M3E_WORKSPACE_ID: WS,
+    M3E_RECORD_STORE: storeName, M3E_DATA_DIR: dataDir, M3E_OPEN_BROWSER: "0", M3E_CLOUD_SYNC: "0", M3E_AUTO_SYNC: "0",
     M3E_SKIP_SAMPLE_GENERATION: "1", M3E_DB_FILE: "data.sqlite",
+    ...serverNeo4jEnv(),
   };
-  for (const k of ["M3E_SYNC_REMOTE", "M3E_NEO4J_BOLT", "M3E_TAILSCALE_USERS", "M3E_HOST"]) delete env[k];
+  for (const k of ["M3E_SYNC_REMOTE", "M3E_NEO4J_BOLT", "M3E_NEO4J_USER", "M3E_NEO4J_PASSWORD", "M3E_NEO4J_PASSWORD_FILE", "M3E_NEO4J_DATABASE", "M3E_RECORD_STORE", "M3E_TAILSCALE_USERS", "M3E_HOST"]) delete env[k];
+  Object.assign(env, serverNeo4jEnv(), { M3E_RECORD_STORE: storeName, M3E_DATA_DIR: dataDir });
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env, stdio: ["ignore", "pipe", "pipe"] });
   const log = [];
   child.stdout.on("data", (c) => log.push(String(c)));
@@ -172,6 +193,11 @@ try {
   results.push(false);
 } finally {
   await browser.close();
+  for (const name of made) {
+    try { await Neo4jDurability.drop(connection, name); } catch (error) {
+      console.error(`cleanup ${name}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
 }
 const passed = results.filter(Boolean).length;
 console.log(`\n${passed}/${results.length} passed. temp=${root}`);

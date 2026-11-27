@@ -4,6 +4,7 @@
 // workspace, map or journal, through the real server process, and compares median times.
 // Usage: node delta_proportional_judge.mjs <beta dir>
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -15,12 +16,32 @@ const SERVER = path.join(BETA, "dist/node/start_viewer.js");
 const require = createRequire(import.meta.url);
 const { toSnapshot } = require(path.join(BETA, "dist/shared/record_model/to_snapshot.js"));
 const { RecordWorkspaceStore } = require(path.join(BETA, "dist/node/record_store/store.js"));
+const { Neo4jDurability, neo4jConnectionFromEnv } = require(path.join(BETA, "dist/node/record_store/neo4j_durability.js"));
 const { diffState } = require(path.join(BETA, "dist/shared/map_changes.js"));
 const WS = "ws_delta_judge";
 const RATIO = 3;
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-delta-judge-"));
 const servers = new Set();
 const results = [];
+const made = [];
+const connection = neo4jConnectionFromEnv(process.env, "M3E_TEST_NEO4J");
+if (!connection || /:7687\b/.test(connection.uri)) {
+  throw new Error("M3E_TEST_NEO4J_BOLT must name the disposable test Neo4j (not port 7687).");
+}
+
+function serverNeo4jEnv() {
+  const env = { M3E_NEO4J_BOLT: connection.uri };
+  if (connection.user) {
+    env.M3E_NEO4J_USER = connection.user;
+    env.M3E_NEO4J_PASSWORD = connection.password ?? "";
+  }
+  if (connection.database) env.M3E_NEO4J_DATABASE = connection.database;
+  return env;
+}
+
+function scrubServerEnv(env) {
+  for (const k of ["M3E_SYNC_REMOTE", "M3E_NEO4J_BOLT", "M3E_NEO4J_USER", "M3E_NEO4J_PASSWORD", "M3E_NEO4J_PASSWORD_FILE", "M3E_NEO4J_DATABASE", "M3E_RECORD_STORE", "M3E_TAILSCALE_USERS", "M3E_HOST"]) delete env[k];
+}
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -30,14 +51,17 @@ function freePort() {
   });
 }
 
-async function start(storeDir) {
+async function start(storeName) {
   const port = await freePort();
+  const dataDir = path.join(root, storeName);
+  fs.mkdirSync(dataDir, { recursive: true });
   const env = {
-    ...process.env, M3E_FORBID_LIVE_DATA: "1", M3E_PORT: String(port), M3E_WORKSPACE_ID: WS, M3E_STORE_DIR: storeDir,
-    M3E_DATA_DIR: path.dirname(storeDir), M3E_OPEN_BROWSER: "0", M3E_CLOUD_SYNC: "0", M3E_AUTO_SYNC: "0",
+    ...process.env, M3E_FORBID_LIVE_DATA: "1", M3E_PORT: String(port), M3E_WORKSPACE_ID: WS,
+    M3E_DATA_DIR: dataDir, M3E_OPEN_BROWSER: "0", M3E_CLOUD_SYNC: "0", M3E_AUTO_SYNC: "0",
     M3E_SKIP_SAMPLE_GENERATION: "1", M3E_DB_FILE: "data.sqlite",
   };
-  for (const k of ["M3E_SYNC_REMOTE", "M3E_NEO4J_BOLT", "M3E_TAILSCALE_USERS", "M3E_HOST"]) delete env[k];
+  scrubServerEnv(env);
+  Object.assign(env, serverNeo4jEnv(), { M3E_RECORD_STORE: storeName, M3E_DATA_DIR: dataDir });
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env, stdio: ["ignore", "pipe", "pipe"] });
   const log = [];
   child.stdout.on("data", (c) => log.push(String(c)));
@@ -75,11 +99,11 @@ function mapState(count) {
   return { rootId: "root", nodes, links: {} };
 }
 
-function createStore(name, maps) {
-  const dir = path.join(root, name, "store");
-  fs.mkdirSync(path.dirname(dir), { recursive: true });
-  RecordWorkspaceStore.create(dir, toSnapshot(WS, maps.map(([id, count]) => ({ id, state: mapState(count) }))));
-  return dir;
+async function createStore(name, maps) {
+  const storeName = `${name}-${randomUUID()}`;
+  made.push(storeName);
+  await RecordWorkspaceStore.createInNeo4j(connection, storeName, toSnapshot(WS, maps.map(([id, count]) => ({ id, state: mapState(count) }))));
+  return storeName;
 }
 
 let commandNo = 0;
@@ -121,19 +145,25 @@ function judge(id, label, small, large) {
 // DJ2: answering a repeated commandId costs the same whatever the length of the journal.
 async function journalChecks() {
   const measure = async (name, lines) => {
-    const dir = createStore(name, [["m", 10]]);
-    const store = RecordWorkspaceStore.open(dir, { warm: false });
+    const storeName = await createStore(name, [["m", 10]]);
+    const store = await RecordWorkspaceStore.openNeo4j(connection, storeName, { warm: false });
     let text = "Node 0";
     let last;
-    for (let i = 0; i < lines; i += 1) {
-      last = textCommand("n0", text, `${name} ${i}`);
-      const result = store.commitMapCommand("m", last, "acct_local_human");
-      if (!result.ok) throw new Error(`seed commit failed: ${JSON.stringify(result)}`);
-      text = `${name} ${i}`;
+    let seq;
+    try {
+      for (let i = 0; i < lines; i += 1) {
+        last = textCommand("n0", text, `${name} ${i}`);
+        const result = store.commitMapCommand("m", last, "acct_local_human");
+        if (!result.ok) throw new Error(`seed commit failed: ${JSON.stringify(result)}`);
+        text = `${name} ${i}`;
+      }
+      seq = store.seq();
+    } finally {
+      // close waits until every seeded commit is in Neo4j. durable() abandons the write after 15s,
+      // which is shorter than seeding the long journal.
+      await store.close();
     }
-    const seq = store.seq();
-    await store.close();
-    const s = await start(dir);
+    const s = await start(storeName);
     try {
       // The server may commit on start; ask for exactly the last line it holds.
       const first = await (await fetch(`${s.base}/api/sync/pull?after=${seq - 1}`)).json();
@@ -161,8 +191,8 @@ async function journalChecks() {
 // DJ3: a one-node commit costs the same whatever the size of the map.
 async function commitCheck() {
   const measure = async (name, count) => {
-    const dir = createStore(name, [["m", count]]);
-    const s = await start(dir);
+    const storeName = await createStore(name, [["m", count]]);
+    const s = await start(storeName);
     try {
       let text = "Node 1";
       return await median(15, async () => {
@@ -184,8 +214,8 @@ async function commitCheck() {
 // size of the map. The Command is the viewer's: the difference of two states, built before timing.
 async function structureChecks() {
   const measure = async (name, count, mutate) => {
-    const dir = createStore(name, [["m", count]]);
-    const s = await start(dir);
+    const storeName = await createStore(name, [["m", count]]);
+    const s = await start(storeName);
     try {
       let state = mapState(count);
       const samples = [];
@@ -231,6 +261,11 @@ try {
   results.push({ id: "run", pass: false });
 } finally {
   for (const s of [...servers]) await stop(s);
+  for (const name of made) {
+    try { await Neo4jDurability.drop(connection, name); } catch (error) {
+      console.error(`cleanup ${name}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
 }
 const passed = results.filter((r) => r.pass).length;
 console.log(`\n${passed}/${results.length} passed. temp=${root}`);
