@@ -6,13 +6,13 @@ on:
       - "install/**"
       - "scripts/**"
       - ".gitattributes"
-      - ".github/workflows/installer-lint.yml"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "install/**"
       - "scripts/**"
       - ".gitattributes"
-      - ".github/workflows/installer-lint.yml"
+      - ".github/workflows/**"
 
 jobs:
   lint-scripts:
