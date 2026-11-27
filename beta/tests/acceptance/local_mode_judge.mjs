@@ -97,7 +97,14 @@ async function main() {
     const r = await call(remote.base, "POST", `/api/maps/${id}`, { version: 1, savedAt: new Date().toISOString(), state: seedState });
     if (r.status !== 200) throw new Error(`seed ${id}: ${r.status} ${JSON.stringify(r.body)}`);
   }
-  const localEnv = (n) => ({ M3E_DATA_DIR: path.join(root, n), M3E_SYNC_REMOTE: remote.base });
+  const bolt = process.env.M3E_TEST_NEO4J_BOLT;
+  if (!bolt || /:7687\b/.test(bolt)) throw new Error("local mode needs M3E_TEST_NEO4J_BOLT on the disposable Neo4j (not port 7687).");
+  const neo4jEnv = {
+    M3E_NEO4J_BOLT: bolt,
+    ...(process.env.M3E_TEST_NEO4J_USER ? { M3E_NEO4J_USER: process.env.M3E_TEST_NEO4J_USER, M3E_NEO4J_PASSWORD: process.env.M3E_TEST_NEO4J_PASSWORD ?? "" } : {}),
+    ...(process.env.M3E_TEST_NEO4J_DATABASE ? { M3E_NEO4J_DATABASE: process.env.M3E_TEST_NEO4J_DATABASE } : {}),
+  };
+  const localEnv = (n) => ({ M3E_DATA_DIR: path.join(root, n), M3E_SYNC_REMOTE: remote.base, ...neo4jEnv });
   let A = await start("A", localEnv("A"));
   const B = await start("B", localEnv("B"));
 
@@ -186,7 +193,7 @@ async function main() {
 
   // AC11 a clone started without M3E_SYNC_REMOTE is still a local (edits go to the outbox, not straight into its store)
   await stop(B);
-  const B2 = await start("B", { M3E_DATA_DIR: path.join(root, "B") });
+  const B2 = await start("B", { M3E_DATA_DIR: path.join(root, "B"), ...neo4jEnv });
   const st11 = await status(B2);
   await setText(B2, "m1", "j_a", "no-env");
   const st11b = await status(B2);
@@ -199,7 +206,7 @@ async function main() {
   const other = await start("other", { M3E_DATA_DIR: path.join(root, "other"), M3E_STORE_DIR: path.join(root, "other/store") });
   const otherSeq0 = await remoteSeq(other);
   await stop(A);
-  A = await start("A", { M3E_DATA_DIR: path.join(root, "A"), M3E_SYNC_REMOTE: other.base });
+  A = await start("A", { M3E_DATA_DIR: path.join(root, "A"), M3E_SYNC_REMOTE: other.base, ...neo4jEnv });
   await setText(A, "m1", "j_a", "fenced");
   const fp = await push(A); const fl = await pull(A);
   const stF = await status(A);
@@ -213,6 +220,14 @@ try {
   check("RUN", false, error.stack);
 } finally {
   for (const s of [...servers]) await stop(s);
+  try {
+    const { dropDevicesUnder } = require(path.join(BETA, "dist/node/sync/local.js"));
+    const { neo4jConnectionFromEnv } = require(path.join(BETA, "dist/node/record_store/neo4j_durability.js"));
+    const connection = neo4jConnectionFromEnv(process.env, "M3E_TEST_NEO4J");
+    if (connection) await dropDevicesUnder(connection, root);
+  } catch (error) {
+    console.error(`cleanup: ${error instanceof Error ? error.message : error}`);
+  }
   const failed = results.filter((r) => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} passed. temp=${root}`);
   process.exitCode = failed.length ? 1 : 0;

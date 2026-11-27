@@ -1,12 +1,14 @@
+import { createHash } from "crypto";
 import fs from "fs";
+import os from "os";
 import path from "path";
+import neo4j from "neo4j-driver";
 import type { SnapshotRecord } from "../../shared/record_model/types";
-import { fsyncDir } from "./legacy_files_shim";
+import { Neo4jDurability, neo4jConnectionFromEnv, type Neo4jConnection } from "../record_store/neo4j_durability";
 import { LOCAL_REBASE_INTENT, RecordWorkspaceStore, type JournalLine } from "../record_store/store";
-import { assertNotLiveM3e, writeFileDurably } from "./legacy_files_shim";
 import { sameSyncIdentity, type SyncIdentity } from "../record_store/sync_types";
 import { accountForConnection, LOCAL_HUMAN_ACCOUNT_ID } from "./issuer";
-import { appendJsonLine, DeviceOutbox, pushEnvelope, readDurableLines, settlePushResults, type OutboxEntry, type OutboxRejection } from "./outbox";
+import { deleteSyncNodes, DeviceOutbox, pushEnvelope, readConflicts, rememberConflict, settlePushResults, writeFileDurably, type OutboxEntry, type OutboxRejection } from "./outbox";
 import type { PushResultItem } from "./push";
 
 interface RemoteMetadata extends SyncIdentity {
@@ -20,6 +22,8 @@ interface RemoteMetadata extends SyncIdentity {
    * every working commit after it is a pending Command, in outbox order.
    */
   working?: { confirmedSeq: number; workingSeq: number };
+  /** Increments when the working store is built again. A rebase keeps the number. */
+  workingGeneration?: number;
 }
 
 interface Clone extends SyncIdentity {
@@ -49,6 +53,85 @@ export class LocalSyncError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly limitBytes?: number) { super(message); }
 }
 
+/**
+ * Names of one device's stores in Neo4j. The device suffix is a hash of the data directory so two
+ * data directories of one workspace can share a Neo4j without writing each other's stores.
+ */
+export function deviceStoreNames(workspaceId: string, dataDir: string): {
+  confirmed: string; working: string; outbox: string; conflicts: string;
+} {
+  const device = createHash("sha256").update(path.resolve(dataDir)).digest("hex").slice(0, 12);
+  const name = (kind: string) => `${workspaceId}:${kind}:${device}`;
+  return { confirmed: name("confirmed"), working: name("working"), outbox: name("outbox"), conflicts: name("conflicts") };
+}
+
+/** Drop confirmed and working stores, and the outbox and conflict nodes, for every data directory under `root`. */
+export async function dropDevicesUnder(connection: Neo4jConnection, root: string): Promise<void> {
+  const dirs: string[] = [];
+  const stack = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    let names: string[];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    if (names.includes("remote.json") && path.basename(dir) === "sync") dirs.push(path.dirname(dir));
+    for (const name of names) {
+      if (name === "node_modules" || name === ".git") continue;
+      const full = path.join(dir, name);
+      try { if (fs.statSync(full).isDirectory()) stack.push(full); } catch { /* skip */ }
+    }
+  }
+  for (const dataDir of dirs) {
+    let workspaceId = "";
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(dataDir, "sync", "remote.json"), "utf8")) as { workspaceId?: unknown };
+      if (typeof meta.workspaceId === "string") workspaceId = meta.workspaceId;
+    } catch { continue; }
+    if (!workspaceId) continue;
+    const names = deviceStoreNames(workspaceId, dataDir);
+    await Neo4jDurability.drop(connection, names.confirmed);
+    await Neo4jDurability.drop(connection, names.working);
+    deleteSyncNodes(connection, names.outbox);
+    deleteSyncNodes(connection, names.conflicts);
+  }
+}
+
+/** The clone index is not part of `createInNeo4j` (records only). It still holds map revisions, so a clone keeps `savedAt`. */
+async function applyCloneIndex(connection: Neo4jConnection, store: string, index: string | undefined): Promise<void> {
+  if (!index?.trim()) return;
+  const body = JSON.parse(index) as {
+    mapSeq?: Record<string, number>;
+    retired?: Record<string, string>;
+    commandResults?: Array<[string, { seq: number; hash: string; canonicalHash?: string; syncHash?: string; mapIds: string[]; result?: unknown }]>;
+  };
+  const mapSeq = Object.entries(body.mapSeq ?? {}).map(([mapId, seq]) => ({ mapId, seq: neo4j.int(seq) }));
+  const retired = Object.entries(body.retired ?? {}).map(([id, retiredBody]) => ({ id, body: retiredBody }));
+  const commands = (body.commandResults ?? []).map(([commandId, entry]) => ({
+    commandId, seq: neo4j.int(entry.seq), hash: entry.hash,
+    canonicalHash: entry.canonicalHash ?? null, syncHash: entry.syncHash ?? null,
+    mapIds: entry.mapIds, result: entry.result === undefined ? null : JSON.stringify(entry.result),
+  }));
+  if (mapSeq.length === 0 && retired.length === 0 && commands.length === 0) return;
+  const auth = connection.user !== undefined ? neo4j.auth.basic(connection.user, connection.password ?? "") : undefined;
+  const driver = neo4j.driver(connection.uri, auth, { disableLosslessIntegers: false });
+  const session = driver.session({ ...(connection.database ? { database: connection.database } : {}), defaultAccessMode: neo4j.session.WRITE });
+  try {
+    if (mapSeq.length > 0) await session.run("UNWIND $rows AS row CREATE (m:MapSeq {store: $store, mapId: row.mapId, seq: row.seq})", { store, rows: mapSeq });
+    if (retired.length > 0) await session.run("UNWIND $rows AS row CREATE (r:RetiredId {store: $store, id: row.id, body: row.body})", { store, rows: retired });
+    if (commands.length > 0) await session.run("UNWIND $rows AS row CREATE (c:CommandResult) SET c = row, c.store = $store", { store, rows: commands });
+  } finally {
+    await session.close();
+    await driver.close();
+  }
+}
+
+function assertNotLiveM3e(dir: string): void {
+  if (process.env.M3E_FORBID_LIVE_DATA !== "1") return;
+  const live = path.join(os.homedir(), "Library", "Application Support", "M3E");
+  if (dir === live || dir.startsWith(live + path.sep)) {
+    throw new Error("Refusing to run on a record store inside the live M3E data directory (M3E_FORBID_LIVE_DATA=1).");
+  }
+}
+
 function identityOf(body: Partial<SyncIdentity>): SyncIdentity {
   const { workspaceId, historyId, epoch } = body;
   if (typeof workspaceId !== "string" || workspaceId === "" || typeof historyId !== "string"
@@ -56,46 +139,6 @@ function identityOf(body: Partial<SyncIdentity>): SyncIdentity {
     throw new LocalSyncError(409, "FENCED", "The remote did not supply a workspace and history identity.");
   }
   return { workspaceId, historyId, epoch };
-}
-
-function currentTarget(link: string): string | undefined {
-  let target: string;
-  try {
-    const name = process.platform === "win32"
-      ? fs.readFileSync(path.join(link, "CURRENT"), "utf8").trim()
-      : fs.readlinkSync(link);
-    target = path.resolve(path.dirname(link), name);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-  const relative = path.relative(path.dirname(link), target);
-  if (!relative.startsWith(`.${path.basename(link)}-`) || relative.includes(path.sep)) {
-    throw new Error("The active sync store points outside its data directory.");
-  }
-  return target;
-}
-
-/** Commit a complete directory with one atomic rename of its pointer. */
-function activateDirectory(link: string, target: string): void {
-  const previous = currentTarget(link);
-  fsyncDir(path.dirname(target));
-  if (process.platform === "win32") {
-    // Windows cannot atomically replace an existing directory junction. Use a file
-    // pointer for the same commit operation; the record store opens its target.
-    fs.mkdirSync(link, { recursive: true });
-    writeFileDurably(path.join(link, "CURRENT"), path.basename(target) + "\n");
-  } else {
-    const temporary = `${link}.next`;
-    fs.rmSync(temporary, { force: true });
-    fs.symlinkSync(path.basename(target), temporary, "dir");
-    fs.renameSync(temporary, link);
-  }
-  fsyncDir(path.dirname(link));
-  if (previous !== undefined && previous !== target) {
-    // The new generation is already committed. Retaining the previous one on a cleanup error is safe.
-    try { fs.rmSync(previous, { recursive: true, force: true }); } catch { /* retry through manual cleanup */ }
-  }
 }
 
 const GATEWAY_DOWN = new Set([502, 503, 504]);
@@ -152,13 +195,20 @@ function outboxIssuer(entry: OutboxEntry): string {
   return entry.issuer === mcp ? mcp : LOCAL_HUMAN_ACCOUNT_ID;
 }
 
+/**
+ * Wait until the store's commits are in Neo4j, then one microtask more.
+ * The durability pump clears its running flag only after `durable()` resumes the caller.
+ * A commit enqueued in that same turn never starts.
+ */
+async function settled(store: RecordWorkspaceStore): Promise<void> {
+  await store.durable();
+  await Promise.resolve();
+}
+
 export class LocalSync {
   private readonly syncDir: string;
   private readonly metadataFile: string;
-  private readonly confirmedLink: string;
-  private readonly workingLink: string;
-  private readonly conflictsFile: string;
-  private readonly outbox: DeviceOutbox;
+  private outbox!: DeviceOutbox;
   private readonly conflicts = new Map<string, Conflict>();
   private metadata!: RemoteMetadata;
   private confirmed!: RecordWorkspaceStore;
@@ -175,27 +225,19 @@ export class LocalSync {
   /** A push or a refusal changed the pending set since the base. */
   private pendingChanged = false;
 
-  private constructor(dataDir: string, private readonly origin: string) {
+  private constructor(private readonly dataDir: string, private readonly origin: string, private readonly connection: Neo4jConnection) {
     this.syncDir = path.join(dataDir, "sync");
     this.metadataFile = path.join(this.syncDir, "remote.json");
-    this.confirmedLink = path.join(this.syncDir, "confirmed");
-    this.workingLink = path.join(dataDir, "store");
-    this.conflictsFile = path.join(this.syncDir, "conflicts.jsonl");
-    this.outbox = DeviceOutbox.open(path.join(this.syncDir, "outbox.jsonl"));
-    if (fs.existsSync(this.conflictsFile)) {
-      const rows = readDurableLines<Conflict>(this.conflictsFile, (value) => {
-        const row = value as Partial<Conflict> | null;
-        return typeof row?.at === "string" && typeof row.entry?.commandId === "string";
-      }, true);
-      for (const conflict of rows) this.conflicts.set(conflict.entry.commandId, conflict);
-    }
+    fs.mkdirSync(this.syncDir, { recursive: true });
   }
 
-  static async open(dataDir: string, origin: string): Promise<LocalSync> {
+  static async open(dataDir: string, origin: string, connection?: Neo4jConnection | null): Promise<LocalSync> {
     const url = new URL(origin);
     if (!/^https?:$/.test(url.protocol) || url.origin !== origin.replace(/\/$/, "")) {
       throw new Error("M3E_SYNC_REMOTE must be an HTTP(S) origin.");
     }
+    const resolved = connection === undefined ? neo4jConnectionFromEnv() : connection;
+    if (!resolved?.uri) throw new Error("Local mode needs Neo4j (M3E_NEO4J_BOLT).");
     const dir = path.resolve(dataDir);
     assertNotLiveM3e(dir);
     // Never replace a record store or a SQLite workspace with a clone.
@@ -203,22 +245,25 @@ export class LocalSync {
     if (!recorded && fs.existsSync(dir) && fs.readdirSync(dir).some((name) => name !== "sync")) {
       throw new Error("Local mode needs an empty data directory for the initial clone.");
     }
-    const local = new LocalSync(dir, url.origin);
+    const local = new LocalSync(dir, url.origin, resolved);
     try {
       if (recorded) {
         local.metadata = JSON.parse(fs.readFileSync(local.metadataFile, "utf8")) as RemoteMetadata;
         identityOf(local.metadata);
-        local.confirmed = local.openConfirmed();
+        local.confirmed = await local.openConfirmed();
         if (!sameSyncIdentity(local.metadata, local.confirmed.syncIdentity())) throw new Error("The confirmed store is from a different history.");
         if (local.confirmed.seq() < local.metadata.confirmedSeq) throw new Error("The confirmed store moved backwards.");
       } else {
         const clone = await request<Clone>(new URL("/api/sync/clone?index=1", url));
-        local.installClone(clone);
+        await local.installClone(clone);
         local.metadata = { ...identityOf(clone), origin: url.origin, confirmedSeq: clone.snapshotSeq, lastPushAt: null, lastPullAt: null };
         local.remoteState = "ok";
       }
+      local.bindDevice();
       local.persistMetadata();
-      if (!recorded || !local.resume()) local.rebuild();
+      if (!recorded || !(await local.resume())) await local.rebuild();
+      await settled(local.working);
+      await settled(local.confirmed);
       return local;
     } catch (error) {
       await local.close();
@@ -228,8 +273,9 @@ export class LocalSync {
 
   store(): RecordWorkspaceStore { return this.working; }
 
+  /** Stable across a rebase. Changes when the working store is built again. */
   storeDir(): string {
-    return currentTarget(this.workingLink) ?? this.workingLink;
+    return `${this.names().working}#${this.metadata.workingGeneration ?? 0}`;
   }
 
   async close(): Promise<void> {
@@ -238,35 +284,57 @@ export class LocalSync {
     await this.working?.close();
   }
 
+  private names() {
+    return deviceStoreNames(this.metadata.workspaceId, this.dataDir);
+  }
+
+  private bindDevice(): void {
+    const names = this.names();
+    this.outbox = DeviceOutbox.open(names.outbox, this.connection);
+    for (const conflict of readConflicts<Conflict>(this.connection, names.conflicts)) {
+      if (typeof conflict?.at === "string" && typeof conflict.entry?.commandId === "string") {
+        this.conflicts.set(conflict.entry.commandId, conflict);
+      }
+    }
+  }
+
   private persistMetadata(): void {
     this.metadata.confirmedSeq = this.confirmed.seq();
     writeFileDurably(this.metadataFile, JSON.stringify(this.metadata) + "\n");
   }
 
-  private openConfirmed(): RecordWorkspaceStore {
-    const dir = currentTarget(this.confirmedLink);
-    if (dir === undefined) throw new Error("The confirmed store is missing.");
-    return RecordWorkspaceStore.open(dir, { warm: false, compactAfterLines: 0 });
+  private openConfirmed(): Promise<RecordWorkspaceStore> {
+    return RecordWorkspaceStore.openNeo4j(this.connection, this.names().confirmed, { warm: false });
   }
 
-  private installClone(clone: Clone): void {
+  private async installClone(clone: Clone): Promise<void> {
     const header = clone.records?.[0];
     if (header?.kind !== "snapshot" || header.seq !== clone.snapshotSeq || !sameSyncIdentity(identityOf(clone), header)) {
       throw new LocalSyncError(409, "FENCED", "The snapshot header does not match the remote response.");
     }
-    const dir = fs.mkdtempSync(path.join(this.syncDir, ".confirmed-"));
+    const name = deviceStoreNames(identityOf(clone).workspaceId, this.dataDir).confirmed;
+    const previous = this.confirmed;
+    const fallback = previous ? previous.records() : undefined;
+    const fallbackIndex = previous && fallback ? previous.snapshotIndex(fallback) : undefined;
+    await previous?.close();
     let next: RecordWorkspaceStore | undefined;
     try {
-      RecordWorkspaceStore.create(dir, clone.records, clone.index);
-      next = RecordWorkspaceStore.open(dir, { warm: false, compactAfterLines: 0 });
+      await Neo4jDurability.drop(this.connection, name);
+      await RecordWorkspaceStore.createInNeo4j(this.connection, name, clone.records);
+      await applyCloneIndex(this.connection, name, clone.index);
+      next = await RecordWorkspaceStore.openNeo4j(this.connection, name, { warm: false });
       if (next.seq() !== clone.snapshotSeq) throw new Error("The snapshot does not end at its declared sequence.");
-      void this.confirmed?.close();
-      activateDirectory(this.confirmedLink, dir);
       this.confirmed = next;
     } catch (error) {
-      void next?.close();
-      fs.rmSync(dir, { recursive: true, force: true });
-      if (this.confirmed) this.confirmed = this.openConfirmed();
+      await next?.close().catch(() => {});
+      if (fallback) {
+        try {
+          await Neo4jDurability.drop(this.connection, name);
+          await RecordWorkspaceStore.createInNeo4j(this.connection, name, fallback);
+          await applyCloneIndex(this.connection, name, fallbackIndex);
+          this.confirmed = await RecordWorkspaceStore.openNeo4j(this.connection, name, { warm: false });
+        } catch { /* report the clone error */ }
+      }
       throw error;
     }
   }
@@ -276,7 +344,7 @@ export class LocalSync {
       const id = rejected.entry.commandId;
       if (this.conflicts.has(id)) continue;
       const row = { ...rejected, at: new Date().toISOString() };
-      appendJsonLine(this.conflictsFile, row);
+      rememberConflict(this.connection, this.names().conflicts, row);
       this.conflicts.set(id, row);
       this.pendingChanged = true;
     }
@@ -335,27 +403,41 @@ export class LocalSync {
    * Proportional to the workspace; used only for a clone, a reclone, or a working store that
    * cannot be resumed.
    */
-  private rebuild(): string[] {
+  private async rebuild(): Promise<string[]> {
     const records = this.confirmed.records();
-    const dir = fs.mkdtempSync(path.join(path.dirname(this.workingLink), ".store-"));
-    const changed = new Set(this.working?.listMaps().map((map) => map.id));
+    const index = this.confirmed.snapshotIndex(records);
+    const name = this.names().working;
+    const previous = this.working;
+    const fallback = previous ? previous.records() : undefined;
+    const fallbackIndex = previous && fallback ? previous.snapshotIndex(fallback) : undefined;
+    const changed = new Set(previous ? previous.listMaps().map((map) => map.id) : []);
+    await previous?.close();
     let next: RecordWorkspaceStore | undefined;
     try {
-      RecordWorkspaceStore.create(dir, records, this.confirmed.snapshotIndex(records));
-      next = RecordWorkspaceStore.open(dir, { warm: false });
+      await Neo4jDurability.drop(this.connection, name);
+      await RecordWorkspaceStore.createInNeo4j(this.connection, name, records);
+      await applyCloneIndex(this.connection, name, index);
+      next = await RecordWorkspaceStore.openNeo4j(this.connection, name, { warm: false });
       const base = next.seq();
       this.track(next);
       this.replay(next, this.pending());
+      await settled(next);
       for (const map of next.listMaps()) changed.add(map.id);
       this.captureInto(next);
-      const previous = this.working;
-      activateDirectory(this.workingLink, dir);
       this.working = next;
-      void previous?.close();
+      this.metadata.workingGeneration = (this.metadata.workingGeneration ?? 0) + 1;
       this.setBase(base);
     } catch (error) {
-      void next?.close();
-      fs.rmSync(dir, { recursive: true, force: true });
+      await next?.close().catch(() => {});
+      if (fallback) {
+        try {
+          await Neo4jDurability.drop(this.connection, name);
+          await RecordWorkspaceStore.createInNeo4j(this.connection, name, fallback);
+          await applyCloneIndex(this.connection, name, fallbackIndex);
+          this.working = await RecordWorkspaceStore.openNeo4j(this.connection, name, { warm: false });
+          this.captureInto(this.working);
+        } catch { /* report the rebuild error */ }
+      }
       throw error;
     }
     return [...changed];
@@ -366,7 +448,7 @@ export class LocalSync {
    * pending Commands or the delta touched to their confirmed values, then commit the pending
    * Commands again. Proportional to the delta and the pending Commands, never to the workspace.
    */
-  private rebase(delta: JournalLine[]): string[] {
+  private async rebase(delta: JournalLine[]): Promise<string[]> {
     const rks = new Set(this.dirty);
     const changed = new Set(this.dirtyMaps);
     for (const line of delta) {
@@ -379,11 +461,13 @@ export class LocalSync {
     try {
       // A no-op leaves no line, so every pending Command is forgotten, not only those with a commit.
       // resetRecords forgets tentative successes, never deterministic refusals. Remote refusals
-      // stay in conflicts.jsonl and pending() excludes them, including after restart/rebuild.
+      // stay recorded and pending() excludes them, including after restart or rebuild.
       const forget = [...this.committedSinceBase, ...pending.map((entry) => ({ mapId: entry.mapId, commandId: entry.commandId, newMapId: entry.mapOp === "rename" ? entry.newMapId : undefined }))];
       base = this.working.resetRecords(rks, (rk) => this.confirmed.record(rk), forget);
+      await settled(this.working);
       this.track(this.working);
       this.replay(this.working, pending);
+      await settled(this.working);
     } catch (error) {
       // The working store is half rebased: forget its base, so the next pull or start rebuilds it.
       this.metadata.working = undefined;
@@ -402,14 +486,14 @@ export class LocalSync {
    * Open the working store as it was left, when its base still describes it: no full rebuild at
    * start. False when the store cannot be resumed; the caller rebuilds it.
    */
-  private resume(): boolean {
+  private async resume(): Promise<boolean> {
     const base = this.metadata.working;
-    if (!base || currentTarget(this.workingLink) === undefined) return false;
+    if (!base) return false;
     let store: RecordWorkspaceStore | undefined;
     try {
-      store = RecordWorkspaceStore.open(currentTarget(this.workingLink)!, { warm: false });
-      const lines = store.seq() >= base.workingSeq ? store.journalLinesAfter(base.workingSeq) : null;
-      const delta = this.confirmed.journalLinesAfter(base.confirmedSeq);
+      store = await RecordWorkspaceStore.openNeo4j(this.connection, this.names().working, { warm: false });
+      const lines = store.seq() >= base.workingSeq ? await store.readJournalAfter(base.workingSeq) : null;
+      const delta = await this.confirmed.readJournalAfter(base.confirmedSeq);
       const expected = this.pending();
       // Each line is the commit of a pending Command, in outbox order. A pending Command that was a
       // no-op left no line, so the lines are matched as a subsequence of the pending Commands.
@@ -422,7 +506,7 @@ export class LocalSync {
         return true;
       });
       if (!lines || !delta || !sameSyncIdentity(store.syncIdentity(), this.confirmed.syncIdentity())) {
-        void store.close();
+        await store.close();
         return false;
       }
       this.working = store;
@@ -436,13 +520,14 @@ export class LocalSync {
       // A Command written to the outbox before a stop that came before its local commit.
       if (matched) this.replay(store, expected.slice(next));
       else this.pendingChanged = true; // A squash changed IDs; rebase only the tracked delta.
+      await settled(store);
       this.captureInto(store);
-      if (delta.length > 0 || this.pendingChanged) this.rebase(delta);
+      if (delta.length > 0 || this.pendingChanged) await this.rebase(delta);
       return true;
     } catch (error) {
       // A working store that cannot be opened is rebuilt; a failure after it was adopted is not hidden.
       if (this.working === store && store !== undefined) throw error;
-      void store?.close();
+      await store?.close();
       return false;
     }
   }
@@ -517,7 +602,7 @@ export class LocalSync {
       const clone = await this.remote<Clone>(this.fencedUrl("/api/sync/clone", { index: "1" }));
       if (clone.snapshotSeq < Math.max(before, response.snapshotSeq)) this.refuseRollback();
       try {
-        this.installClone(clone);
+        await this.installClone(clone);
       } catch (error) {
         if (error instanceof LocalSyncError && error.code === "FENCED") {
           this.remoteState = "refused";
@@ -529,19 +614,20 @@ export class LocalSync {
     } else {
       try {
         this.confirmed.appendConfirmed(response.lines, response.throughSeq);
+        await settled(this.confirmed);
         pulled = response.lines.length;
         delta = response.lines;
       } catch (error) {
         // Recover the valid prefix of an append that failed midway; the next start rebases from it.
-        void this.confirmed.close();
-        this.confirmed = this.openConfirmed();
+        await this.confirmed.close();
+        this.confirmed = await this.openConfirmed();
         this.persistMetadata();
         throw error;
       }
       this.persistMetadata();
     }
-    const changed = response.reclone || !this.metadata.working ? this.rebuild()
-      : delta.length > 0 || this.pendingChanged ? this.rebase(delta) : [];
+    const changed = response.reclone || !this.metadata.working ? await this.rebuild()
+      : delta.length > 0 || this.pendingChanged ? await this.rebase(delta) : [];
     this.metadata.origin = this.origin;
     this.metadata.lastPullAt = new Date().toISOString();
     this.persistMetadata();

@@ -2,6 +2,7 @@
 // The server under test is a child process on a temporary store. This file does not
 // import start_viewer (that would open dotenv and a live store).
 
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
@@ -15,7 +16,8 @@ import { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import type { EngineApplier } from "../../src/node/record_store/engine";
 import { accountForConnection } from "../../src/node/sync/issuer";
 import { MIN_SEQ_TIMEOUT_CODE, waitForAppliedSeq } from "../../src/node/sync/min_seq";
-import { DeviceOutbox, pushOutboxFile } from "../../src/node/sync/outbox";
+import { deleteSyncNodes, DeviceOutbox, pushOutboxFile } from "../../src/node/sync/outbox";
+import { TEST_NEO4J } from "./neo4j_test_store";
 
 const BETA = path.resolve(__dirname, "..", "..");
 const SERVER = path.join(BETA, "dist", "node", "start_viewer.js");
@@ -371,13 +373,16 @@ describe("sync HTTP, issuer, and outbox", () => {
     const old = mapState();
     const stale = clone(old);
     stale.nodes.bravo.text = "Bravo-nope";
-    const file = path.join(root, "outbox.jsonl");
-    const first = DeviceOutbox.open(file);
+    const file = `ws_sync:outbox:${randomUUID()}`;
+    const previousBolt = process.env.M3E_NEO4J_BOLT;
+    process.env.M3E_NEO4J_BOLT = TEST_NEO4J.uri;
+    try {
+    const first = DeviceOutbox.open(file, TEST_NEO4J);
     first.append({ commandId: "out-1", baseSeq: 0, mapId: MAP, command: commandOf(state, step, "out-1") });
     first.append({ commandId: "out-2", baseSeq: 0, mapId: MAP, command: commandOf(step, done, "out-2") });
     first.append({ commandId: "out-3", baseSeq: 0, mapId: MAP, command: commandOf(old, stale, "out-3", "another-client") });
 
-    const reopened = DeviceOutbox.open(file);
+    const reopened = DeviceOutbox.open(file, TEST_NEO4J);
     expect(reopened.list().map((entry) => entry.commandId)).toEqual(["out-1", "out-2", "out-3"]);
     expect(reopened.list()[0]).toMatchObject({ commandId: "out-1", baseSeq: 0, mapId: MAP });
     expect(typeof reopened.list()[0]?.createdAt).toBe("string");
@@ -385,21 +390,28 @@ describe("sync HTTP, issuer, and outbox", () => {
     const report = await pushOutboxFile(file, running.base);
     expect(report.rejected.map((item) => item.entry.commandId)).toEqual(["out-3"]);
     expect(report.rejected[0]?.code).toBe("CONFLICT");
-    expect(DeviceOutbox.open(file).list()).toEqual([]);
+    expect(DeviceOutbox.open(file, TEST_NEO4J).list()).toEqual([]);
     expect((await call("GET", `/api/maps/${MAP}`)).body.state.nodes.alpha.text).toBe("Alpha-3");
 
     const later = (await call("GET", `/api/maps/${MAP}`)).body.state as Record<string, any>;
     const renamed = clone(later);
     renamed.nodes.bravo.text = "Bravo-2";
-    DeviceOutbox.open(file).append({ commandId: "out-4", baseSeq: 0, mapId: MAP, command: commandOf(later, renamed, "out-4") });
-    const child = spawn(process.execPath, [CLI, "push", "--outbox", file, "--server", running.base], { cwd: BETA, stdio: ["ignore", "pipe", "pipe"] });
+    DeviceOutbox.open(file, TEST_NEO4J).append({ commandId: "out-4", baseSeq: 0, mapId: MAP, command: commandOf(later, renamed, "out-4") });
+    const child = spawn(process.execPath, [CLI, "push", "--outbox", file, "--server", running.base], {
+      cwd: BETA, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, M3E_NEO4J_BOLT: TEST_NEO4J.uri },
+    });
     let stdout = "";
     child.stdout?.on("data", (chunk) => { stdout += String(chunk); });
     const exit = await new Promise<number>((resolve) => child.once("exit", (code) => resolve(code ?? 1)));
     expect(exit).toBe(0);
     expect(JSON.parse(stdout).rejected).toEqual([]);
-    expect(DeviceOutbox.open(file).list()).toEqual([]);
+    expect(DeviceOutbox.open(file, TEST_NEO4J).list()).toEqual([]);
     expect((await call("GET", `/api/maps/${MAP}`)).body.state.nodes.bravo.text).toBe("Bravo-2");
+    } finally {
+      if (previousBolt === undefined) delete process.env.M3E_NEO4J_BOLT;
+      else process.env.M3E_NEO4J_BOLT = previousBolt;
+      deleteSyncNodes(TEST_NEO4J, file);
+    }
   });
 
   test("pull returns the archived suffix, and a seq older than the archive horizon asks for a reclone", async () => {

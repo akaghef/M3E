@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import os from "node:os";
@@ -6,25 +7,25 @@ import { Readable } from "node:stream";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { closeActiveRecordStore, activeRecordStore, startLocalMode } from "../../src/node/record_store/active";
-import { RecordWorkspaceStore } from "../../src/node/record_store/store";
+import { Neo4jDurability } from "../../src/node/record_store/neo4j_durability";
+import { RecordWorkspaceStore, type JournalLine } from "../../src/node/record_store/store";
 import { handleRecordSyncHttp } from "../../src/node/sync/http";
 import { aiAgentAccountId } from "../../src/node/sync/issuer";
-import { LocalSync } from "../../src/node/sync/local";
-import { DeviceOutbox, pushEnvelope } from "../../src/node/sync/outbox";
+import { deviceStoreNames, dropDevicesUnder, LocalSync } from "../../src/node/sync/local";
+import { DeviceOutbox, outboxIO, pushEnvelope } from "../../src/node/sync/outbox";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import type { AppState } from "../../src/shared/types";
+import { TEST_NEO4J } from "./neo4j_test_store";
 
 const ORIGIN = "http://127.0.0.1";
-function activeDirectory(dir: string): string {
-  return process.platform === "win32"
-    ? path.resolve(path.dirname(dir), fs.readFileSync(path.join(dir, "CURRENT"), "utf8").trim())
-    : fs.realpathSync(dir);
-}
+const WORKSPACE = "workspace";
 
 let temp: string;
 let devices: LocalSync[];
 let transform: (url: URL, response: any) => unknown;
 let online: boolean;
+let remoteName: string;
+let remoteStore: RecordWorkspaceStore;
 
 function appState(text = "Root"): AppState {
   return {
@@ -37,11 +38,17 @@ function appState(text = "Root"): AppState {
 function remote() { return activeRecordStore()!; }
 
 function entries(name: string) {
-  return DeviceOutbox.open(path.join(temp, name, "sync/outbox.jsonl")).list();
+  return DeviceOutbox.open(deviceStoreNames(WORKSPACE, path.join(temp, name)).outbox, TEST_NEO4J).list();
+}
+
+async function confirmedLines(name: string, after: number) {
+  const store = await RecordWorkspaceStore.openNeo4j(TEST_NEO4J, deviceStoreNames(WORKSPACE, path.join(temp, name)).confirmed, { warm: false });
+  try { return await store.readJournalAfter(after); }
+  finally { await store.close(); }
 }
 
 async function client(name = "local"): Promise<LocalSync> {
-  const device = await LocalSync.open(path.join(temp, name), ORIGIN);
+  const device = await LocalSync.open(path.join(temp, name), ORIGIN, TEST_NEO4J);
   devices.push(device);
   return device;
 }
@@ -88,7 +95,7 @@ async function serve(url: URL, options: RequestInit = {}): Promise<Response> {
   return responseFor(url, options, (req, res) => void handleRecordSyncHttp(req, res), transform);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   temp = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-local-sync-store-"));
   devices = [];
   online = true;
@@ -98,13 +105,24 @@ beforeEach(() => {
   vi.stubEnv("M3E_FORBID_LIVE_DATA", "1");
   vi.stubEnv("M3E_NEO4J_BOLT", "");
   vi.stubGlobal("fetch", serve);
-  RecordWorkspaceStore.create(store, toSnapshot("workspace", [{ id: "map", state: appState() }]));
+  // The server still opens its store synchronously and reads the journal synchronously.
+  // The store lives in Neo4j; this process keeps the lines of the commits it writes.
+  remoteName = `remote:${randomUUID()}`;
+  await RecordWorkspaceStore.createInNeo4j(TEST_NEO4J, remoteName, toSnapshot("workspace", [{ id: "map", state: appState() }]));
+  remoteStore = await RecordWorkspaceStore.openNeo4j(TEST_NEO4J, remoteName);
+  const lines: JournalLine[] = [];
+  remoteStore.setCommitListener((line) => { lines.push(line); });
+  (remoteStore as unknown as { journalLinesAfter(after: number): JournalLine[] }).journalLinesAfter = (after: number) => lines.filter((line) => line.seq > after);
+  (RecordWorkspaceStore as unknown as { open(): RecordWorkspaceStore }).open = () => remoteStore;
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(devices.map((device) => device.close()));
   await closeActiveRecordStore();
+  await remoteStore.close();
+  await Neo4jDurability.drop(TEST_NEO4J, remoteName);
+  await dropDevicesUnder(TEST_NEO4J, temp);
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   fs.rmSync(temp, { recursive: true, force: true });
@@ -322,8 +340,7 @@ test("resend decisions: a remote refusal stays out of replay after rebase, resta
 
 test("an invalid suffix keeps the working store intact, an interrupted rebase recovers by a rebuild, and replay failures remain inspectable", async () => {
   const a = await client();
-  const working = path.join(temp, "local/store");
-  const target = activeDirectory(working);
+  const target = a.storeDir();
   const base = remote().seq();
   change(a.store(), "Pending");
   change(remote(), "Remote one");
@@ -332,9 +349,9 @@ test("an invalid suffix keeps the working store intact, an interrupted rebase re
     ? { ...body, lines: [body.lines[0], { ...body.lines[1], seq: base + 3 }] }
     : body;
   await expect(a.pull(() => {})).rejects.toThrow("contiguous suffix");
-  expect(fs.readFileSync(path.join(activeDirectory(path.join(temp, "local/sync/confirmed")), "journal.jsonl"), "utf8")).toBe("");
+  expect(await confirmedLines("local", base)).toEqual([]);
   expect(mapText(a.store())).toBe("Pending");
-  expect(activeDirectory(working)).toBe(target);
+  expect(a.storeDir()).toBe(target);
   transform = (_url, body) => body;
 
   // A rebase interrupted after its reset: the next pull rebuilds the working store from the confirmed one.
@@ -347,13 +364,12 @@ test("an invalid suffix keeps the working store intact, an interrupted rebase re
   expect(entries("local")).toHaveLength(1);
   fail.mockRestore();
   await a.pull(() => {});
-  expect(activeDirectory(working)).not.toBe(target);
+  expect(a.storeDir()).not.toBe(target);
   expect(mapText(a.store())).toBe("Remote two");
   expect(a.conflictList()).toMatchObject([{ code: "CONFLICT" }]);
   expect(entries("local")).toEqual([]);
   const exact = await (await serve(new URL(`/api/sync/pull?after=${base}`, ORIGIN))).json();
-  const confirmed = fs.readFileSync(path.join(activeDirectory(path.join(temp, "local/sync/confirmed")), "journal.jsonl"), "utf8");
-  expect(confirmed.trim().split("\n").map((line) => JSON.parse(line))).toEqual(exact.lines);
+  expect(await confirmedLines("local", base)).toEqual(exact.lines);
 });
 
 test("fences the complete request and refuses a wrong response before entering the next sync", async () => {
@@ -410,6 +426,11 @@ test("the viewer app routes MCP, home writes and reads through the active local 
   vi.stubEnv("M3E_TAILSCALE_USERS", undefined);
   const { createAppServer } = await import("../../src/node/start_viewer");
   const source = remote();
+  vi.stubEnv("M3E_NEO4J_BOLT", TEST_NEO4J.uri);
+  if (TEST_NEO4J.user !== undefined) {
+    vi.stubEnv("M3E_NEO4J_USER", TEST_NEO4J.user);
+    vi.stubEnv("M3E_NEO4J_PASSWORD", TEST_NEO4J.password ?? "");
+  }
   source.saveWholeMap("archived", appState("Archived"), "remote");
   source.setMapColumns("archived", { archived: 1 }, "remote");
   const app = createAppServer();
@@ -459,7 +480,11 @@ test("a local write made while a push response is pending remains in the outbox"
 
 test("a failed outbox fsync cannot publish a successful working commit", async () => {
   const a = await client();
-  const fsync = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => { throw new Error("Outbox disk is full"); });
+  const real = outboxIO.run;
+  const fsync = vi.spyOn(outboxIO, "run").mockImplementation((connection, write, statements) => {
+    if (write) throw new Error("Outbox disk is full");
+    return real.call(outboxIO, connection, write, statements);
+  });
   expect(() => change(a.store(), "Must retry")).toThrow("Outbox disk is full");
   fsync.mockRestore();
   expect(mapText(a.store())).toBe("Root");
@@ -482,18 +507,18 @@ test("a pull rebases in proportion to the delta and the pending Commands, not to
   }
   async function rebaseOps(name: string): Promise<number> {
     const device = await client(name);
-    const working = path.join(temp, name, "store");
-    const directory = activeDirectory(working);
+    const directory = device.storeDir();
     change(device.store(), `Pending ${name}`);
+    const floor = device.store().seq();
     change(remote(), `Remote ${name}`);
     expect(await device.pull(() => {})).toMatchObject({ pulled: 1 });
-    expect(activeDirectory(working)).toBe(directory);
+    expect(device.storeDir()).toBe(directory);
     expect(device.conflictList()).toMatchObject([{ code: "CONFLICT" }]);
     expect(mapText(device.store())).toBe(`Remote ${name}`);
-    const lines = fs.readFileSync(path.join(directory, "journal.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
-    const rebases = lines.filter((line) => line.intent === "local-rebase");
+    const lines = await device.store().readJournalAfter(floor - 1);
+    const rebases = (lines ?? []).filter((line) => line.intent === "local-rebase");
     expect(rebases).toHaveLength(1);
-    return rebases[0].ops.length;
+    return rebases[0]!.ops.length;
   }
   grow(10);
   const small = await rebaseOps("small");
@@ -505,27 +530,25 @@ test("a pull rebases in proportion to the delta and the pending Commands, not to
 
 test("a start resumes the working store without rebuilding it, and rebases what arrived while it was stopped", async () => {
   const device = await client("resume");
-  const working = path.join(temp, "resume", "store");
-  const directory = activeDirectory(working);
+  const directory = device.storeDir();
   change(device.store(), "Pending before stop");
   await device.close();
   devices.splice(devices.indexOf(device), 1);
   const again = await client("resume");
-  expect(activeDirectory(working)).toBe(directory);
+  expect(again.storeDir()).toBe(directory);
   expect(mapText(again.store())).toBe("Pending before stop");
   expect(entries("resume")).toHaveLength(1);
   await again.push(() => {});
   expect(mapText(remote())).toBe("Pending before stop");
-  expect(activeDirectory(working)).toBe(directory);
+  expect(again.storeDir()).toBe(directory);
   expect(entries("resume")).toHaveLength(0);
 });
 
 test("a start resumes past a pending Command that left no commit because it was a no-op", async () => {
   const device = await client("noop");
-  const working = path.join(temp, "noop", "store");
-  const directory = activeDirectory(working);
+  const directory = device.storeDir();
   // An empty update, as a viewer can send: it reaches the outbox and commits nothing.
-  DeviceOutbox.open(path.join(temp, "noop", "sync/outbox.jsonl")).append({
+  DeviceOutbox.open(deviceStoreNames(WORKSPACE, path.join(temp, "noop")).outbox, TEST_NEO4J).append({
     commandId: "noop-1", mapId: "map", baseSeq: remote().seq(),
     command: { commandId: "noop-1", intent: "assert", actor: { kind: "human", id: "test" }, changes: [{ kind: "node", key: ["root"], op: "update", before: {}, after: {} }] },
   });
@@ -533,7 +556,7 @@ test("a start resumes past a pending Command that left no commit because it was 
   await device.close();
   devices.splice(devices.indexOf(device), 1);
   const again = await client("noop");
-  expect(activeDirectory(working)).toBe(directory);
+  expect(again.storeDir()).toBe(directory);
   expect(mapText(again.store())).toBe("After the no-op");
   expect(entries("noop").map((entry) => entry.commandId)).toContain("noop-1");
 });
