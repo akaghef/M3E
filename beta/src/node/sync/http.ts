@@ -17,6 +17,7 @@ import type http from "http";
 import { activeRecordStore, localModeStore, recordStoreDir } from "../record_store/active";
 import { sameSyncIdentity, type SyncIdentity } from "../record_store/sync_types";
 import type { ConnectionIdentity } from "./issuer";
+import { awaitDurableCommit } from "../map_commit";
 import { issuerForConnection, pushCommands } from "./push";
 import { allowedLogin } from "../remote_access";
 
@@ -84,11 +85,11 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
       return true;
     }
     const store = activeRecordStore();
-    const storeDir = recordStoreDir();
-    if (!store || !storeDir) {
+    if (!store) {
       noStore(res);
       return true;
     }
+    const storeDir = recordStoreDir() ?? "";
     const identity = store.syncIdentity();
     const fence = (provided: Partial<SyncIdentity>): boolean | undefined => {
       const scoped = Object.keys(identity).some((key) => Object.prototype.hasOwnProperty.call(provided, key));
@@ -114,7 +115,13 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
       const fenced = fence(body ?? {});
       if (fenced === undefined) return true;
       const issuer = issuerForConnection(connectionFromRequest(req), store);
-      sendSyncJson(res, 200, { ...identity, ...pushCommands(store, storeDir, body?.commands, issuer, fenced) });
+      const pushed = pushCommands(store, storeDir, body?.commands, issuer, fenced);
+      const held = await awaitDurableCommit(store);
+      if (!held.ok) {
+        sendSyncJson(res, 503, { ok: false, code: held.code, error: held.error });
+        return true;
+      }
+      sendSyncJson(res, 200, { ...identity, ...pushed });
       return true;
     }
     const params = url.searchParams;
@@ -150,7 +157,7 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
     }
     // `scope` selects nothing yet: disclosure rights are not modelled.
     const currentSeq = store.seq();
-    const lines = after > currentSeq ? null : store.journalLinesAfter(after);
+    const lines = after > currentSeq ? null : await store.readJournalAfter(after);
     sendSyncJson(res, 200, { ...identity, ...(lines === null
       ? { reclone: true, snapshotSeq: currentSeq }
       : { lines, throughSeq: currentSeq }) });
@@ -158,6 +165,10 @@ export async function handleRecordSyncHttp(req: http.IncomingMessage, res: http.
     if (!res.headersSent) {
       if (error instanceof PushBodyTooLarge) {
         sendSyncJson(res, 413, { ok: false, code: "PUSH_BODY_TOO_LARGE", error: error.message, limitBytes: error.limitBytes });
+        return true;
+      }
+      if ((error as { code?: string }).code === "DATABASE_UNAVAILABLE") {
+        sendSyncJson(res, 503, { ok: false, code: "DATABASE_UNAVAILABLE", error: (error as Error).message });
         return true;
       }
       const message = error instanceof SyntaxError ? "Invalid JSON body." : (error as Error).message || "Sync request failed.";

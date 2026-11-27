@@ -9,9 +9,12 @@
 // and pinned as 0 / 1), which is also what a snapshot made from SQLite carries.
 
 import type { MapCommand, FieldConflict, RecordChange } from "../../shared/map_changes";
+import { fromSnapshot } from "../../shared/record_model/from_snapshot";
+import { MapProjector, recordRk } from "../../shared/record_model/steady";
 import type { AppState, SavedMap } from "../../shared/types";
+import type { MapRecord, SnapshotRecord, SnapshotRow } from "../../shared/record_model/types";
 import type { MapSource, MapSummaryInternal } from "../rapid_mvp";
-import type { CommitFailure as StoreCommitFailure, MapColumns, RecordWorkspaceStore } from "./store";
+import type { CommitFailure as StoreCommitFailure, JournalLine, MapColumns, RecordWorkspaceStore } from "./store";
 
 /** Issuer of the commits that do not come from a Command with an actor. */
 const SERVER_ISSUER = "system:server";
@@ -61,6 +64,70 @@ export function storeLoadSavedMap(store: RecordWorkspaceStore, mapId: string): S
   const row = store.getMapRow(mapId);
   if (!row.savedAt) throw new Error("Unsupported or invalid save format.");
   return { version: 1, savedAt: row.savedAt, state: row.state };
+}
+
+const MAP_COLUMN_FIELDS = ["tags", "archived", "pinned", "source"] as const;
+
+/**
+ * The same projection `RecordWorkspaceStore` uses for a map: `fromSnapshot`, then `MapProjector`
+ * when that projection reproduces the records. Alias translation is `clientState` / `aliasesOf`
+ * (both private). The commit time is `savedAtOf` (private). Those two stay on `getMapRow`.
+ */
+function stateFromMapRecords(workspaceId: string, mapId: string, records: SnapshotRecord[]): AppState {
+  const restored = fromSnapshot(records).rows.find((row) => row.id === mapId)?.state;
+  if (!restored) throw new Error("Map not found.");
+  const map = records.find((record): record is MapRecord => record.kind === "map" && record.id === mapId);
+  const row: SnapshotRow = { id: mapId, state: restored };
+  if (map) {
+    for (const field of MAP_COLUMN_FIELDS) {
+      if (map[field] !== undefined) row[field] = map[field];
+    }
+    if (map.legacyVersion !== undefined) row.version = map.legacyVersion;
+    if (map.legacySavedAt !== undefined) row.saved_at = map.legacySavedAt;
+  }
+  const previous = new Map<string, SnapshotRecord>();
+  for (const record of records) {
+    if (record.kind === "snapshot") continue;
+    previous.set(recordRk(record), record);
+  }
+  try {
+    const projected = new MapProjector(workspaceId).project(row, previous);
+    if (projected.delta.size === 0) return projected.state;
+  } catch {
+    // Records the projection cannot reproduce: the stored state is the fromSnapshot state.
+  }
+  return restored;
+}
+
+/**
+ * `GET /api/maps/:id`. On Neo4j the map's records are read by query. Null from the store means
+ * the store is not on Neo4j, and the in-memory row is the map.
+ */
+export async function storeLoadSavedMapFromDatabase(store: RecordWorkspaceStore, mapId: string): Promise<SavedMap> {
+  const records = await store.mapRecordsFromDatabase(mapId);
+  if (records === null) return storeLoadSavedMap(store, mapId);
+  if (!records.some((record) => record.kind === "map" && record.id === mapId)) throw new Error("Map not found.");
+  if (!store.hasMap(mapId)) throw new Error("Map not found.");
+  const memory = store.getMapRow(mapId);
+  if (!memory.savedAt) throw new Error("Unsupported or invalid save format.");
+  const aliased = records.some((record) => record.kind === "idMap" && record.alias === true);
+  const state = aliased ? memory.state : stateFromMapRecords(store.workspaceId, mapId, records);
+  return { version: 1, savedAt: memory.savedAt, state };
+}
+
+export function storedCommandFromLine(mapId: string, line: JournalLine | null): LegacyStoredCommand | null {
+  if (!line || line.commandId === undefined) return null;
+  return {
+    mapId,
+    seq: line.seq,
+    commandId: line.commandId,
+    actor: line.actor as MapCommand["actor"],
+    intent: line.intent,
+    provenance: line.provenance,
+    changes: line.changes ?? [],
+    committedAt: line.committedAt,
+    savedAt: line.committedAt,
+  };
 }
 
 /** Saves the whole state (the difference to the stored state is committed) and returns the saved-at time. */
@@ -210,18 +277,8 @@ export function storeCommitMapCommand(
   return { ok: false, code, conflicts: result.conflicts, current: result.current };
 }
 
-export function storeReadCommittedCommand(store: RecordWorkspaceStore, mapId: string, commandId: string): LegacyStoredCommand | null {
-  const line = store.committedCommand(mapId, commandId);
-  if (!line || line.commandId === undefined) return null;
-  return {
-    mapId,
-    seq: line.seq,
-    commandId: line.commandId,
-    actor: line.actor as MapCommand["actor"],
-    intent: line.intent,
-    provenance: line.provenance,
-    changes: line.changes ?? [],
-    committedAt: line.committedAt,
-    savedAt: line.committedAt,
-  };
+export function storeReadCommittedCommand(store: RecordWorkspaceStore, _mapId: string, _commandId: string): LegacyStoredCommand | null {
+  // The file-store reader is gone with the file store. Neo4j reads go through `store.readCommittedCommand`.
+  void store;
+  throw new Error("A committed Command is read with readCommittedCommand.");
 }

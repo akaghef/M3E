@@ -104,6 +104,26 @@ function rowToStored(row: {
   };
 }
 
+/**
+ * Resolves when every commit handed to the store so far is in the database.
+ * A client is answered only after this. `DATABASE_UNAVAILABLE` means the commit
+ * is not saved: the caller answers 503 and does not report it as committed.
+ */
+export async function awaitDurableCommit(
+  store: { durable(): Promise<void> } | null | undefined,
+): Promise<{ ok: true } | { ok: false; code: "DATABASE_UNAVAILABLE"; error: string }> {
+  if (!store) return { ok: true };
+  try {
+    await store.durable();
+    return { ok: true };
+  } catch (error) {
+    if ((error as { code?: string }).code === "DATABASE_UNAVAILABLE") {
+      return { ok: false, code: "DATABASE_UNAVAILABLE", error: (error as Error).message };
+    }
+    throw error;
+  }
+}
+
 export function readCommittedCommand(dbPath: string, mapId: string, commandId: string): StoredCommand | null {
   const store = activeRecordStore();
   if (store) return storeReadCommittedCommand(store, mapId, commandId);

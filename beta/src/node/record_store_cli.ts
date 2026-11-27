@@ -1,22 +1,17 @@
-// Record store CLI.
-//   node dist/node/record_store_cli.js --create <dir> --from-snapshot <jsonl> [--new-history]
-//   node dist/node/record_store_cli.js --verify <dir> [--bolt <uri>] [--database <name>]
-//   node dist/node/record_store_cli.js --export <dir> --out <jsonl>
-// --create writes snapshot.jsonl and an empty journal.jsonl into an empty (or new) directory.
-// --verify opens the store from its files, checks the invariants, and with --bolt compares the
-//   Neo4j dump with the records of the store byte for byte. It does not write to Neo4j.
-// --export writes the current record set as a portable snapshot.
-// Credentials, when the server needs them, come from M3E_NEO4J_USER / M3E_NEO4J_PASSWORD.
-// Exit code 0: done, nothing wrong. 1: verification found a problem, or the run failed. 2: bad usage or a refusal.
+// Record store CLI. The store is in Neo4j. An export file is not a store.
+//   node dist/node/record_store_cli.js --create <name> --from-export <jsonl> [--new-history]
+//   node dist/node/record_store_cli.js --inspect <name>
+//   node dist/node/record_store_cli.js --drop <name>
+// The connection is M3E_NEO4J_BOLT / M3E_NEO4J_USER / M3E_NEO4J_PASSWORD / M3E_NEO4J_DATABASE.
+// Exit code 0: done, nothing wrong. 1: inspection found a problem, or the run failed. 2: bad usage or a refusal.
 
 import { randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import neo4j from "neo4j-driver";
 import { checkInvariants } from "../shared/record_model/invariants";
-import { parseSnapshot, serializeSnapshot } from "../shared/record_model/jsonl";
-import { dump } from "./neo4j_store/store";
+import { parseSnapshot } from "../shared/record_model/jsonl";
+import { Neo4jDurability, neo4jConnectionFromEnv } from "./record_store/neo4j_durability";
 import { RecordWorkspaceStore } from "./record_store/store";
 
 export interface CliIo {
@@ -24,7 +19,7 @@ export interface CliIo {
   err: (line: string) => void;
 }
 
-const USAGE = "Usage: --create <dir> --from-snapshot <jsonl> [--new-history] | --verify <dir> [--bolt <uri>] [--database <name>] | --export <dir> --out <jsonl>";
+const USAGE = "Usage: --create <name> --from-export <jsonl> [--new-history] | --inspect <name> | --drop <name>";
 
 function assertNotLiveM3e(filePath: string): void {
   if (process.env.M3E_FORBID_LIVE_DATA !== "1") return;
@@ -44,39 +39,27 @@ function parseArgs(argv: string[]): Map<string, string> {
       continue;
     }
     const value = argv[i + 1];
-    if (!name.startsWith("--") || value === undefined) throw new Error(`Bad argument: ${name}`);
+    if (!name.startsWith("--") || value === undefined || value.startsWith("--")) throw new Error(`Bad argument: ${name}`);
     args.set(name.slice(2), value);
     i += 1;
   }
   return args;
 }
 
-function firstDifference(a: string, b: string): string {
-  const left = a.split("\n");
-  const right = b.split("\n");
-  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
-    if (left[i] !== right[i]) {
-      return `line ${i + 1}: store ${(left[i] ?? "(none)").slice(0, 200)} / neo4j ${(right[i] ?? "(none)").slice(0, 200)}`;
-    }
-  }
-  return "no difference";
-}
-
 export async function main(argv: string[], io: CliIo = { out: console.log, err: console.error }): Promise<number> {
   let args: Map<string, string>;
-  let mode: "create" | "verify" | "export";
+  let mode: "create" | "inspect" | "drop";
   try {
     args = parseArgs(argv);
-    const modes = (["create", "verify", "export"] as const).filter((name) => args.has(name));
-    if (modes.length !== 1) throw new Error("Give exactly one of --create, --verify, --export.");
+    const modes = (["create", "inspect", "drop"] as const).filter((name) => args.has(name));
+    if (modes.length !== 1) throw new Error("Give exactly one of --create, --inspect, --drop.");
     mode = modes[0];
     if (mode !== "create" && args.has("new-history")) throw new Error("--new-history requires --create.");
-    if (mode === "create" && !args.has("from-snapshot")) throw new Error("--create needs --from-snapshot.");
-    if (mode === "export" && !args.has("out")) throw new Error("--export needs --out.");
-    for (const name of ["create", "verify", "export", "from-snapshot", "out"]) {
-      const value = args.get(name);
-      if (value !== undefined) assertNotLiveM3e(value);
-    }
+    if (mode === "create" && !args.has("from-export")) throw new Error("--create needs --from-export.");
+    const removed = ["from-snapshot", "verify", "export", "bolt", "database", "out"].filter((name) => args.has(name));
+    if (removed.length > 0) throw new Error(`The store is in Neo4j. --${removed[0]} is not used.`);
+    const exportPath = args.get("from-export");
+    if (exportPath !== undefined) assertNotLiveM3e(exportPath);
   } catch (error) {
     io.err((error as Error).message);
     io.err(USAGE);
@@ -84,9 +67,11 @@ export async function main(argv: string[], io: CliIo = { out: console.log, err: 
   }
 
   try {
+    const connection = neo4jConnectionFromEnv();
+    if (!connection) throw new Error("M3E_NEO4J_BOLT is not set.");
     if (mode === "create") {
-      const dir = args.get("create")!;
-      const records = parseSnapshot(fs.readFileSync(args.get("from-snapshot")!, "utf8"));
+      const name = args.get("create")!;
+      const records = parseSnapshot(fs.readFileSync(args.get("from-export")!, "utf8"));
       try {
         if (args.has("new-history")) {
           const header = records[0];
@@ -96,28 +81,23 @@ export async function main(argv: string[], io: CliIo = { out: console.log, err: 
           header.historyId = randomUUID();
           header.epoch = epoch + 1;
         }
-        RecordWorkspaceStore.create(dir, records);
+        await RecordWorkspaceStore.createInNeo4j(connection, name, records);
       } catch (error) {
         io.err((error as Error).message);
         return 2;
       }
-      io.out(`created ${dir}: ${records.length} records`);
+      io.out(`created ${name}: ${records.length} records`);
       return 0;
     }
 
-    if (mode === "export") {
-      const store = RecordWorkspaceStore.open(args.get("export")!, { warm: false });
-      try {
-        const records = store.records();
-        fs.writeFileSync(args.get("out")!, serializeSnapshot(records), "utf8");
-        io.out(`exported ${records.length} records at commit ${store.seq()} to ${args.get("out")!}`);
-      } finally {
-        await store.close();
-      }
+    if (mode === "drop") {
+      const name = args.get("drop")!;
+      await Neo4jDurability.drop(connection, name);
+      io.out(`dropped ${name}`);
       return 0;
     }
 
-    const store = RecordWorkspaceStore.open(args.get("verify")!, { warm: false });
+    const store = await RecordWorkspaceStore.openNeo4j(connection, args.get("inspect")!, { warm: false });
     let failed = false;
     try {
       const records = store.records();
@@ -128,25 +108,6 @@ export async function main(argv: string[], io: CliIo = { out: console.log, err: 
         io.err(`rule ${problem.rule}: ${problem.kind} ${problem.key}: ${problem.message}`);
       }
       if (problems.length > 0) failed = true;
-
-      const bolt = args.get("bolt");
-      if (bolt !== undefined) {
-        const user = process.env.M3E_NEO4J_USER;
-        const auth = user ? neo4j.auth.basic(user, process.env.M3E_NEO4J_PASSWORD ?? "") : undefined;
-        const driver = neo4j.driver(bolt, auth);
-        try {
-          const expected = serializeSnapshot(records);
-          const actual = serializeSnapshot(await dump(driver, { database: args.get("database") }));
-          if (expected === actual) {
-            io.out(`neo4j dump: identical (${Buffer.byteLength(expected, "utf8")} bytes)`);
-          } else {
-            failed = true;
-            io.err(`neo4j dump differs from the store: ${firstDifference(expected, actual)}`);
-          }
-        } finally {
-          await driver.close();
-        }
-      }
     } finally {
       await store.close();
     }
