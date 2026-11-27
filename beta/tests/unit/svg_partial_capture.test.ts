@@ -2,6 +2,7 @@
 // DOM ownership/work-count contract; browser geometry/CSS parity is separate.
 import { afterEach, expect, it, vi } from 'vitest';
 import { captureSvgPaintScene, captureHiddenNodePaint, capturedNodeElements, refreshCapturedNodeFragment } from '../../src/rendering/webgl_scene_tiles';
+import { RetainedSvgScene } from '../../src/browser/incremental_scene';
 
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();delete (SVGElement.prototype as any).getBBox;delete (SVGElement.prototype as any).transform;document.body.replaceChildren();});
 
@@ -55,3 +56,21 @@ it('removes the temporary capture root after a geometry failure',()=>{
   expect(document.querySelectorAll('[data-capture-stage]')).toHaveLength(0);
   expect(root.hasAttribute('hidden')).toBe(true);
 });
+
+it.each([50,20000])('reorders only the affected SVG interval and retains unrelated elements (%i)',count=>{
+  const root=document.createElementNS('http://www.w3.org/2000/svg','svg');document.body.append(root);
+  const scene=new RetainedSvgScene();
+  scene.update(root,Array.from({length:count},(_,i)=>[`node:n${i}`,`<rect data-node-id="n${i}"/>`]));
+  const unrelated=scene.element(`node:n${count-1}`)!,a=scene.element('node:n1')!,b=scene.element('node:n2')!;
+  const observer=new MutationObserver(()=>{});observer.observe(root,{childList:true});
+  for(let i=0;i<10;i++) {
+    const before=i%2?['node:n2','node:n1']:['node:n1','node:n2'];
+    scene.reorder(before,[...before].reverse());
+    expect(root.children[1]).toBe(i%2?a:b);expect(root.children[2]).toBe(i%2?b:a);
+    expect(scene.element(`node:n${count-1}`)).toBe(unrelated);
+    const mutations=observer.takeRecords();
+    expect(mutations.reduce((n,record)=>n+record.removedNodes.length,0)).toBe(2);
+    expect(mutations.reduce((n,record)=>n+record.addedNodes.length,0)).toBe(2);
+  }
+  observer.disconnect();
+},30000);

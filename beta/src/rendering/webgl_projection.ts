@@ -375,6 +375,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
   private snapshot: RenderSnapshot | null = null;
   private nodeSpatialIndex = new Map<string, RenderNode[]>();
   private nodesById = new Map<string, RenderNode>();
+  private parentEdgesByChild = new Map<string, RenderEdge>();
   private overlayDirty = false;
   private readonly frame = new FrameInvalidation(() => {
     if (this.overlayDirty) { this.uploadInteractionGeometry(); this.overlayDirty = false; }
@@ -456,6 +457,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     this.dragPreview = null;
     this.nodeSpatialIndex = buildNodeSpatialIndex(snapshot.nodes);
     this.nodesById = new Map(snapshot.nodes.map(node => [node.id, node]));
+    this.parentEdgesByChild = new Map(snapshot.edges.map(edge => [edge.targetNodeId, edge]));
     if (!this.active || !this.gl) return;
     this.sceneTiles?.setScene(snapshot.paintScene);
     this.geometryUploads += 1;
@@ -518,6 +520,28 @@ export class WebGLRenderingProjection implements RenderingProjection {
     this.snapshot = { ...this.snapshot, paintScene: scene };
     this.frame.invalidate();
     return scene;
+  }
+  reorderPaint(ids: string[]): void { this.sceneTiles?.reorderOwners(ids); }
+
+  /** Keep retained hit geometry and overlay lookup in the same transaction as paint. */
+  updateTreePositions(updates: Map<string, { x: number; y: number; edge?: RenderEdge['points'] }>): void {
+    for (const [id, next] of updates) {
+      const node = this.nodesById.get(id); if (!node) continue;
+      const keys = (n: RenderNode) => {
+        const result: string[] = [];
+        for (let x=Math.floor(n.x/SPATIAL_CELL_SIZE);x<=Math.floor((n.x+n.width)/SPATIAL_CELL_SIZE);x++)
+          for(let y=Math.floor(n.y/SPATIAL_CELL_SIZE);y<=Math.floor((n.y+n.height)/SPATIAL_CELL_SIZE);y++) result.push(`${x}:${y}`);
+        return result;
+      };
+      for(const key of keys(node)) {
+        const bucket=this.nodeSpatialIndex.get(key)!;const index=bucket.indexOf(node);
+        if(index>=0)bucket.splice(index,1);if(!bucket.length)this.nodeSpatialIndex.delete(key);
+      }
+      node.x=next.x;node.y=next.y;
+      for(const key of keys(node)) {const bucket=this.nodeSpatialIndex.get(key)??[];bucket.push(node);this.nodeSpatialIndex.set(key,bucket);}
+      const edge=this.parentEdgesByChild.get(id);if(edge&&next.edge)edge.points=next.edge;
+    }
+    this.overlayDirty=true;this.frame.invalidate();
   }
 
   setInteractionState(interaction: RenderInteractionState): void {

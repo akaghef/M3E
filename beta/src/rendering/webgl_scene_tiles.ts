@@ -18,6 +18,8 @@ export interface PaintCommand {
   matrix: PaintMatrix;
   style: PaintStyle;
   nodeId?: string;
+  /** Fragment ownership is separate from the node used by editing/hit metadata. */
+  ownerId?: string;
   groupId?: string;
   /** False for associated edge labels; those stay visible during node editing. */
   editorBody?: boolean;
@@ -59,7 +61,7 @@ export function replaceNodePaint(scene: PaintScene, updates: PaintScene, ids: Se
 /** Disperse's drag preview moves retained paint as well as its hit geometry. */
 export function translatePaintScene(scene: PaintScene, moved: Set<string>, delta: {x:number;y:number}): PaintScene {
   return {commands:scene.commands.map((command) => {
-    if (command.nodeId && moved.has(command.nodeId)) {
+    if (!command.ownerId && command.nodeId && moved.has(command.nodeId)) {
       return {...command, matrix:[...command.matrix.slice(0,4),command.matrix[4]+delta.x,command.matrix[5]+delta.y] as PaintMatrix,
         bounds:{...command.bounds,x:command.bounds.x+delta.x,y:command.bounds.y+delta.y}};
     }
@@ -225,6 +227,9 @@ export function captureHiddenNodePaint(root: SVGSVGElement, ids: Set<string>): P
   const stage = root.cloneNode(false) as SVGSVGElement;
   stage.removeAttribute('hidden');
   stage.style.position = 'absolute'; stage.style.opacity = '0'; stage.style.pointerEvents = 'none';
+  // Capture reads SVG-local coordinates. The camera transform and compositor
+  // layer hint belong only to the displayed canvas, not to this measurement.
+  stage.style.transform = 'none'; stage.style.willChange = 'auto'; stage.style.contain = 'strict';
   stage.setAttribute('aria-hidden', 'true'); stage.dataset.captureStage = '';
   const definitions = captureDefinitions.get(root) || '';
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -282,12 +287,15 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
   elements.forEach((element) => {
     if (element.classList.contains("node-hit")) currentNodeId = element.getAttribute("data-node-id") || undefined;
     if (element.closest("defs, marker, clipPath, mask, .link-port-controls") || element.classList.contains("graph-link-hit")) return;
-    const nodeId = (onlyNodeIds ? captureOwners.get(element) : undefined) || element.getAttribute("data-node-id") ||
+    const nodeId = element.getAttribute("data-node-id") ||
       (element.matches(".alias-badge,.confidence-badge,.confidence-badge-text,.status-badge,.status-badge-text,.lock-icon,[data-collapse-node-id]") ? currentNodeId : undefined);
-    if (onlyNodeIds && (!nodeId || !onlyNodeIds.has(nodeId))) return;
-    if (!onlyNodeIds && nodeId) {
-      const owned = nodeElements!.get(nodeId) || [];
-      owned.push(element); nodeElements!.set(nodeId, owned); captureOwners.set(element, nodeId);
+    const fragmentKey = element.closest<SVGElement>('[data-render-key]')?.dataset.renderKey;
+    const ownerId = fragmentKey?.startsWith('edge:') ? fragmentKey : undefined;
+    const owner = (onlyNodeIds ? captureOwners.get(element) : undefined) || ownerId || nodeId;
+    if (onlyNodeIds && (!owner || !onlyNodeIds.has(owner))) return;
+    if (!onlyNodeIds && owner) {
+      const owned = nodeElements!.get(owner) || [];
+      owned.push(element); nodeElements!.set(owner, owned); captureOwners.set(element, owner);
     }
     const key = `${nodeId || ""}:${element.outerHTML}:${element.hasAttribute("marker-end") || element.hasAttribute("marker-start") ? markerDefinitions : ""}`;
     const retained = cache!.get(element);
@@ -310,7 +318,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
         if (!text || !run.getNumberOfChars()) return;
         const position = run.getStartPositionOfChar(0);
         const runCss = getComputedStyle(run);
-        commands.push({ kind: "text", bounds, matrix, style: { ...paintStyle(run), opacity: paintStyle(run).opacity * (run === element ? 1 : style.opacity) }, nodeId, editorBody,
+        commands.push({ kind: "text", bounds, matrix, style: { ...paintStyle(run), opacity: paintStyle(run).opacity * (run === element ? 1 : style.opacity) }, nodeId, ownerId, editorBody,
           text, x: position.x, y: position.y,
           font: `${runCss.fontStyle} ${runCss.fontWeight} ${runCss.fontSize} ${runCss.fontFamily}`,
           fontSize: parseFloat(runCss.fontSize), decoration: runCss.textDecorationLine,
@@ -318,7 +326,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
       });
     } else if (element instanceof SVGGeometryElement) {
       const path = shapePath(element);
-      if (path) commands.push({ kind: "path", path, bounds, matrix, style, nodeId, editorBody, groupId: element.getAttribute("data-group-id") || undefined,
+      if (path) commands.push({ kind: "path", path, bounds, matrix, style, nodeId, ownerId, editorBody, groupId: element.getAttribute("data-group-id") || undefined,
         sourceNodeId:element.getAttribute("data-source-node-id") || element.getAttribute("data-parent-node-id") || undefined,
         targetNodeId:element.getAttribute("data-target-node-id") || element.getAttribute("data-child-node-id") || undefined });
       // Preserve SVG marker geometry, dimensions and direction rather than
@@ -345,7 +353,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
         marker.querySelectorAll<SVGGeometryElement>("path, polygon, rect, circle").forEach((child) => {
           commands.push({ kind: "path", path: shapePath(child), matrix: markerMatrix,
             bounds: transformedBounds(child.getBBox(), markerMatrix, pad), style: { ...paintStyle(child), opacity: paintStyle(child).opacity * style.opacity },
-            nodeId:element.getAttribute(end === "start" ? "data-source-node-id" : "data-target-node-id") || undefined });
+            ownerId, nodeId:element.getAttribute(end === "start" ? "data-source-node-id" : "data-target-node-id") || undefined });
         });
       }
     }
@@ -462,6 +470,7 @@ export class WebGLSceneTiles {
   forEachPaint(visit: (command: PaintCommand, slot: number) => void): void {
     this.slots.commands.forEach(visit);
   }
+  reorderOwners(ids: string[]): void { this.slots.reorder(ids); }
   /** Patch stable paint slots and their index memberships, preserving z-order. */
   updateCommands(updates: Map<number, PaintCommand>): PaintScene {
     const dirty: PaintBounds[] = [];
@@ -489,9 +498,10 @@ export class WebGLSceneTiles {
   updateNodePaint(updates: PaintScene, ids: Set<string>): PaintScene {
     const byId = new Map<string, PaintCommand[]>();
     updates.commands.forEach(command => {
-      if (!command.nodeId || !ids.has(command.nodeId)) return;
-      const bucket = byId.get(command.nodeId) || [];
-      bucket.push(command); byId.set(command.nodeId, bucket);
+      const owner = command.ownerId || command.nodeId;
+      if (!owner || !ids.has(owner)) return;
+      const bucket = byId.get(owner) || [];
+      bucket.push(command); byId.set(owner, bucket);
     });
     const dirty: PaintBounds[] = [];
     for (const id of ids) {

@@ -21,6 +21,7 @@ export class EdgeGraphLinkSelectionAdapter {
   private records: Presented[]=[];
   private graphRecords=new Map<string,Presented>();
   private graphSlots=new Map<string,number>();
+  private parentSlots=new Map<string,number>();
   private revision=0;
   private highlighted:readonly string[]=[];
   private context='';
@@ -45,7 +46,7 @@ export class EdgeGraphLinkSelectionAdapter {
   begin(layout:LayoutResult, context:string):void {
     if(this.context!==context) {this.pendingReason=null;this.selection=null;this.bridge.link(null);this.context=context;}
     this.highlighted=selectionHighlight(this.current(),this.scene()).nodeIds;this.project();
-    this.layout=layout;this.records=[];this.graphRecords.clear();this.graphSlots.clear();this.index.reset([]);this.revision++;
+    this.layout=layout;this.records=[];this.graphRecords.clear();this.graphSlots.clear();this.parentSlots.clear();this.index.reset([]);this.revision++;
   }
   private endpoint(id:string):Endpoint {
     const p=this.layout!.pos[id]!;
@@ -65,7 +66,17 @@ export class EdgeGraphLinkSelectionAdapter {
     if(!this.layout?.pos[parent]||!this.layout.pos[child]) return;
     const item:Presented={ref:{kind:'parent-child',parentNodeId:parent,childNodeId:child},source:this.endpoint(parent),target:this.endpoint(child),
       presentation:{kind:'line',renderKey:`edge:${parent}:${child}`,labelAnchor:this.endpoint(child).center}};
-    this.records.push(item);this.index.add(item);
+    this.parentSlots.set(child,this.records.length);this.records.push(item);this.index.add(item);
+  }
+  hasGraphLinks(ids: readonly string[]): boolean { return ids.some(id=>this.index.at(id).some(item=>item.ref.kind==='graph-link')); }
+  refreshParent(parent:string,child:string,fragment:SVGGElement):void {
+    const slot=this.parentSlots.get(child);if(slot===undefined)return;
+    const previous=this.records[slot]!;
+    const path=fragment.querySelector('.edge')!,label=fragment.querySelector('.edge-label');
+    const labelAnchor=label?{x:Number(label.getAttribute('x')),y:Number(label.getAttribute('y'))}:pathMidpoint(path.getAttribute('d')||'')||this.endpoint(child).center;
+    const next:Presented={...previous,source:this.endpoint(parent),target:this.endpoint(child),presentation:{...previous.presentation,labelAnchor}};
+    this.records[slot]=next;this.index.add(next,previous);
+    this.paintTargets.set(`edge:${JSON.stringify([parent,child])}`,[path]);
   }
   finish():void {
     const state=this.bridge.state(),layout=this.layout;

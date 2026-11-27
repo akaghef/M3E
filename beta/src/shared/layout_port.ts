@@ -294,6 +294,7 @@ export class TreeSpanCache {
   private entries = new Map<string, { key: string; span: number }>();
   computed = 0;
   clear(): void { this.entries.clear(); }
+  span(id: string): number | undefined { return this.entries.get(id)?.span; }
   prepare(root: string, childrenOf: (id: string) => string[], metrics: Record<string, LayoutNodeMetric>,
     breadth: (metric: LayoutNodeMetric) => number, gap: number): Record<string, number> {
     this.computed = 0;
@@ -370,20 +371,24 @@ function subtreeSpanForLayout(
   return result;
 }
 
+export function layoutPositionBounds(p: LayoutNodePosition): {x:number;y:number;width:number;height:number} {
+  const halfH = Math.max(LAYOUT.nodeHitHeight, p.h) / 2;
+  return {x:p.x,y:p.y-halfH,width:p.w+LAYOUT.nodeRightPad,height:halfH*2+LAYOUT.canvasBottomPad};
+}
+export function layoutBoundsFromMaximum(maxX: number, maxY: number): Pick<LayoutResult,"totalHeight"|"totalWidth"> {
+  return {totalHeight:Math.max(maxY,LAYOUT.minCanvasHeight),totalWidth:Math.max(maxX,LAYOUT.minCanvasWidth)+LAYOUT.canvasRightPad};
+}
 function finalizeLayoutBounds(pos: Record<string, LayoutNodePosition>, order: string[]): Pick<LayoutResult, "totalHeight" | "totalWidth"> {
   let maxRight = LAYOUT.minCanvasWidth;
   let maxBottom = LAYOUT.minCanvasHeight;
   order.forEach((nodeId) => {
     const p = pos[nodeId];
     if (!p) return;
-    const halfH = Math.max(LAYOUT.nodeHitHeight, p.h) / 2;
-    maxRight = Math.max(maxRight, p.x + p.w + LAYOUT.nodeRightPad);
-    maxBottom = Math.max(maxBottom, p.y + halfH + LAYOUT.canvasBottomPad);
+    const box=layoutPositionBounds(p);
+    maxRight = Math.max(maxRight, box.x+box.width);
+    maxBottom = Math.max(maxBottom, box.y+box.height);
   });
-  return {
-    totalHeight: Math.max(maxBottom, LAYOUT.minCanvasHeight),
-    totalWidth: Math.max(maxRight + LAYOUT.canvasRightPad, LAYOUT.minCanvasWidth),
-  };
+  return layoutBoundsFromMaximum(maxRight,maxBottom);
 }
 
 function orientLayoutResult(result: LayoutResult, direction: CardinalLayoutDirection | undefined): LayoutResult {

@@ -13,6 +13,7 @@ export class StableScenePatch {
     children(id: string): string[];
     dependency(id: string): string;
     measure(id: string): LayoutNodeMetric | undefined;
+    beforeDraw?(): void;
     draw(id: string): void;
   }): boolean {
     if (Object.keys(touches).some(field => field !== 'nodes')) return false;
@@ -26,6 +27,7 @@ export class StableScenePatch {
       if (!metric || metric.w !== position.w || metric.h !== position.h) return false;
       changes.push([id, metric]);
     }
+    access.beforeDraw?.();
     for (const [id, metric] of changes) {
       Object.assign(this.layout.pos[id]!, metric);
       access.draw(id);

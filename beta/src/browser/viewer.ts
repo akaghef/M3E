@@ -1,7 +1,8 @@
+import { TreeReorder, rotateRange, type ReorderPlan } from "./viewer_delta_reorder";
 import { NodePresence } from "./viewer_delta_presence";
 import { focusBoard } from "./viewer_delta_selection";
 import { DeltaBroadcast } from "./viewer_delta_broadcast";
-import { captureStatePatch, applyStatePatch, type StatePatch } from "./viewer_delta_state";
+import { captureStatePatch, applyStatePatch, inverseStatePatch, ChildOrderHistory, type StatePatch } from "./viewer_delta_state";
 import { createMapNormalizer } from "./viewer_delta_model";
 import { captureHiddenNodePaint, refreshCapturedNodeFragment } from "./webgl_scene_tiles";
 import { StableScenePatch, SceneBounds } from "./viewer_delta_scene";
@@ -675,7 +676,8 @@ viewerFilter.subscribe(() => {
   applyViewFilter();
   if (webglSurfaceSupported()) scheduleWebGLProjectionActivation();
 });
-let patchDocumentScene: ((touches: SaveTouches) => boolean) | null = null;
+let patchDocumentScene: ((touches: SaveTouches, reorder?: ReorderPlan) => boolean) | null = null;
+let retainedTree: TreeReorder | null = null;
 const retainedSceneBounds = new SceneBounds();
 let incrementalProjection = false;
 let localEditBatchDepth = 0;
@@ -770,6 +772,7 @@ let grabSession: {
   collapsedIds: Set<string>;
   pendingSave: boolean;
   moved: boolean;
+  orderHistory: ChildOrderHistory;
 } | null = null;
 let linearDirty = false;
 let linearDisplayedScopeId = "";
@@ -4004,6 +4007,7 @@ function makeSelectedFolder(): boolean {
     setStatus("Alias nodes cannot become scopes.", true);
     return false;
   }
+  focusBoard(board);
   pushUndoSnapshot(editTouches(map.state, [node.id, ...node.children.filter(id => map!.state.nodes[id]?.edgeOutsideScope)]));
   if (isFolderNode(node)) {
     node.nodeType = undefined;
@@ -4023,7 +4027,6 @@ function makeSelectedFolder(): boolean {
     touchDocument(false, { nodes: [node.id] });
     setStatus(`Marked as scope: ${uiLabel(node)}`);
   }
-  focusBoard(board);
   return true;
 }
 
@@ -4353,7 +4356,7 @@ function undoLastChange(): void {
 
   redoStack.push({
     state: undoStack[undoStack.length - 1]?.delta ? canonicalMapState() : cloneState(canonicalMapState()),
-    delta: undoStack[undoStack.length - 1]?.delta ? captureStatePatch(canonicalMapState(), undoStack[undoStack.length - 1]!.delta!.touches) : undefined,
+    delta: undoStack[undoStack.length - 1]?.delta ? inverseStatePatch(canonicalMapState(), undoStack[undoStack.length - 1]!.delta!) : undefined,
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
@@ -4394,7 +4397,7 @@ function redoLastChange(): void {
 
   undoStack.push({
     state: redoStack[redoStack.length - 1]?.delta ? canonicalMapState() : cloneState(canonicalMapState()),
-    delta: redoStack[redoStack.length - 1]?.delta ? captureStatePatch(canonicalMapState(), redoStack[redoStack.length - 1]!.delta!.touches) : undefined,
+    delta: redoStack[redoStack.length - 1]?.delta ? inverseStatePatch(canonicalMapState(), redoStack[redoStack.length - 1]!.delta!) : undefined,
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
@@ -7930,7 +7933,7 @@ function render(incremental = false): void {
 }
 
 function renderScene(incremental: boolean): void {
-  patchDocumentScene = null;
+  patchDocumentScene = null; retainedTree = null;
   if (map) agentNodePresence.change(map.state, undefined, true);
   scopeView.guardScope();
   prepareConcretenessView();
@@ -7991,11 +7994,13 @@ function renderScene(incremental: boolean): void {
   const paintDependency = (id: string) => JSON.stringify([state.nodes[id]?.text, state.nodes[id]?.parentId, effectiveNodeStyleAttrs(state.nodes[id]), state.nodes[id]?.targetNodeId]);
   const pos = layout.pos;
   lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}:${viewState.concretenessLevel}`);
-  let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
-  let maxY = Math.max(
-    VIEWER_TUNING.layout.minCanvasHeight,
-    layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
-  );
+  const nodeExtents = new SceneBounds();
+  let maxX = VIEWER_TUNING.layout.minCanvasWidth, maxY = VIEWER_TUNING.layout.minCanvasHeight;
+  const extent = (id: string, output = { maxX: 0, maxY: 0 }) => nodeExtents.set(id, {x:0,y:0,
+    width:Math.max(pos[id].x+pos[id].w+VIEWER_TUNING.layout.nodeRightPad,output.maxX),
+    height:Math.max(pos[id].y+pos[id].h+VIEWER_TUNING.layout.nodeBottomPad,output.maxY)});
+  const sceneExtent = () => [Math.max(maxX,layout.totalWidth,nodeExtents.box?.width || 0),
+    Math.max(maxY,layout.totalHeight+VIEWER_TUNING.layout.topPad+VIEWER_TUNING.layout.canvasBottomPad,nodeExtents.box?.height || 0)] as const;
   let defs = "<defs>";
   let surfaceFrames = laneFrames(layout, escapeXml, viewState.selectedNodeIds);
   let disperseGroups = "";
@@ -8507,8 +8512,7 @@ function renderScene(incremental: boolean): void {
       return;
     }
 
-    maxX = Math.max(maxX, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
-    maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
+    extent(nodeId);
 
     const runtimeCard = orreryNetwork.drawCard(nodeId, p);
     if (runtimeCard !== null) {
@@ -8535,8 +8539,7 @@ function renderScene(incremental: boolean): void {
     nodeDrawInputs.set(node.id, drawInput);
     const output = nodeSvgCache.get(nodeId, JSON.stringify(drawInput), () => renderNodeSvg(drawInput));
     let nodeMarkup = output.svg;
-    maxX = Math.max(maxX, output.bounds.maxX);
-    maxY = Math.max(maxY, output.bounds.maxY);
+    extent(nodeId, output.bounds);
 
     if (!scatterSurface && !nodeComponent && isFolderNode(node)) {
       nodeMarkup += renderFolderPreview(node, nodeStyles, p);
@@ -8633,7 +8636,7 @@ function renderScene(incremental: boolean): void {
   // Measure world geometry, including negative positions and curved paths.
   // A hidden SVG cannot be measured reliably; it is hidden again by the
   // projection before presentation, without changing saved node coordinates.
-  const bounds = sceneWorldBounds(sceneBox(), maxX, maxY);
+  const bounds = sceneWorldBounds(sceneBox(), ...sceneExtent());
   contentMinX = bounds.minX;
   contentMinY = bounds.minY;
   contentWidth = bounds.maxX - bounds.minX;
@@ -8679,40 +8682,73 @@ function renderScene(incremental: boolean): void {
   renderLinearPanel();
   if (state === map.state && viewState.surfaceViewMode === "tree") {
     const retainedContext = saveViewKey();
-    patchDocumentScene = (touches) => {
+    const tree = retainedTree = new TreeReorder(layout, id => visibleChildren(state.nodes[id]), id => treeSpanCache.span(id), viewState.surfaceLayoutDirection, () => activeLayoutCache.result.begin(true));
+    patchDocumentScene = (touches, reorder) => {
       if (map?.state !== state || retainedContext !== saveViewKey() || viewerFilter.getSnapshot().result.active || !retainedSceneBounds.box) return false;
       const changed = new Set(touches.nodes);
-      if (changed.has(displayRootId)) return false;
+      if (changed.has(displayRootId) || (reorder && (structuredMode !== "tree" || orreryNetwork.enabled || lineSelection.hasGraphLinks(reorder.changed)))) return false;
       // Components and previews can own geometry beyond their measured node box.
       for (const id of changed) if (!state.nodes[id] || parseNodeComponent(state.nodes[id]) || nodeAuxMarkup.get(id)) return false;
       const applied = stableScene.apply(touches, {
         children: id => visibleChildren(state.nodes[id]), dependency: paintDependency,
         measure: id => cachedLayoutNode(state, id, displayRootId, structuredLayoutConfig(structuredMode)),
+        beforeDraw: () => { if (reorder) tree.apply(reorder); },
         draw: id => {
           const input = toNodeDrawInput(state.nodes[id], pos[id], effectiveNodeStyleAttrs(state.nodes[id]));
           const output = renderNodeSvg(input);
+          extent(id, output.bounds);
           retainedSvgScene.patch(`node:${id}`, output.svg);
           nodeDrawInputs.set(id, input);
           retainedSceneBounds.set(`node:${id}`, fragmentBox(`node:${id}`));
           const fragment = retainedSvgScene.element(`node:${id}`)!;
           refreshCapturedNodeFragment(canvas, id, fragment); lineSelection.refreshNode(id, fragment);
+          if (reorder) {
+            const parent = state.nodes[id].parentId!, key = `edge:${parent}:${id}`;
+            retainedSvgScene.patch(key, renderParentChildEdges(parent, effectiveNodeStyleAttrs(state.nodes[parent]), pos[parent], [id], tree.index(id)!));
+            const edge = retainedSvgScene.element(key)!;
+            retainedSceneBounds.set(key, fragmentBox(key));refreshCapturedNodeFragment(canvas, key, edge);lineSelection.refreshParent(parent, id, edge);
+          }
         },
       });
       if (!applied) return false;
+      const paintOrder: string[][] = [];
+      if (reorder) {
+        const ordered = tree.ordered(reorder), edgeKeys = (ids: string[]) => ids.map(id => `edge:${state.nodes[id].parentId}:${id}`);
+        const internal = (ids: string[]) => ids.flatMap(id => visibleChildren(state.nodes[id]).map(child => `edge:${id}:${child}`));
+        const roots = [...reorder.roots].sort((a,b) => tree.index(a)!-tree.index(b)!);
+        retainedSvgScene.reorder(reorder.changed.map(id=>`node:${id}`),ordered.map(id=>`node:${id}`));
+        retainedSvgScene.reorder(edgeKeys(reorder.roots),edgeKeys(roots));
+        retainedSvgScene.reorder(internal(reorder.changed),internal(ordered));
+        paintOrder.push(ordered,edgeKeys(roots),internal(ordered));
+      }
       const sceneBounds = retainedSceneBounds.box;
       if (!sceneBounds) return false;
-      const bounds = sceneWorldBounds(sceneBounds, maxX, maxY);
+      const bounds = sceneWorldBounds(sceneBounds, ...sceneExtent());
       contentMinX = bounds.minX; contentMinY = bounds.minY;
       contentWidth = bounds.maxX - bounds.minX; contentHeight = bounds.maxY - bounds.minY;
       canvas.setAttribute("width", String(contentWidth)); canvas.setAttribute("height", String(contentHeight));
       canvas.setAttribute("viewBox", `${contentMinX} ${contentMinY} ${contentWidth} ${contentHeight}`);
       applyCanvasViewportTransform();
       if (isWebGLRendererActive() && webglProjection && webglLastSnapshot) {
-        const paint = captureHiddenNodePaint(canvas, changed);
-        const scene = webglProjection.updateNodePaint(paint, changed);
+        const paintIds = new Set(changed);
+        if (reorder) {
+          const positions = new Map<string, { x: number; y: number; edge?: Array<{x:number;y:number}> }>();
+          for (const id of changed) {
+            const key = `edge:${state.nodes[id].parentId}:${id}`, edge = retainedSvgScene.element(key)!.querySelector('.edge')!;
+            paintIds.add(key);positions.set(id, {x:pos[id].x,y:pos[id].y-Math.max(VIEWER_TUNING.layout.nodeHitHeight,pos[id].h)/2,edge:sampledPathData(edge.getAttribute('d')||'')||undefined});
+          }
+          webglProjection.updateTreePositions(positions);
+        }
+        const paint = captureHiddenNodePaint(canvas, paintIds);
+        const scene = webglProjection.updateNodePaint(paint, paintIds);
         if (scene) webglLastSnapshot = { ...webglLastSnapshot, paintScene: scene };
+        for (const order of paintOrder) webglProjection.reorderPaint(order);
         webglProjection.present();
       } else if (webglSurfaceSupported()) scheduleWebGLProjectionActivation();
+      if (reorder) {
+        for (const id of reorder.roots) scopeSummaryOrder.set(id, tree.index(id)!);
+        visibleOrder = layout.order;
+      }
       renderRevision++;
       board.dataset.renderRevision = String(renderRevision);
       board.dataset.editWork = JSON.stringify({ incremental: true, measured: changed.size, layouts: 0, branches: 0, nodes: changed.size, edges: 0, fragments: changed.size });
@@ -12349,10 +12385,10 @@ function beginGrab(): void {
   cancelCameraMotion();
   grabSession = {
     map, sourceId: roots[0],
-    before: { state: cloneState(canonicalMapState()),
+    before: { state: viewState.concretenessLevel ? cloneState(canonicalMapState()) : canonicalMapState(), delta: viewState.concretenessLevel ? undefined : {touches:{},records:[],children:[]},
     concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(), collapsedIds: Array.from(viewState.collapsedIds), selectedNodeId: viewState.selectedNodeId,
       selectedNodeIds: Array.from(viewState.selectedNodeIds), selectionAnchorId: viewState.selectionAnchorId },
-    collapsedIds: new Set(viewState.collapsedIds), pendingSave: autosaveTimer !== null, moved: false,
+    collapsedIds: new Set(viewState.collapsedIds), pendingSave: autosaveTimer !== null, moved: false, orderHistory: new ChildOrderHistory(),
   };
   if (autosaveTimer !== null) clearTimeout(autosaveTimer);
   autosaveTimer = null;
@@ -12363,6 +12399,23 @@ function beginGrab(): void {
 function moveGrab(key: string): void {
   const grab = grabSession;
   if (!grab || !map || map !== grab.map || !lastLayout) return;
+  const plan = retainedTree?.planKey(grab.sourceId, key);
+  if (plan && grab.before.delta) {
+    const parent = getNode(plan.parent), source = getNode(plan.source);
+    const outside = isFolderNode(parent) && parent.id !== map.state.rootId && parent.id !== currentScopeRootId();
+    if (parent.collapsed === false && (outside ? source.edgeOutsideScope === true : !Object.prototype.hasOwnProperty.call(source, "edgeOutsideScope"))
+      && plan.roots.every((id, i) => parent.children[Math.min(plan.from,plan.to)+i] === id)) {
+      if (patchDocumentScene?.({nodes:plan.changed}, plan)) {
+        grab.orderHistory.record(parent.id,parent.children,plan.from,plan.to);
+        rotateRange(parent.children,plan.from,plan.to);grab.before.delta=grab.orderHistory.patch();grab.moved=true;viewState.reparentSourceIds.delete(grab.sourceId);
+        return;
+      }
+    }
+  }
+  if (grab.before.delta) {
+    const original = cloneState(canonicalMapState());applyStatePatch(original,grab.before.delta);
+    grab.before.state=original;grab.before.delta=undefined;
+  }
   const laneGrid = currentLaneGrid();
   const proposal = laneGrid && lastLayout.lane
     ? laneGrabMove(laneGrid, lastLayout.pos, grab.sourceId, lastLayout.lane.direction, key)
@@ -12393,11 +12446,11 @@ function finishGrab(commit: boolean): void {
     setStatus("Grab canceled.");
     return;
   }
-  if (grab.moved && JSON.stringify(canonicalMapState()) !== JSON.stringify(grab.before.state)) {
+  if (grab.moved && (grab.before.delta ? grab.orderHistory.changed(map!.state.nodes) : JSON.stringify(canonicalMapState()) !== JSON.stringify(grab.before.state))) {
     undoStack.push(grab.before);
     if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
     redoStack = [];
-    touchDocument();
+    touchDocument(false, grab.before.delta?.touches, Boolean(grab.before.delta), grab.before.delta ? inverseStatePatch(map!.state,grab.before.delta) : undefined);
   } else if (grab.pendingSave) scheduleAutosave();
   setStatus("Navigate · Grab finished.");
 }
@@ -13324,7 +13377,7 @@ function initBroadcastSync(): void {
       if (!map) return;
       if (message.savedAt) lastServerSavedAt = message.savedAt;
       if (message.patch) {
-        if (!message.patch.records.length) return;
+        if (!message.patch.records.length && !message.patch.children?.length) return;
         finishGrab(false);
         applyStatePatch(map.state, message.patch);
         agentNodePresence.change(map.state, message.patch.touches.nodes);
@@ -13601,19 +13654,20 @@ function toggleReviewMode(): void {
   render();
 }
 
-function touchDocument(incremental = false, touches?: SaveTouches): void {
+function touchDocument(incremental = false, touches?: SaveTouches, alreadyDrawn = false, patch?: StatePatch): void {
   if (!map) {
     return;
   }
   markSaveChanges(touches);
+  if (patch?.children) deltaBroadcast?.childOrder(patch.children);
   if (incremental && localEditBatchDepth) {
     localEditBatchPending = true;
     return;
   }
   if (!touches) syncLinearNotesToDocState();
-  syncMapModelStateFromRuntime(touches);
+  if (!alreadyDrawn) syncMapModelStateFromRuntime(touches);
   map.savedAt = nowIso();
-  if (!touches || !patchDocumentScene?.(touches)) render(incremental);
+  if (!alreadyDrawn && (!touches || !patchDocumentScene?.(touches))) render(incremental);
   else if (new URLSearchParams(location.search).get("deltaDebug") === "1") {
     const markup = canvas.innerHTML, layout = JSON.stringify(lastLayout);
     render();

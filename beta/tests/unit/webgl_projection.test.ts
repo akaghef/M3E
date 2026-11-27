@@ -123,3 +123,19 @@ it("drag patches only moved nodes and incident edges with absolute deltas, not f
   expect(internals.nodesById.get("root")).toBe(snapshot.nodes[0]);
   expect(internals.dragPreview).toBeNull();
 });
+
+it('reorder updates retained hit geometry and incoming edges without replacing a snapshot',()=>{
+  const {projection,internals}=projectionHarness();
+  internals.canvas.getBoundingClientRect=()=>({left:0,top:0});
+  const initial={...structuredClone(snapshot),paintScene:{commands:[]}};
+  projection.setSnapshot(initial);projection.setCamera({x:0,y:0,zoom:1});
+  expect(projection.hitTest(50,50)).toEqual({kind:'node',nodeId:'root'});
+  const points=[{x:180,y:54},{x:1200,y:1532}];
+  projection.updateTreePositions(new Map([['root',{x:1000,y:1000}],['circle',{x:1200,y:1500,edge:points}]]));
+  expect(projection.hitTest(50,50)).toBeNull();
+  expect(projection.hitTest(1030,1020)).toEqual({kind:'node',nodeId:'root'});
+  expect(projection.hitTest(1232,1532)).toEqual({kind:'node',nodeId:'circle'});
+  expect(initial.edges[0]!.points).toEqual(points);
+  expect(internals.sceneTiles.setScene).toHaveBeenCalledTimes(1);
+  expect(internals.snapshot).toBe(initial);
+});

@@ -252,3 +252,19 @@ it.each([50, 20000])('viewport lookup does not read offscreen long-edge paint (%
   expect(index.query({ x: 20, y: 20, width: 100, height: 100 })).toEqual([0]);
   expect(reads).toBeLessThanOrEqual(1);
 });
+
+it('retains reordered owner ranks through later node and edge paint replacement',()=>{
+  const {tiles}=harness(), a=label(0),b=label(1),c=label(2);
+  const edge={...label(3),ownerId:'edge:a:b',nodeId:'n1'};
+  tiles.setScene({commands:[edge,a,b,c]});
+  tiles.reorderOwners(['n1','n0']);
+  const selected={...b,text:'selected'},badge={...b,text:'scope'};
+  let scene=tiles.updateNodePaint({commands:[selected,badge]},new Set(['n1']));
+  expect(scene.commands).toEqual([edge,selected,badge,a,c]);
+  const nextEdge={...edge,text:'edge label'};
+  scene=tiles.updateNodePaint({commands:[nextEdge]},new Set(['edge:a:b']));
+  expect(scene.commands).toEqual([nextEdge,selected,badge,a,c]);
+  tiles.reorderOwners(['n0','n1']);
+  scene=tiles.updateNodePaint({commands:[b]},new Set(['n1']));
+  expect(scene.commands).toEqual([nextEdge,a,b,c]);
+});

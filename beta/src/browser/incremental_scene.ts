@@ -30,6 +30,14 @@ export class RetainedSvgScene<T = unknown> {
     return replaced;
   }
   element(key: string): SVGGElement | undefined { return this.parts.get(key)?.element; }
+  /** Reorder a known contiguous interval without visiting its other siblings. */
+  reorder(before: string[], after: string[]): void {
+    if(!before.length)return;
+    const last=this.parts.get(before[before.length-1]!)!.element, parent=last.parentNode!, next=last.nextSibling;
+    const fragment=document.createDocumentFragment();
+    for(const key of after)fragment.append(this.parts.get(key)!.element);
+    parent.insertBefore(fragment,next);
+  }
   /** Selection can mutate classes outside render(). Do not reuse that markup. */
   invalidate(key: string): void {
     const part = this.parts.get(key);

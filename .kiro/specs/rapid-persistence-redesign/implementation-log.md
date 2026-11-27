@@ -758,4 +758,14 @@
 - 対象: edge 選択、入力の所有権、Agent node の存在判定、SVG→WebGL capture
 - 中身: edge の Ref / GraphLink / 端点を索引化し、問合せた対象だけ CSS 座標へ変換する。非表示理由は対象の祖先だけを調べる。通常の node 入力では edge scene を構築しない。modal 所有権を DOM 変更分から更新し、既に board が focus を持つ場合は focus を呼ばない。Agent node 集合は変更 node だけで更新する。部分 capture は全 SVG を再表示せず、変更要素・祖先・defs の一時 SVG を同じ capture 処理に渡し、同期的に除去する。
 - 根拠: Director の前回 checkpoint 実測は DV1 PASS、DV2 31.7 / 307.8 ms・比率9.7で FAIL。全 unit は sandbox 外では1,613通過・27 skipped・0失敗。今回の最終 build と関連109試験は通過し、全 unit suite は1,620通過・2失敗・27 skipped（失敗は sandbox の vault-watch EMFILE）。通常キー処理と座標測定の3回帰試験は前回実装では失敗した。部分 capture の25回反復で、所有要素・SVG fragment は増加せず、全 SVG の hidden 属性を変更しないことを構造試験で確認した。実 browser の現在の結果ではない。
-- 扱い: 部分実装。元の全表示更新経路が変化量に比例する要件は継続中。連続 toggle の時間増加の解消と画素一致は Director が独立測定する。寸法変更の lazy offset、viewport 展開、rename / Style / filter の依存更新、他の undo 入口は未達。visual の基準は Director の実測（164通過・6 skipped・0失敗）に従い、新規失敗ゼロ。
+- 扱い: 部分実装。元の全表示更新経路が変化量に比例する要件は継続中。連続 toggle の時間増加の解消と画素一致は Director が独立測定する。寸法変更の lazy offset、viewport 展開、rename / Style / filter の依存更新、他の undo 入口は未達。visual の基準は R3 で Director が訂正し、retries=1 で72 unexpected のリスト外に新規失敗がないこととした。
+
+
+### 2026-11-27 Grab の同一親の順序変更を区間単位の描画と履歴へ接続した
+
+- 種類: 実装・未達・測定訂正
+- 書いた agent: Codex（delta-all-viewer、R3）
+- 対象: Tree の Grab、Layout / SVG / WebGL の位置と描画順、Undo の before image、BroadcastChannel
+- 中身: 親・兄弟index・preorder・subtree spanを保持し、交差した兄弟区間だけをrotationする。移動した部分木と入射edgeのSVG・paint・hit geometry・boundsを更新し、M解放時の重複full renderを除いた。Grab前の全map cloneと完了時のJSON比較はchildren slotの初回値と現在値の比較へ置き換え、配信も同じ区間にした。未対応の移動では変更前の全snapshotへ復元して従来経路に戻す。focusは編集前に行い、部分capture stageからcamera transformとwill-changeを外した。
+- 根拠: build成功。全unitは1,632通過・27 skipped・2失敗、失敗と2 unhandled errorは既存のvault-watchのEMFILE。追加の50 / 20,000構造試験で隣接移動の対象は2件、無関係なposition / children slotの読取りは0、SVG追加・除去は各2要素。異なる寸法の部分木を右・左・下向きに移動して全Layoutとの一致を確認。WebGL描画順の後続編集と移動後hit test、Grab取消・Undo・Redo・配信を検証。その後、in-place更新したLayoutが旧topology keyで再利用される問題を修正し、取消後のcache回帰を含む関連12試験が通過。browserは未実行（Director 依頼）。viewer.tsは基準c3f3138の17,593行に対し17,582行。
+- 扱い: 部分実装、goalは未完了。DirectorのR2測定はDV1 PASS、DV2 / DV4 FAIL、DV3はSTORE担当で本作業では変更しない。提供されたtoggle profileのfocus134msは1回のみで、medianの原因とはまだ断定できない。Playwrightの基準はR3訂正の72 unexpectedを使う。新規2回帰（scatterのdrag後boundingBoxがnull、svgのArrowRightでrootのまま）は実ブラウザーのpageerror / renderer状態が未提供で原因未確定、解消も未検証。大きい部分木のlazy offset / viewport展開、寸法変更、対応外の編集・Undo描画・受信描画は未達。実行コマンドと診断項目はviewer-delta-drawing-design.md。

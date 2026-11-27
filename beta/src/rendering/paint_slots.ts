@@ -16,10 +16,11 @@ export class PaintSlots {
     this.commands = commands;
     commands.forEach((command, slot) => {
       this.order.set(slot, [slot, 0]);
-      if (command.nodeId) {
-        const slots = this.owners.get(command.nodeId) ?? [];
-        slots.push(slot); this.owners.set(command.nodeId, slots);
-        const order = this.ownerOrder.get(command.nodeId) ?? []; order.push([slot, 0]); this.ownerOrder.set(command.nodeId, order);
+      const owner = command.ownerId || command.nodeId;
+      if (owner) {
+        const slots = this.owners.get(owner) ?? [];
+        slots.push(slot); this.owners.set(owner, slots);
+        const order = this.ownerOrder.get(owner) ?? []; order.push([slot, 0]); this.ownerOrder.set(owner, order);
       }
     });
     this.tail = commands.length;
@@ -32,6 +33,13 @@ export class PaintSlots {
   };
   set(slot: number, command: PaintCommand): void {
     this.commands[slot] = command; this.dense = undefined;
+  }
+  reorder(owners: string[]): void {
+    const slots=owners.flatMap(id=>this.owners.get(id)??[]);
+    const ranks=[...slots].sort(this.compare).map(slot=>this.order.get(slot)!);
+    slots.forEach((slot,index)=>this.order.set(slot,ranks[index]!));
+    for (const id of owners) this.ownerOrder.set(id,(this.owners.get(id)??[]).map(slot=>this.order.get(slot)!));
+    this.dense=undefined;
   }
   /** Callbacks update only changed spatial memberships and path caches. */
   replace(id: string, commands: PaintCommand[], write: (slot: number, command: PaintCommand) => void,
