@@ -1,7 +1,7 @@
 // The scope view route and the write guard on the real server, in both storage modes.
 //
 // Two server processes are started from dist/ on temporary data: SQLite (default) and the
-// record store (M3E_STORE_DIR). The same checks run against both. Synthetic data only.
+// record store in the disposable test Neo4j. The same checks run against both. Synthetic data only.
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -12,6 +12,7 @@ import path from "node:path";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import { extractScopeView } from "../../src/shared/scope_view";
+import { dropTestStores, testStoreName, TEST_NEO4J } from "./neo4j_test_store";
 import type { AppState } from "../../src/shared/types";
 import { node } from "./scope_view_fixture";
 
@@ -25,14 +26,24 @@ function freePort(): Promise<number> {
     probe.once("error", reject);
     probe.listen(0, () => {
       const port = (probe.address() as net.AddressInfo).port;
-      probe.close(() => resolve(port));
+      probe.close(() => resolve(port === 4173 ? freePort() : port));
     });
   });
 }
 
 interface Running { base: string; child: ChildProcess; log: string[] }
 
-async function startServer(dataDir: string, storeDir: string | null): Promise<Running> {
+function neo4jChildEnv(): NodeJS.ProcessEnv {
+  return {
+    M3E_NEO4J_BOLT: TEST_NEO4J.uri,
+    M3E_NEO4J_USER: TEST_NEO4J.user ?? "",
+    M3E_NEO4J_PASSWORD: TEST_NEO4J.password ?? "",
+    M3E_NEO4J_PASSWORD_FILE: "",
+    M3E_NEO4J_DATABASE: TEST_NEO4J.database ?? "",
+  };
+}
+
+async function startServer(dataDir: string, storeName: string | null): Promise<Running> {
   const port = await freePort();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -44,10 +55,18 @@ async function startServer(dataDir: string, storeDir: string | null): Promise<Ru
     M3E_OPEN_BROWSER: "0",
     M3E_CLOUD_SYNC: "0",
     M3E_AUTO_SYNC: "0",
+    M3E_RECORD_STORE: "",
+    M3E_SYNC_REMOTE: "",
+    M3E_NEO4J_BOLT: "",
+    M3E_NEO4J_USER: "",
+    M3E_NEO4J_PASSWORD: "",
+    M3E_NEO4J_PASSWORD_FILE: "",
+    M3E_NEO4J_DATABASE: "",
   };
-  delete env.M3E_STORE_DIR;
-  delete env.M3E_NEO4J_BOLT;
-  if (storeDir !== null) env.M3E_STORE_DIR = storeDir;
+  if (storeName !== null) {
+    env.M3E_RECORD_STORE = storeName;
+    Object.assign(env, neo4jChildEnv());
+  }
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env, stdio: ["ignore", "pipe", "pipe"] });
   const log: string[] = [];
   child.stdout?.on("data", (chunk) => log.push(String(chunk)));
@@ -115,14 +134,15 @@ let root: string;
 
 beforeAll(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-scope-view-"));
-  const storeDir = path.join(root, "store");
-  RecordWorkspaceStore.create(storeDir, toSnapshot(WORKSPACE, [], { now: "2026-11-17T00:00:00.000Z" }));
+  const storeName = testStoreName();
+  await RecordWorkspaceStore.createInNeo4j(TEST_NEO4J, storeName, toSnapshot(WORKSPACE, [], { now: "2026-11-17T00:00:00.000Z" }));
   servers.sqlite = await startServer(path.join(root, "data-sqlite"), null);
-  servers["record store"] = await startServer(path.join(root, "data-store"), storeDir);
+  servers["record store"] = await startServer(path.join(root, "data-store"), storeName);
 }, 90_000);
 
 afterAll(async () => {
   await Promise.all(Object.values(servers).map((server) => stopServer(server)));
+  await dropTestStores();
   fs.rmSync(root, { recursive: true, force: true });
 });
 
