@@ -9,6 +9,7 @@
 // and pinned as 0 / 1), which is also what a snapshot made from SQLite carries.
 
 import type { MapCommand, FieldConflict, RecordChange } from "../../shared/map_changes";
+import { emptyAliasTable, translateState, translatorOf } from "./id_alias";
 import { fromSnapshot } from "../../shared/record_model/from_snapshot";
 import { MapProjector, recordRk } from "../../shared/record_model/steady";
 import type { AppState, SavedMap } from "../../shared/types";
@@ -110,8 +111,17 @@ export async function storeLoadSavedMapFromDatabase(store: RecordWorkspaceStore,
   if (!store.hasMap(mapId)) throw new Error("Map not found.");
   const memory = store.getMapRow(mapId);
   if (!memory.savedAt) throw new Error("Unsupported or invalid save format.");
-  const aliased = records.some((record) => record.kind === "idMap" && record.alias === true);
-  const state = aliased ? memory.state : stateFromMapRecords(store.workspaceId, mapId, records);
+  // Ids the store renumbered are shown with the ids the client knows: the same translation the
+  // store applies (`aliasesOf` / `clientState`), built from the idMap records read from Neo4j.
+  const out = emptyAliasTable();
+  let aliased = false;
+  for (const record of records) {
+    if (record.kind !== "idMap" || record.alias !== true) continue;
+    out[record.recordKind].set(record.newId, record.oldId);
+    aliased = true;
+  }
+  const stored = stateFromMapRecords(store.workspaceId, mapId, records.filter((record) => record.kind !== "idMap"));
+  const state = aliased ? translateState(stored, translatorOf(out)) : stored;
   return { version: 1, savedAt: memory.savedAt, state };
 }
 
