@@ -1,3 +1,4 @@
+import { SelectionRecords, screenPresentation, focusBoard, modalInputOwner } from "./viewer_delta_selection";
 import { pathMidpoint } from "./markup_bounds";
 import type { AppState, GraphLink } from '../shared/types';
 import type { LayoutResult } from '../shared/layout_port';
@@ -19,21 +20,32 @@ export class EdgeGraphLinkSelectionAdapter {
   private layout: LayoutResult|null=null;
   private records: Presented[]=[];
   private graphRecords=new Map<string,Presented>();
+  private graphSlots=new Map<string,number>();
   private revision=0;
   private highlighted:readonly string[]=[];
   private context='';
   private camera='';
   private pendingReason:string|null=null;
   private visible:string[]=[];
-  private reasons:Record<string,NotDrawnReason>={};
+  private visibleSet = new Set<string>();
+  private index = new SelectionRecords();
+  private paintTargets = new Map<string, Element[]>();
+  private painted = new Set<Element>();
+  private guide: SVGElement | null = null;
+  private guideLayer: Element | null = null;
+  private modalOwnsInput: () => boolean;
   constructor(private bridge:Bridge) {
+    this.modalOwnsInput = modalInputOwner(bridge.board.ownerDocument);
     // Read-only inspection for integration tests; identities never enter GUI text.
-    Object.defineProperty(bridge.board, 'edgeGraphlinkSelection', {value:()=>structuredClone({selection:this.current(),scene:this.scene()})});
+    Object.defineProperty(bridge.board, 'edgeGraphlinkSelection', {value:()=>{
+      const {revision,items,visibleNodeIds,notDrawnReasons}=this.scene();
+      return structuredClone({selection:this.current(),scene:{revision,items,visibleNodeIds,notDrawnReasons}});
+    }});
   }
   begin(layout:LayoutResult, context:string):void {
     if(this.context!==context) {this.pendingReason=null;this.selection=null;this.bridge.link(null);this.context=context;}
     this.highlighted=selectionHighlight(this.current(),this.scene()).nodeIds;this.project();
-    this.layout=layout;this.records=[];this.graphRecords.clear();this.revision++;
+    this.layout=layout;this.records=[];this.graphRecords.clear();this.graphSlots.clear();this.index.reset([]);this.revision++;
   }
   private endpoint(id:string):Endpoint {
     const p=this.layout!.pos[id]!;
@@ -43,16 +55,17 @@ export class EdgeGraphLinkSelectionAdapter {
     const prior=this.graphRecords.get(key);
     if(prior && prior.ref.kind==='graph-link') {
       const ref={...prior.ref,linkIds:[...prior.ref.linkIds,link.id] as [string,...string[]]};
-      const next={...prior,ref};this.records[this.records.indexOf(prior)]=next;this.graphRecords.set(key,next);return;
+      const next={...prior,ref};this.records[this.graphSlots.get(key)!]=next;this.graphRecords.set(key,next);this.index.add(next,prior);return;
     }
     const item:Presented={ref:{kind:'graph-link',renderKey:link.id,linkIds:[link.id]},source:this.endpoint(source),target:this.endpoint(target),
       presentation:{kind:'line',renderKey:link.id,labelAnchor:this.endpoint(target).center}};
-    this.records.push(item);this.graphRecords.set(key,item);
+    this.graphSlots.set(key,this.records.length);this.records.push(item);this.graphRecords.set(key,item);this.index.add(item);
   }
   parent(parent:string,child:string):void {
     if(!this.layout?.pos[parent]||!this.layout.pos[child]) return;
-    this.records.push({ref:{kind:'parent-child',parentNodeId:parent,childNodeId:child},source:this.endpoint(parent),target:this.endpoint(child),
-      presentation:{kind:'line',renderKey:`edge:${parent}:${child}`,labelAnchor:this.endpoint(child).center}});
+    const item:Presented={ref:{kind:'parent-child',parentNodeId:parent,childNodeId:child},source:this.endpoint(parent),target:this.endpoint(child),
+      presentation:{kind:'line',renderKey:`edge:${parent}:${child}`,labelAnchor:this.endpoint(child).center}};
+    this.records.push(item);this.index.add(item);
   }
   finish():void {
     const state=this.bridge.state(),layout=this.layout;
@@ -69,13 +82,14 @@ export class EdgeGraphLinkSelectionAdapter {
     const graphLines=firstBy<SVGGeometryElement>('.graph-link[data-link-id]',el=>el.getAttribute('data-link-id')!);
     const edgeLines=firstBy<SVGGeometryElement>('.edge[data-source-node-id][data-target-node-id]',el=>pairKey(el.getAttribute('data-source-node-id')!,el.getAttribute('data-target-node-id')!));
     this.visible=[...firstNodeElement.keys()];
-    const visibleSet=new Set(this.visible);
+    const visibleSet=this.visibleSet=new Set(this.visible);
+    const laneFrames=firstBy<Element>('[data-lane-node-id]',el=>el.getAttribute('data-lane-node-id')!);
+    const groupFrames=firstBy<Element>('.disperse-group[data-group-id]',el=>el.getAttribute('data-group-id')!);
     for(const id of this.visible) {
       const parent=state.nodes[id]?.parentId;
       if(!parent||!visibleSet.has(parent)) continue;
       const owner=layout.lane ? (parent===layout.lane.rootId?id:parent) : parent;
-      const frame=layout.lane ? this.bridge.canvas.querySelector(`[data-lane-node-id="${CSS.escape(owner)}"]`)
-        : this.bridge.canvas.querySelector(`.disperse-group[data-group-id="${CSS.escape(owner)}"]`);
+      const frame=layout.lane ? laneFrames.get(owner) : groupFrames.get(owner);
       if(!frame) continue;
       this.records.push({ref:{kind:'parent-child',parentNodeId:parent,childNodeId:id},source:this.endpoint(parent),target:this.endpoint(id),
         presentation:{kind:layout.lane?'lane-band':'group-frame',renderKey:owner,ownerNodeId:owner,labelAnchor:this.endpoint(id).center}});
@@ -100,33 +114,69 @@ export class EdgeGraphLinkSelectionAdapter {
       return {...item,source:measured(item.source),target:measured(item.target),presentation:{...item.presentation,labelAnchor}};
     });
     if(hidden)this.bridge.canvas.setAttribute("hidden", "");
-    this.reasons={};
-    for(const node of Object.values(state.nodes)) {
-      if(visibleSet.has(node.id)) continue;
-      let reason:NotDrawnReason='not-drawn';
-      if(!this.bridge.inScope(node.id)) reason='outside-scope';
-      else if(layout.lane && ![layout.lane.rootId,...(state.nodes[layout.lane.rootId]?.children??[])].includes(node.id)
-        && !state.nodes[layout.lane.rootId]?.children.includes(node.parentId??'')) reason='below-drawn-depth';
-      else { let id=node.parentId; const seen=new Set<string>(); while(id&&!seen.has(id)) {seen.add(id);if(this.bridge.view().collapsedIds.has(id)) {reason='collapsed';break;}id=state.nodes[id]?.parentId??null;} }
-      this.reasons[node.id]=reason;
+    this.index.reset(this.records);
+    this.paintTargets.clear();
+    const register=(key:string,el:Element)=>{const list=this.paintTargets.get(key)??[];list.push(el);this.paintTargets.set(key,list);};
+    for(const el of canvas.querySelectorAll('[data-node-id],.graph-link[data-link-id],.edge[data-source-node-id][data-target-node-id],[data-lane-node-id],.disperse-group[data-group-id]')) {
+      const node=el.getAttribute('data-node-id'); if(node) register(`node:${node}`,el);
+      if(el.matches('.graph-link[data-link-id]')) register(`graph:${el.getAttribute('data-link-id')}`,el);
+      if(el.matches('.edge[data-source-node-id][data-target-node-id]')) register(`edge:${pairKey(el.getAttribute('data-source-node-id')!,el.getAttribute('data-target-node-id')!)}`,el);
+      if(el.hasAttribute('data-lane-node-id')) register(`lane:${el.getAttribute('data-lane-node-id')}`,el);
+      if(el.hasAttribute('data-lane-header')&&node) register(`lane:${node}`,el);
+      if(el.matches('.disperse-group[data-group-id]')) register(`group:${el.getAttribute('data-group-id')}`,el);
     }
+    this.guideLayer=canvas.querySelector('[data-render-key="guides"]');
     if(this.selection) {
       const previous=this.selection;
       this.selection=reconcileSelection(previous,state,state.links??{},this.scene(),this.bridge.scope());
       if(previous.kind!=='node'&&this.selection?.kind==='node') {this.bridge.single(this.selection.nodeId);this.bridge.status(selectionReason('origin-unavailable'));}
       this.project();
     }
+    this.highlighted=selectionHighlight(this.current(),this.scene()).nodeIds;
     this.paint();
     if(this.pendingReason!==null) {this.bridge.status(this.pendingReason);this.pendingReason=null;}
     else if(this.selection&&this.selection.kind!=='node')this.bridge.status(this.status());
   }
+  private reason(id:string):NotDrawnReason|undefined {
+    const state=this.bridge.state(),layout=this.layout,node=state?.nodes[id];
+    if(!node||!state||!layout||this.visibleSet.has(id)) return undefined;
+    if(!this.bridge.inScope(id)) return 'outside-scope';
+    if(layout.lane && node.id!==layout.lane.rootId && node.parentId!==layout.lane.rootId
+      && state.nodes[node.parentId??'']?.parentId!==layout.lane.rootId) return 'below-drawn-depth';
+    let parent=node.parentId; const seen=new Set<string>();
+    while(parent&&!seen.has(parent)) {
+      seen.add(parent); if(this.bridge.view().collapsedIds.has(parent)) return 'collapsed';
+      parent=state.nodes[parent]?.parentId??null;
+    }
+    return 'not-drawn';
+  }
   scene():Scene {
-    const v=this.bridge.view(),rect=this.bridge.board.getBoundingClientRect();
-    const camera=JSON.stringify([v.zoom,v.cameraX,v.cameraY,rect.left,rect.top]);
-    if(camera!==this.camera){this.camera=camera;this.revision++;}
-    const point=(p:Point):Point=>({x:rect.left+this.bridge.board.clientLeft+v.cameraX+p.x*v.zoom,y:rect.top+this.bridge.board.clientTop+v.cameraY+p.y*v.zoom});
-    const items=this.records.map(item=>({...item,source:{...item.source,center:point(item.source.center)},target:{...item.target,center:point(item.target.center)},presentation:{...item.presentation,labelAnchor:point(item.presentation.labelAnchor)}}));
-    return {revision:this.revision,items,visibleNodeIds:this.visible,notDrawnReasons:this.reasons};
+    const v=this.bridge.view();
+    let rect:DOMRect|undefined,clientLeft=0,clientTop=0;
+    const viewport=():DOMRect=>{
+      if(!rect) {
+        rect=this.bridge.board.getBoundingClientRect();clientLeft=this.bridge.board.clientLeft;clientTop=this.bridge.board.clientTop;
+        const camera=JSON.stringify([v.zoom,v.cameraX,v.cameraY,rect.left,rect.top,clientLeft,clientTop]);
+        if(camera!==this.camera){this.camera=camera;this.revision++;}
+      }
+      return rect;
+    };
+    const point=(p:Point):Point=>{const rect=viewport();return {x:rect.left+clientLeft+v.cameraX+p.x*v.zoom,y:rect.top+clientTop+v.cameraY+p.y*v.zoom};};
+    const projected=new Map<Presented,Presented>();
+    const project=(item:Presented):Presented=>{
+      let value=projected.get(item);
+      if(!value) {value=screenPresentation(item,point);projected.set(item,value);}return value;
+    };
+    const self=this;
+    return {get revision(){viewport();return self.revision;},
+      get items(){return self.records.map(project);},visibleNodeIds:this.visible,
+      get notDrawnReasons(){
+        const reasons:Record<string,NotDrawnReason>={};
+        for(const id of Object.keys(self.bridge.state()?.nodes??{})) {const reason=self.reason(id);if(reason)reasons[id]=reason;}
+        return reasons;
+      },
+      lookup:{presented:ref=>{const item=this.index.presented(ref);return item?project(item):undefined;},
+        incident:id=>this.index.at(id).map(project),visible:id=>this.visibleSet.has(id),reason:id=>this.reason(id)}};
   }
   private current():Selection {return this.selection&&this.selection.kind!=='node'?this.selection:{kind:'node',nodeId:this.bridge.view().selectedNodeId};}
   private project():void {
@@ -140,11 +190,11 @@ export class EdgeGraphLinkSelectionAdapter {
     return this.bridge.writable()&&item?.ref.kind==='graph-link'&&item.ref.linkIds.length===1&&item.ref.linkIds[0]===id;
   }
   click(id:string):void {
-    const item=this.records.find(item=>item.ref.kind==='graph-link'&&item.ref.linkIds.includes(id));
+    const item=this.index.link(id);
     if(!item) return;
     const primary=this.bridge.view().selectedNodeId;
-    this.select({...item.ref,originNodeId:this.visible.includes(primary)?primary:item.source.renderedNodeId});
-    this.bridge.board.focus({preventScroll:true});
+    this.select({...item.ref,originNodeId:this.visibleSet.has(primary)?primary:item.source.renderedNodeId});
+    focusBoard(this.bridge.board);
   }
   private select(selection:Selection|null):void {
     this.pendingReason=null;
@@ -154,9 +204,11 @@ export class EdgeGraphLinkSelectionAdapter {
     this.project();this.bridge.status(this.status());this.bridge.render();
   }
   key(event:KeyboardEvent):boolean {
+    // Node input belongs to the viewer except explicit line-navigation keys.
+    if(this.current().kind==='node' && !(event.altKey&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&event.key.startsWith('Arrow'))) return false;
     const text=(element:EventTarget|null)=>element instanceof Element && Boolean(element.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'));
     const key:KeyInput={key:event.key,alt:event.altKey,shift:event.shiftKey,ctrl:event.ctrlKey,meta:event.metaKey,repeat:event.repeat,composing:event.isComposing,
-      textEditing:text(event.target)||text(document.activeElement)||this.bridge.editing(),boardOwnsInput:this.bridge.owns()&&!document.querySelector('.wb-progressive-nav.is-open, [role="dialog"][aria-modal="true"]')};
+      textEditing:text(event.target)||text(document.activeElement)||this.bridge.editing(),boardOwnsInput:this.bridge.owns()&&!this.modalOwnsInput()};
     const state=this.bridge.state();if(!state)return false;
     const scene=this.scene(),selection=this.current();
     const result=selectionTransition({selection,key,topology:state,scene,scopeRootId:this.bridge.scope()});
@@ -200,7 +252,7 @@ export class EdgeGraphLinkSelectionAdapter {
   }
   nodeView(id:string,view:{selected:boolean;multiSelected:boolean;primarySelected:boolean}) {
     if(!this.selection||this.selection.kind==='node')return view;
-    const selected=this.highlighted.includes(id)||selectionHighlight(this.selection,this.scene()).nodeIds.includes(id);
+    const selected=this.highlighted.includes(id);
     return {selected,multiSelected:false,primarySelected:selected};
   }
   status():string {
@@ -209,33 +261,38 @@ export class EdgeGraphLinkSelectionAdapter {
     return formatStatus({kind:item.ref.kind,sourceLabel:this.bridge.label(item.source.renderedNodeId),targetLabel:this.bridge.label(item.target.renderedNodeId),
       label:item.ref.kind==='parent-child'?state.nodes[item.ref.childNodeId]?.attributes['m3e:edge-label']:link?.label,relationType:link?.relationType,graphLinkCount:item.ref.kind==='graph-link'?item.ref.linkIds.length:undefined});
   }
+  /** A retained node patch replaces only that fragment's highlight targets. */
+  refreshNode(id:string,fragment:SVGGElement):void {
+    const key=`node:${id}`,elements=(this.paintTargets.get(key)??[]).filter(el=>el.isConnected&&!fragment.contains(el));
+    for(const el of fragment.querySelectorAll('[data-node-id]')) if(el.getAttribute('data-node-id')===id) elements.push(el);
+    this.paintTargets.set(key,elements);
+  }
   paint():void {
-    const canvas=this.bridge.canvas;
-    canvas.querySelectorAll('.scatter-guide').forEach(el=>el.remove());
-    canvas.querySelectorAll('.relation-endpoint, .relation-selected').forEach(el=>el.classList.remove('relation-endpoint','relation-selected'));
+    this.guide?.remove();this.guide=null;
+    for(const el of this.painted) el.classList.remove('relation-endpoint','relation-selected');
+    this.painted.clear();
+    const paint=(key:string,name:string)=>{for(const el of this.paintTargets.get(key)??[]) {el.classList.add(name);this.painted.add(el);}};
     const selection=this.current(),highlight=selectionHighlight(selection,this.scene());
     if(highlight.guide) {
       const {parentNodeId,childNodeId}=highlight.guide;
       const parent=this.layout?.pos[parentNodeId],child=this.layout?.pos[childNodeId];
-      const layer=canvas.querySelector('[data-render-key="guides"]');
+      const layer=this.guideLayer;
       if(parent&&child&&layer) {
         const line=document.createElementNS('http://www.w3.org/2000/svg','line');
         const {x1,y1,x2,y2}=disperseGuideEndpoints(parent,child);
         line.setAttribute('class','scatter-guide');
         line.dataset.parentNodeId=parentNodeId;line.dataset.childNodeId=childNodeId;
         for(const [key,value] of Object.entries({x1,y1,x2,y2}))line.setAttribute(key,String(value));
-        layer.append(line);
+        layer.append(line);this.guide=line;
       }
     }
     for(const id of highlight.nodeIds) {
-      canvas.querySelectorAll(`[data-node-id="${CSS.escape(id)}"]`).forEach(el=>el.classList.add('relation-endpoint'));
+      paint(`node:${id}`,'relation-endpoint');
     }
     const item=presented(selection,this.scene());if(!item)return;
     const p=item.presentation;
-    const selector=p.kind==='lane-band'?`[data-lane-node-id="${CSS.escape(p.ownerNodeId)}"], [data-lane-header][data-node-id="${CSS.escape(p.ownerNodeId)}"]`
-      :p.kind==='group-frame'?`.disperse-group[data-group-id="${CSS.escape(p.ownerNodeId)}"]`
-      :item.ref.kind==='graph-link'?`.graph-link[data-link-id="${CSS.escape(item.ref.renderKey)}"]`
-      :`.edge[data-source-node-id="${CSS.escape(item.ref.parentNodeId)}"][data-target-node-id="${CSS.escape(item.ref.childNodeId)}"]`;
-    canvas.querySelectorAll(selector).forEach(el=>el.classList.add('relation-selected'));
+    const key=p.kind==='lane-band'?`lane:${p.ownerNodeId}`:p.kind==='group-frame'?`group:${p.ownerNodeId}`
+      :item.ref.kind==='graph-link'?`graph:${item.ref.renderKey}`:`edge:${JSON.stringify([item.ref.parentNodeId,item.ref.childNodeId])}`;
+    paint(key,'relation-selected');
   }
 }

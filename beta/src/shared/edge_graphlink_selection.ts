@@ -10,7 +10,13 @@ export type Presentation = { kind: 'line'; renderKey: string; labelAnchor: Point
   | { kind: 'lane-band' | 'group-frame'; renderKey: string; ownerNodeId: string; labelAnchor: Point };
 export type Presented = Readonly<{ ref: Ref; source: Endpoint; target: Endpoint; presentation: Presentation }>;
 export type NotDrawnReason = 'collapsed' | 'below-drawn-depth' | 'outside-scope' | 'not-drawn';
-export type Scene = Readonly<{ revision: number; items: readonly Presented[]; visibleNodeIds: readonly string[]; notDrawnReasons: Readonly<Record<string, NotDrawnReason>> }>;
+export type SceneLookup = Readonly<{
+  presented(ref: Ref): Presented | undefined;
+  incident(origin: string): readonly Presented[];
+  visible(id: string): boolean;
+  reason(id: string): NotDrawnReason | undefined;
+}>;
+export type Scene = Readonly<{ lookup?: SceneLookup; revision: number; items: readonly Presented[]; visibleNodeIds: readonly string[]; notDrawnReasons: Readonly<Record<string, NotDrawnReason>> }>;
 export type Topology = Readonly<{ nodes: Readonly<Record<string, Readonly<{ parentId: string | null; children: readonly string[] }>>> }>;
 export type Selection = { kind: 'node'; nodeId: string } | (Ref & { originNodeId: string });
 export type TargetResult = { kind: 'selected'; ref: Ref } | { kind: 'none'; reason: 'no-parent' | 'no-child' | 'no-lines' | NotDrawnReason };
@@ -23,11 +29,17 @@ export function refKey(ref: Ref): string {
   return ref.kind === 'parent-child' ? JSON.stringify([0, ref.parentNodeId, ref.childNodeId]) : JSON.stringify([1, ref.renderKey, [...ref.linkIds].sort(lexical)]);
 }
 export function presented(selection: Selection, scene: Scene): Presented | undefined {
-  return selection.kind === 'node' ? undefined : scene.items.find(item => refKey(item.ref) === refKey(selection));
+  return selection.kind === 'node' ? undefined : findPresented(scene, selection);
+}
+function findPresented(scene: Scene, ref: Ref): Presented | undefined {
+  return scene.lookup ? scene.lookup.presented(ref) : scene.items.find(item => refKey(item.ref) === refKey(ref));
+}
+function visible(scene: Scene, id: string): boolean {
+  return scene.lookup ? scene.lookup.visible(id) : scene.visibleNodeIds.includes(id);
 }
 export function enumerateDrawn(originNodeId: string, topology: Topology, scene: Scene): readonly Presented[] {
   const seen = new Set<string>();
-  return scene.items.filter(item => {
+  return (scene.lookup ? scene.lookup.incident(originNodeId) : scene.items).filter(item => {
     const eligible = item.ref.kind === 'parent-child'
       ? item.presentation.kind === 'line' && item.ref.parentNodeId === originNodeId && topology.nodes[originNodeId]?.children.includes(item.ref.childNodeId)
       : item.source.renderedNodeId === originNodeId || item.target.renderedNodeId === originNodeId;
@@ -54,9 +66,9 @@ export function parentChildTarget(origin: string, key: 'ArrowUp' | 'ArrowDown', 
   const other = key === 'ArrowUp' ? node?.parentId : node?.children[0];
   if (!other) return {kind:'none', reason:key === 'ArrowUp' ? 'no-parent' : 'no-child'};
   const ref: ParentChildEdgeRef = {kind:'parent-child',parentNodeId:key === 'ArrowUp' ? other : origin,childNodeId:key === 'ArrowUp' ? origin : other};
-  const item = scene.items.find(item => refKey(item.ref) === refKey(ref));
-  return item && scene.visibleNodeIds.includes(other) && scene.visibleNodeIds.includes(origin)
-    ? {kind:'selected',ref} : {kind:'none',reason:scene.notDrawnReasons[other] ?? 'not-drawn'};
+  const item = findPresented(scene, ref);
+  return item && visible(scene, other) && visible(scene, origin)
+    ? {kind:'selected',ref} : {kind:'none',reason:(scene.lookup ? scene.lookup.reason(other) : scene.notDrawnReasons[other]) ?? 'not-drawn'};
 }
 export function cycleDrawn(ordered: readonly Presented[], current: Ref | null, step: -1 | 1): TargetResult {
   if (!ordered.length) return {kind:'none',reason:'no-lines'};
@@ -72,17 +84,17 @@ export function arrowEndpoint(item: Presented, key: Arrow): string | null {
   if(key!==positive && key!==negative) return null;
   return ((key===positive)===((horizontal?dx:dy)>0) ? item.target : item.source).renderedNodeId;
 }
-export function escapeNode(origin: string, topology: Topology, visible: readonly string[], scopeRootId: string): string | null {
+export function escapeNode(origin: string, topology: Topology, visible: readonly string[], scopeRootId: string, hasVisible = (id: string) => visible.includes(id)): string | null {
   const seen=new Set<string>(); let id: string | null=origin;
-  while(id && !seen.has(id)) { if(topology.nodes[id] && visible.includes(id)) return id; seen.add(id); id=topology.nodes[id]?.parentId ?? null; }
-  return topology.nodes[scopeRootId] && visible.includes(scopeRootId) ? scopeRootId : null;
+  while(id && !seen.has(id)) { if(topology.nodes[id] && hasVisible(id)) return id; seen.add(id); id=topology.nodes[id]?.parentId ?? null; }
+  return topology.nodes[scopeRootId] && hasVisible(scopeRootId) ? scopeRootId : null;
 }
 export function reconcileSelection(selection: Selection, topology: Topology, links: Readonly<Record<string,GraphLink>>, scene: Scene, scopeRootId: string): Selection | null {
   const origin=selection.kind==='node'?selection.nodeId:selection.originNodeId;
-  const fallback=escapeNode(origin,topology,scene.visibleNodeIds,scopeRootId);
+  const fallback=escapeNode(origin,topology,scene.visibleNodeIds,scopeRootId,scene.lookup?.visible);
   if(selection.kind==='node') return fallback?{kind:'node',nodeId:fallback}:null;
   const item=presented(selection,scene);
-  const valid=item && scene.visibleNodeIds.includes(origin) && (selection.kind==='parent-child'
+  const valid=item && visible(scene, origin) && (selection.kind==='parent-child'
     ? topology.nodes[selection.childNodeId]?.parentId===selection.parentNodeId
     : selection.linkIds.every(id=>Boolean(links[id])));
   return valid ? {...item.ref,originNodeId:origin} : fallback?{kind:'node',nodeId:fallback}:null;
@@ -95,7 +107,7 @@ export function selectionHighlight(selection: Selection, scene: Scene): Highligh
 export function selectionTransition({selection,key,topology,scene,scopeRootId}: Readonly<{selection:Selection;key:KeyInput;topology:Topology;scene:Scene;scopeRootId:string}>): SelectionResult {
   if(key.textEditing || key.composing || !key.boardOwnsInput) return {kind:'pass'};
   const origin=selection.kind==='node'?selection.nodeId:selection.originNodeId;
-  const fallback=escapeNode(origin,topology,scene.visibleNodeIds,scopeRootId);
+  const fallback=escapeNode(origin,topology,scene.visibleNodeIds,scopeRootId,scene.lookup?.visible);
   const node: Selection|null=fallback?{kind:'node',nodeId:fallback}:null;
   if(key.alt && !key.ctrl && !key.meta && !key.shift && key.key.startsWith('Arrow')) {
     if(fallback!==origin) return {kind:'consume',next:node,reason:'origin-unavailable'};
@@ -129,7 +141,7 @@ export function editIntent(selection: Selection, key: KeyInput, scene: Scene): {
 export function canDelete(ref: Ref, scene: Scene, writable: boolean): {allowed:true}|{allowed:false;reason:string} {
   if(!writable) return {allowed:false,reason:'読み取り専用です'};
   if(ref.kind==='parent-child') return {allowed:false,reason:'親子 edge は Delete で削除できません'};
-  const item=scene.items.find(item=>refKey(item.ref)===refKey(ref));
+  const item=findPresented(scene,ref);
   if(!item) return {allowed:false,reason:'選択対象がありません'};
   if(ref.linkIds.length>1) return {allowed:false,reason:'複数の GraphLink を表す線は編集できません'};
   return {allowed:true};

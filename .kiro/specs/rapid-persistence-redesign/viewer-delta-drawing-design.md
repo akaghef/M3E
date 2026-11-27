@@ -12,8 +12,10 @@
 | 正規化 | `viewer_delta_model.ts`。初回に node→incident relation edge、scope→relation edge / Surface View の索引を構築。既知 node の編集は対象部分木と影響先だけ更新 | Surface View の nodeViews は対象 node の項目のみ更新。relationIds の順序は全正規化と同じ。未知の変更・state の入替は全正規化 |
 | Layout / SVG | `viewer_delta_scene.ts:StableScenePatch`。全再描画時に子集合と描画依存を保持。既知の編集では対象 node の依存、子集合、寸法を検査し、全対象の検査成功後に SVG fragment を patch | Tree で寸法・子集合・描画依存が変わらない更新。scopen / unscopen もこの判定を通る。キー・node ID・node 数による分岐はない |
 | bounds | `SceneBounds` が既存ライブラリ RBush を使い fragment bounds を保持 | 更新対象を remove / insert。最小・最大の fragment が縮小しても正しい範囲を返す。不明な bounds は full path |
-| SVG→WebGL | fragment 差し替え時に capture の所有者索引を更新し、対象 node の paint のみ取得 | 古い detached SVG を再取得しない。defs は full capture の結果を再利用 |
+| SVG→WebGL | fragment 差し替え時に capture の所有者索引を更新し、対象 node の paint のみ取得 | 隠れた全 SVG は再表示せず、変更要素・祖先・既存 defs を一時的な sibling SVG へ複製し、同じ capture 関数で測定する。測定終了・例外時に同期的に除去する。CSS / geometry の実 browser 一致は Director 検証が必要 |
 | WebGL | `paint_slots.ts` と `webgl_scene_tiles.ts`。安定 slot と描画順を分離。primitive の追加・削除でも他 node の slot / 空間索引を再生成しない | 変更前後の bounds と交差する cached tile を無効化。tile cache は既存の64枚上限。長い edge も RBush の矩形索引で query し、全 query で走査する overflow bucket を廃止。drag は dense 配列の index でなく stable slot を使う |
+| edge 選択 | renderer が採用した record を Ref / GraphLink / 端点で索引化。対象だけ CSS 座標へ遅延変換 | 通常の node キー入力は edge scene を構築しない。非表示理由は問い合わせ対象の祖先だけ調べ、highlight は保持した要素参照だけを更新。全 record / 全理由の列挙は明示した診断 snapshot だけ |
+| 入力・Agent node | modal 所有権は DOM の変更分で更新し、既に board に focus があるときは native focus を呼ばない。Agent node は保持した集合の件数で存在判定 | Agent node 集合は既知の node 書込みだけを更新し、未知の変更または state 入替で再構築。modal は同一 task 内の変更も `takeRecords` で確認 |
 | BroadcastChannel | `viewer_delta_broadcast.ts`。write set の record と sender sequence を送る | 初回 request と sequence 欠落時だけ全 state を取得。重複を無視。保存後の savedAt 通知は空 patch |
 
 同じ Layout の patch では既存 SVG / hit geometry / 全 node の座標を保持する。pan / zoom / hit test / search の既存入口は変更しない。WebGL は patch を受けた task で `present()` し、測定の2 frameの後へ描画を逃がさない。
@@ -47,4 +49,12 @@ node tests/acceptance/delta_viewer_judge.mjs .
 npx playwright test
 ```
 
-DV1 / DV2 は `2/2 passed` を必要とする。visual は基準 commit `c3f3138` の15失敗を超える新規失敗がないことを必要とする。ロード時間と50-node DV2も比較する。未測定値や構造試験の成功を実 browser の合格に置き換えない。
+DV1 / DV2 は `2/2 passed` を必要とする。visual は新規失敗ゼロを必要とする。Director の2026-11-27の実測で、基準 commit `c3f3138` は164通過・6 skipped・0失敗だった。ロード時間と50-node DV2も比較する。未測定値や構造試験の成功を実 browser の合格に置き換えない。
+
+## 2026-11-27 の checkpoint と外部測定
+
+Director が前回 checkpoint `f222810` を sandbox 外で測定した結果は、DV1 0.30 / 0.30 ms（比率1.0、PASS）、DV2 31.7 / 307.8 ms（比率9.7、FAIL）。同 checkpoint の全 unit は1,613通過・27 skipped・0失敗で、sandbox 内の vault-watch EMFILE は外では再現しなかった。これらは Director の測定結果であり、現在の変更後の合格を示さない。
+
+その CPU profile にあった全 edge の座標変換、全 node の Agent判定、modal の全 DOM 検索、native focus、全 SVG の再表示を上表の経路へ変更した。50 / 20,000件の登録状態で、通常キー45回に対する scene 構築・座標測定・document 検索が0回となる回帰試験を追加し、同じ試験が前回実装では失敗することを確認した。部分 capture を25回繰り返しても node 所有要素は1件、SVG fragment の数は初回と同じで、一時 SVG は残らない。mock DOM での構造検証であり、profile の連続 toggle で見られた実時間の増加を解消したかは未確認。
+
+残る Layout / viewport / 編集入口の差分化は上記「未達」の通り。次の Director 検証では DV1 / DV2、50-node latency、load、連続 toggle の時間と CPU profile、Playwright を取得する。

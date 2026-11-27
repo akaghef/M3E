@@ -750,3 +750,12 @@
 - 中身: 既知 node 編集を全描画へ無条件に渡す経路から、寸法・子集合・依存を検査して SVG fragment / bounds / paint slot だけ更新する経路へ変更した。scopen / unscopen の undo は対象 record の before image を使う。scope の正規化に incident relation と Surface View の索引を使う。BroadcastChannel は write set と sequence を送り、基準欠落時だけ全 state を取得する。保存の acknowledgement による全描画を除去した。viewer.ts から正規化を別 module へ移した。
 - 根拠: build 成功。関連48 unit tests 通過。50 / 20,000 node で paint 数増減の更新件数と長い edge の viewport query を検査し、同じ5試験が基準 c3f3138 では全再構築呼出しまたは画面外 paint の50 / 20,000件読取りの assertion で失敗した。最終の全 unit suite は1,611通過・2失敗・27 skipped。vault-watch の2試験は fs.watch の EMFILE で失敗し、単独の fs.watch 再現でも同じ error を確認した。browser の DV1 / DV2 と visual は未実行（Director 依頼）。詳しい条件は viewer-delta-drawing-design.md。
 - 扱い: 部分実装。寸法変更・可視集合変更・reparent / reorder の lazy offset と viewport 展開、rename / Style / alias / filter の依存更新、他の編集入口の undo 差分化は未対応。全更新経路が変化量に比例する要件は未達。browser の独立検証と残る描画コードの実装を継続する。
+
+### 2026-11-27 viewer の入力・edge 選択と部分 capture の全走査を除去した
+
+- 種類: 実装・未達
+- 書いた agent: Codex（delta-all-viewer）
+- 対象: edge 選択、入力の所有権、Agent node の存在判定、SVG→WebGL capture
+- 中身: edge の Ref / GraphLink / 端点を索引化し、問合せた対象だけ CSS 座標へ変換する。非表示理由は対象の祖先だけを調べる。通常の node 入力では edge scene を構築しない。modal 所有権を DOM 変更分から更新し、既に board が focus を持つ場合は focus を呼ばない。Agent node 集合は変更 node だけで更新する。部分 capture は全 SVG を再表示せず、変更要素・祖先・defs の一時 SVG を同じ capture 処理に渡し、同期的に除去する。
+- 根拠: Director の前回 checkpoint 実測は DV1 PASS、DV2 31.7 / 307.8 ms・比率9.7で FAIL。全 unit は sandbox 外では1,613通過・27 skipped・0失敗。今回の最終 build と関連109試験は通過し、全 unit suite は1,620通過・2失敗・27 skipped（失敗は sandbox の vault-watch EMFILE）。通常キー処理と座標測定の3回帰試験は前回実装では失敗した。部分 capture の25回反復で、所有要素・SVG fragment は増加せず、全 SVG の hidden 属性を変更しないことを構造試験で確認した。実 browser の現在の結果ではない。
+- 扱い: 部分実装。元の全表示更新経路が変化量に比例する要件は継続中。連続 toggle の時間増加の解消と画素一致は Director が独立測定する。寸法変更の lazy offset、viewport 展開、rename / Style / filter の依存更新、他の undo 入口は未達。visual の基準は Director の実測（164通過・6 skipped・0失敗）に従い、新規失敗ゼロ。

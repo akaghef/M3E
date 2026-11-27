@@ -110,3 +110,40 @@ describe('renderer registration bridge',()=>{
   expect(status).not.toHaveBeenCalled();
  });
 });
+
+describe('selection work scales with the queried identities',()=>{
+ it('updates modal input ownership in the same task without document queries per key',()=>{
+  adapter.click('one');
+  const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');document.body.append(dialog);
+  const query=vi.spyOn(document,'querySelector'), all=vi.spyOn(document,'querySelectorAll');
+  expect(send('F2').consumed).toBe(false);expect(editor).not.toHaveBeenCalled();
+  dialog.setAttribute('aria-modal','false');expect(send('F2').consumed).toBe(true);
+  dialog.className='wb-progressive-nav is-open';expect(send('F2').consumed).toBe(false);
+  dialog.remove();expect(send('F2').consumed).toBe(true);
+  expect(query).not.toHaveBeenCalled();expect(all).not.toHaveBeenCalled();
+  query.mockRestore();all.mockRestore();
+ });
+ it.each([50,20000])('unowned node keys do not query DOM or build a %i-record scene',size=>{
+  adapter.begin(layout,'map:root');
+  const positions={...layout.pos}, nodes={...state.nodes};
+  for(let i=0;i<size;i++) {
+   const id=`extra${i}`;positions[id]={...layout.pos.a!};nodes[id]={...state.nodes.a!,id};
+  }
+  state.nodes=nodes;adapter.begin({...layout,pos:positions},'map:root');
+  for(let i=0;i<size;i++)adapter.parent('root',`extra${i}`);
+  adapter.parent('root','a');adapter.finish();
+  const scene=vi.spyOn(adapter,'scene'), rect=vi.spyOn(board,'getBoundingClientRect'), query=vi.spyOn(document,'querySelector');
+  for(let round=0;round<9;round++)for(const key of ['f','x','q','Enter','Delete'])expect(send(key).consumed).toBe(false);
+  expect(scene).not.toHaveBeenCalled();expect(rect).not.toHaveBeenCalled();expect(query).not.toHaveBeenCalled();
+  scene.mockRestore();rect.mockRestore();query.mockRestore();
+ });
+ it('identity lookup and highlight do not request screen geometry, even across repeated selection',()=>{
+  board.tabIndex=0;
+  const rect=vi.spyOn(board,'getBoundingClientRect'), focus=vi.spyOn(board,'focus');
+  for(let i=0;i<25;i++) {adapter.click('one');adapter.node('a');}
+  expect(rect).not.toHaveBeenCalled();
+  expect(focus).toHaveBeenCalledTimes(1);
+  expect(inspect().scene.items).toHaveLength(2);
+  rect.mockRestore();focus.mockRestore();
+ });
+});

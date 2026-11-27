@@ -1,7 +1,9 @@
+import { NodePresence } from "./viewer_delta_presence";
+import { focusBoard } from "./viewer_delta_selection";
 import { DeltaBroadcast } from "./viewer_delta_broadcast";
 import { captureStatePatch, applyStatePatch, type StatePatch } from "./viewer_delta_state";
 import { createMapNormalizer } from "./viewer_delta_model";
-import { refreshCapturedNodeFragment } from "./webgl_scene_tiles";
+import { captureHiddenNodePaint, refreshCapturedNodeFragment } from "./webgl_scene_tiles";
 import { StableScenePatch, SceneBounds } from "./viewer_delta_scene";
 import { addLocalSyncToolbar } from "./local_sync_toolbar";
 import { connectFlashGeneration } from "./flash_generation";
@@ -33,11 +35,12 @@ import agentNodeCss from "../shared/agent_node.css?inline";
 const agentNodeStyle = document.createElement("style");
 agentNodeStyle.textContent = agentNodeCss;
 document.head.append(agentNodeStyle);
+const agentNodePresence = new NodePresence(readAgentNode);
 let renderedAgentNodeLod = agentNodeLod(1);
 let agentNodeLodRenderPending = false;
 window.addEventListener("m3e:viewport-changed", () => {
   if (agentNodeLod(viewState.zoom) === renderedAgentNodeLod || agentNodeLodRenderPending
-    || !map || !Object.values(map.state.nodes).some(node => readAgentNode(node))) return;
+    || !map || !agentNodePresence.has(map.state)) return;
   agentNodeLodRenderPending = true;
   requestAnimationFrame(() => { agentNodeLodRenderPending = false; render(); });
 });
@@ -584,6 +587,7 @@ function trackSavedState(): void {
 }
 
 function markSaveChanges(touches?: SaveTouches): void {
+  if (map) agentNodePresence.change(map.state, touches?.nodes, !touches);
   deltaBroadcast?.mark(touches);
   if (!map || !lastServerBaseState) return;
   if (!saveStateTracker || saveStateTracker.state !== map.state || saveStateTracker.base !== lastServerBaseState) {
@@ -1832,7 +1836,7 @@ function hideLocalFsPanel(): void {
   localFsPanelEl.hidden = true;
   localFsToggleBtn?.setAttribute("aria-expanded", "false");
   localFsToggleBtn?.classList.remove("is-active");
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function toggleLocalFsPanel(): void {
@@ -2169,7 +2173,7 @@ function hideV4Panel(): void {
   }
   v4PanelVisible = false;
   v4PanelEl.hidden = true;
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function addV4DiscussionNode(kind: "sticky" | "decision"): void {
@@ -2203,7 +2207,7 @@ function addV4DiscussionNode(kind: "sticky" | "decision"): void {
   touchDocument();
   syncV4Panel(false);
   setStatus(`V4 ${kind} node added.`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function parseSseFrames(text: string): Array<{ event: string; data: unknown }> {
@@ -3815,7 +3819,7 @@ function moveSelectedAcrossParentScope(): boolean {
   else delete node.edgeOutsideScope;
   touchDocument();
   setStatus(goingOut ? `Moved outside scope ${uiLabel(parent)}: ${uiLabel(node)}` : `Moved into scope ${uiLabel(parent)}: ${uiLabel(node)}`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
   return true;
 }
 
@@ -3955,7 +3959,7 @@ function enterScope(scopeNodeId: string): boolean {
   alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus(`Entered scope: ${uiLabel(node)}`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
   return true;
 }
 
@@ -3987,7 +3991,7 @@ function exitScope(): boolean {
   alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus("Returned to parent scope.");
-  board.focus({ preventScroll: true });
+  focusBoard(board);
   return true;
 }
 
@@ -4019,7 +4023,7 @@ function makeSelectedFolder(): boolean {
     touchDocument(false, { nodes: [node.id] });
     setStatus(`Marked as scope: ${uiLabel(node)}`);
   }
-  board.focus({ preventScroll: true });
+  focusBoard(board);
   return true;
 }
 
@@ -4060,7 +4064,7 @@ function addAliasInCurrentScope(): boolean {
   setSingleSelection(aliasId, false);
   touchDocument();
   setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
   return true;
 }
 
@@ -4100,7 +4104,7 @@ function addAliasAsChild(): boolean {
   viewState.selectedNodeId = aliasId;
   touchDocument();
   setStatus(`Alias created as child of ${uiLabel(target)}.`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
   return true;
 }
 
@@ -4136,7 +4140,7 @@ function jumpToAliasTarget(): boolean {
   triggerCameraMove("scope");
   updateScopeInUrl(targetScopeId);
   setStatus(`Jumped to target: ${uiLabel(target)}`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
   return true;
 }
 
@@ -4314,7 +4318,7 @@ function moveConcretenessLevel(delta: -1 | 1): void {
   render(); fitDocument({ animate: false });
   updateScopeInUrl(viewState.currentScopeRootId);
   setStatus(`Concreteness level ${level} · j: inward · k: outward`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function cloneState(state: AppState): AppState {
@@ -4379,7 +4383,7 @@ function undoLastChange(): void {
   scheduleAutosave(Boolean(snapshot.delta));
   if (snapshot.delta) { preparedSaveState = map.state; preparedSaveView = saveViewKey(); broadcastState(); }
   setStatus("Undo applied.");
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function redoLastChange(): void {
@@ -4420,7 +4424,7 @@ function redoLastChange(): void {
   scheduleAutosave(Boolean(snapshot.delta));
   if (snapshot.delta) { preparedSaveState = map.state; preparedSaveView = saveViewKey(); broadcastState(); }
   setStatus("Redo applied.");
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function setStatus(message: string, isError = false): void {
@@ -4474,7 +4478,7 @@ scopeView.init({
     // Coming back out of a scope: its entry stays selected, as in the whole-map viewer.
     loadPayload(payload, fromScopeId);
     alignToScopeAnchor(anchor);
-    triggerCameraMove("scope"); board.focus({ preventScroll: true });
+    triggerCameraMove("scope"); focusBoard(board);
   },
 });
 
@@ -4594,7 +4598,7 @@ function refreshLinearPanelCanvasLayout(): boolean {
 
 function webglSurfaceSupported(): boolean {
   // Agent glyphs use the shared SVG renderer until the WebGL renderer supports them.
-  if (map && Object.values(map.state.nodes).some(node => readAgentNode(node))) return false;
+  if (map && agentNodePresence.has(map.state)) return false;
   if (orreryNetwork.enabled) return false; // NETWORK retains the existing SVG renderer until card WebGL parity.
   return WEBGL_RENDERER_REQUESTED && !webglFallbackReason && (viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode());
 }
@@ -4875,7 +4879,7 @@ function createWebGLGraphLinkEndpointControls(
         touchDocument();
         setStatus(`Link ${endpoint} port: ${side}.`);
       }
-      board.focus({ preventScroll: true });
+      focusBoard(board);
     });
     controls.appendChild(dot);
   });
@@ -4965,7 +4969,7 @@ function startWebGLGraphLinkDrag(
   } catch {
     // The browser may reject capture for a synthetic or already-ended pointer.
   }
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function updateWebGLGraphLinkDragPreview(event: PointerEvent): void {
@@ -4994,7 +4998,7 @@ function finishWebGLGraphLinkDrag(event: PointerEvent): void {
   const shouldCommit = event.type !== "pointercancel" && drag.dragged;
   if (!shouldCommit) {
     syncWebGLGraphLinkControls();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 
@@ -5006,7 +5010,7 @@ function finishWebGLGraphLinkDrag(event: PointerEvent): void {
   if (!point || !targetNode) {
     setStatus("No valid GraphLink endpoint.", true);
     syncWebGLGraphLinkControls();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 
@@ -5016,14 +5020,14 @@ function finishWebGLGraphLinkDrag(event: PointerEvent): void {
   );
   if (!setGraphLinkEndpointPort(drag.linkId, drag.endpoint, side, true, targetNode.id)) {
     syncWebGLGraphLinkControls();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   // The command has now been accepted. Re-render only after the WebGL-only
   // drag preview has ended, matching the existing SVG commit boundary.
   touchDocument();
   setStatus(`Link ${drag.endpoint} endpoint updated.`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function updateWebGLNodeDragPreview(event: PointerEvent): void {
@@ -5612,7 +5616,7 @@ function syncNodeResizeHandle(): void {
         touchDocument();
         nudgeNodeIntoView(drag.id, { animate: false });
       }
-      board.focus({ preventScroll: true });
+      focusBoard(board);
     };
     nodeResizeHandle.addEventListener("pointerup", finish);
     nodeResizeHandle.addEventListener("pointercancel", finish);
@@ -6995,7 +6999,7 @@ async function generateRelatedTopicsForSelectedNode(): Promise<void> {
     }
     setStatus(`AI suggested ${added} related topic(s).`);
     render();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
   } catch (err) {
     setStatus(`AI topic suggestion failed (${(err as Error).message}).`, true);
   }
@@ -7026,7 +7030,7 @@ async function generateRapidActionForSelectedNode(
     const mergedSuffix = merged > 0 ? `, merged ${merged}` : "";
     setStatus(`${sourceLabel} generated ${added} node(s)${mergedSuffix}: ${label || action}`);
     render();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
   } catch (err) {
     setStatus(`CAS generation failed: ${(err as Error).message}`, true);
   }
@@ -7048,7 +7052,7 @@ window.addEventListener("m3e:ai-append-topics", (event: Event) => {
     }
     setStatus(`AI applied ${added} topic node(s).`);
     render();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
   } catch (err) {
     setStatus(`AI apply failed: ${(err as Error).message}`, true);
   }
@@ -7061,7 +7065,7 @@ window.addEventListener("m3e:ai-detail-active-node", () => {
 window.addEventListener("m3e:rapid-action-preview", (event: Event) => {
   const label = String((event as CustomEvent<{ label?: unknown }>).detail?.label || "").trim();
   setStatus(`Rapid: ${label || "action"}`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 });
 
 window.addEventListener("m3e:rapid-action-generate", (event: Event) => {
@@ -7285,7 +7289,7 @@ function applyLinearTextToScope(): void {
     linearDirty = false;
     touchDocument();
     setStatus("Linear text applied to current scope.");
-    board.focus({ preventScroll: true });
+    focusBoard(board);
   } catch (err) {
     setStatus(`Linear apply failed: ${(err as Error).message}`, true);
   }
@@ -7927,6 +7931,7 @@ function render(incremental = false): void {
 
 function renderScene(incremental: boolean): void {
   patchDocumentScene = null;
+  if (map) agentNodePresence.change(map.state, undefined, true);
   scopeView.guardScope();
   prepareConcretenessView();
   board.dataset.concretenessLevel = String(viewState.concretenessLevel);
@@ -8689,7 +8694,8 @@ function renderScene(incremental: boolean): void {
           retainedSvgScene.patch(`node:${id}`, output.svg);
           nodeDrawInputs.set(id, input);
           retainedSceneBounds.set(`node:${id}`, fragmentBox(`node:${id}`));
-          refreshCapturedNodeFragment(canvas, id, retainedSvgScene.element(`node:${id}`)!);
+          const fragment = retainedSvgScene.element(`node:${id}`)!;
+          refreshCapturedNodeFragment(canvas, id, fragment); lineSelection.refreshNode(id, fragment);
         },
       });
       if (!applied) return false;
@@ -8702,13 +8708,10 @@ function renderScene(incremental: boolean): void {
       canvas.setAttribute("viewBox", `${contentMinX} ${contentMinY} ${contentWidth} ${contentHeight}`);
       applyCanvasViewportTransform();
       if (isWebGLRendererActive() && webglProjection && webglLastSnapshot) {
-        canvas.removeAttribute("hidden");
-        try {
-          const paint = captureSvgPaintScene(canvas, changed, true);
-          const scene = webglProjection.updateNodePaint(paint, changed);
-          if (scene) webglLastSnapshot = { ...webglLastSnapshot, paintScene: scene };
-          webglProjection.present();
-        } finally { canvas.setAttribute("hidden", ""); }
+        const paint = captureHiddenNodePaint(canvas, changed);
+        const scene = webglProjection.updateNodePaint(paint, changed);
+        if (scene) webglLastSnapshot = { ...webglLastSnapshot, paintScene: scene };
+        webglProjection.present();
       } else if (webglSurfaceSupported()) scheduleWebGLProjectionActivation();
       renderRevision++;
       board.dataset.renderRevision = String(renderRevision);
@@ -9467,23 +9470,18 @@ function scheduleSelectionRefresh(): void {
     if (changed.size && webgl) {
       // Retain layout, hit geometry and all unrelated GPU tiles. Only old/new
       // selection paint changes; keep the canonical SVG's fill/font styling.
-      canvas.removeAttribute("hidden");
-      try {
-        changed.forEach((id) => {
-          retainedSvgScene.invalidate(`node:${id}`);
-          capturedNodeElements(canvas, id).forEach((element) => {
-            element.classList.toggle("selected", viewState.selectedNodeIds.has(id));
-            element.classList.toggle("multi-selected", viewState.selectedNodeIds.has(id));
-            element.classList.toggle("primary-selected", viewState.selectedNodeId === id);
-          });
+      changed.forEach((id) => {
+        retainedSvgScene.invalidate(`node:${id}`);
+        capturedNodeElements(canvas, id).forEach((element) => {
+          element.classList.toggle("selected", viewState.selectedNodeIds.has(id));
+          element.classList.toggle("multi-selected", viewState.selectedNodeIds.has(id));
+          element.classList.toggle("primary-selected", viewState.selectedNodeId === id);
         });
-        applyViewFilter();
-        const paint = captureSvgPaintScene(canvas, changed, true);
-        const scene = webglProjection!.updateNodePaint(paint, changed);
-        if (scene) webglLastSnapshot = { ...webglLastSnapshot!, paintScene: scene };
-      } finally {
-        canvas.setAttribute("hidden", "");
-      }
+      });
+      applyViewFilter();
+      const paint = captureHiddenNodePaint(canvas, changed);
+      const scene = webglProjection!.updateNodePaint(paint, changed);
+      if (scene) webglLastSnapshot = { ...webglLastSnapshot!, paintScene: scene };
     }
     webglPaintedSelection = new Set(viewState.selectedNodeIds);
     webglPaintedPrimary = viewState.selectedNodeId;
@@ -9844,7 +9842,7 @@ function hideHomeScreen(): void {
   homeScreenEl.hidden = true;
   scopeNavBtn?.setAttribute("aria-expanded", "false");
   appEl?.classList.remove("home-active");
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function toggleHomeScreen(): void {
@@ -10099,7 +10097,7 @@ function hideEntityListPanel(): void {
   entityListVisible = false;
   entityListPanelEl.hidden = true;
   stopPresenceWatch();
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function toggleEntityListPanel(): void {
@@ -11127,7 +11125,7 @@ function hideTemplateCompletion(): void {
   document.removeEventListener("mousedown", templateCompletionState.closeHandler, true);
   templateCompletionState.root.remove();
   templateCompletionState = null;
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function cloneTemplateNodeSubtree(sourceId: string, parentId: string): number {
@@ -11406,7 +11404,7 @@ function toggleSelectedTabularComponent(): void {
     delete attrs[LEGACY_VIEW_TYPE_ATTR];
     touchDocument();
     setStatus("Tabular component removed.");
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 
@@ -11414,7 +11412,7 @@ function toggleSelectedTabularComponent(): void {
   delete attrs[LEGACY_VIEW_TYPE_ATTR];
   touchDocument();
   setStatus("Tabular component enabled.");
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 // ---- Context Menu ----
@@ -11571,7 +11569,7 @@ function editEdgeLabelForSelectedNode(): void {
     setStatus("Edge label cleared.");
   }
   touchDocument();
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function hideColorPalette(): void {
@@ -11809,7 +11807,7 @@ function hideConflictPanel(): void {
   if (conflictUseRemoteBtn) {
     conflictUseRemoteBtn.textContent = "Use Remote";
   }
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 if (conflictCloseBtn) {
@@ -11864,7 +11862,7 @@ function addChild(): void {
   touchDocument(true);
   preserveNodeViewportAnchor(parentId, before);
   nudgeActiveNodeIntoView({ animate: false });
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function addSibling(): void {
@@ -11885,7 +11883,7 @@ function addSibling(): void {
   touchDocument(true);
   preserveNodeViewportAnchor(node.id, before);
   nudgeActiveNodeIntoView({ animate: false });
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function selectedLinkableNode(): TreeNode | null {
@@ -12017,7 +12015,7 @@ function applyMarkedLink(): void {
   viewState.linkSourceNodeId = "";
   touchDocument();
   setStatus(`Linked ${uiLabel(source)} -> ${uiLabel(target)}.`);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function createGraphLinkBetween(sourceId: string, targetId: string): boolean {
@@ -12079,7 +12077,7 @@ function addScatterNodeAt(clientX: number, clientY: number): void {
   setSingleSelection(id, false);
   touchDocument();
   setStatus("Disperse node added.");
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function deleteScatterEdge(linkId: string): void {
@@ -12432,7 +12430,7 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
   syncNodeResizeHandle();
 
   if (options?.focusBoard !== false) {
-    board.focus({ preventScroll: true });
+    focusBoard(board);
   }
 }
 
@@ -12476,7 +12474,7 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
     if (editorOptions) editorOptions.commit(next); else applyIncomingEdgeLabelEdit(nodeId, next);
   }
   if (options?.focusBoard !== false) {
-    board.focus({ preventScroll: true });
+    focusBoard(board);
   }
 }
 
@@ -13329,6 +13327,7 @@ function initBroadcastSync(): void {
         if (!message.patch.records.length) return;
         finishGrab(false);
         applyStatePatch(map.state, message.patch);
+        agentNodePresence.change(map.state, message.patch.touches.nodes);
         if (lastServerBaseState) applyStatePatch(lastServerBaseState, message.patch);
         restoreIndex(map.state, message.patch.touches);
         if (!message.patch.touches.nodes?.length || Object.keys(message.patch.touches).some(field => !["nodes", "scopes", "surfaces"].includes(field)) || !patchDocumentScene?.({ nodes: message.patch.touches.nodes })) scheduleRender();
@@ -15828,20 +15827,20 @@ function performScatterNodeAction(nodeId: string): boolean {
         setSingleSelection(nodeId, false);
         runScatterReflow(60, { withUndo: false, withTouch: true });
         setStatus("Expanded scatter group.");
-        board.focus({ preventScroll: true });
+        focusBoard(board);
         return true;
       }
     }
     if (scatterToolMode === "delete") {
       setSingleSelection(nodeId, false);
       deleteSelected();
-      board.focus({ preventScroll: true });
+      focusBoard(board);
       return true;
     }
     if (scatterToolMode === "colorize") {
       setSingleSelection(nodeId, false);
       showColorPalette();
-      board.focus({ preventScroll: true });
+      focusBoard(board);
       return true;
     }
     if (scatterToolMode === "add-edge") {
@@ -15856,7 +15855,7 @@ function performScatterNodeAction(nodeId: string): boolean {
           scheduleRender();
         }
       }
-      board.focus({ preventScroll: true });
+      focusBoard(board);
       return true;
     }
   return false;
@@ -15912,19 +15911,19 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
         webglProjection.beginNodeDrag(sourceRootIds);
         webglCanvas.setPointerCapture(event.pointerId);
         syncWebGLInteraction();
-        board.focus({ preventScroll: true });
+        focusBoard(board);
         return;
       }
     }
     selectByPointerModifiers(hit.nodeId, { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey });
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   // Link selection is read-only in Phase 1; it only mirrors existing UI state.
   selectGraphLink(hit.edgeId, false);
   syncWebGLInteraction();
   scheduleRender();
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 });
 
 webglCanvas?.addEventListener("pointermove", (event: PointerEvent) => {
@@ -15997,19 +15996,19 @@ function finishWebGLNodeDrag(event: PointerEvent): void {
       range: drag.shiftKey,
     });
     syncWebGLInteraction();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 
   if (!startWorld || !endWorld) {
     syncWebGLInteraction();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   disperseForce.endDrag(); commitDispersePositions(); startScatterAnimation();
   touchDocument();
   setStatus("Disperse position updated.");
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 webglCanvas?.addEventListener("pointerup", finishWebGLNodeDrag);
@@ -16068,7 +16067,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       dragged: false,
     };
     canvas.setPointerCapture(event.pointerId);
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   const linkPortChoice = targetEl?.getAttribute("data-link-port-choice") as LinkEndpointKind | null;
@@ -16080,7 +16079,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     setGraphLinkEndpointPort(choiceLinkId, linkPortChoice, linkPortSide);
     touchDocument();
     setStatus(`Link ${linkPortChoice} port: ${linkPortSide}.`);
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   const linkId = targetEl?.getAttribute("data-link-id") ?? null;
@@ -16094,7 +16093,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     } else {
       selectGraphLink(linkId);
     }
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   if (map && linkId && event.button === 0) {
@@ -16112,7 +16111,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       scheduleRender();
       setStatus("Expanded collapsed branch.");
     }
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
@@ -16130,7 +16129,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if ((event.target as Element).hasAttribute("data-lane-header")) {
     event.preventDefault();
     setSingleSelection(nodeId);
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   if (currentSurfaceIsScatterMode()) {
@@ -16159,7 +16158,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     event.preventDefault();
     setSingleSelection(nodeId, event.shiftKey);
     pinMarkdownHoverPreviewForNode(nodeId);
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     scheduleRender();
     return;
   }
@@ -16183,7 +16182,7 @@ function beginStructureNodeDrag(nodeId: string, event: PointerEvent, surface: El
     shiftKey: event.shiftKey,
   };
   surface.setPointerCapture(event.pointerId);
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 function updateStructureNodeDrag(event: PointerEvent): void {
@@ -16258,7 +16257,7 @@ function finishNodeDrag(event: PointerEvent): void {
     canvas.releasePointerCapture(event.pointerId);
     touchDocument();
     setStatus("Link port updated.");
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
@@ -16285,7 +16284,7 @@ function finishNodeDrag(event: PointerEvent): void {
       range: shiftKey,
     });
     pinMarkdownHoverPreviewForNode(sourceNodeId);
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 
@@ -16293,7 +16292,7 @@ function finishNodeDrag(event: PointerEvent): void {
     disperseForce.endDrag(); commitDispersePositions(); startScatterAnimation();
     touchDocument();
     setStatus("Disperse position updated.");
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 
@@ -16315,7 +16314,7 @@ function finishNodeDrag(event: PointerEvent): void {
         setSingleSelection(proposal.parentId, false);
         touchDocument();
         setStatus(`Moved ${movedCount} node(s).`);
-        board.focus({ preventScroll: true });
+        focusBoard(board);
         return;
       }
     } else {
@@ -16329,7 +16328,7 @@ function finishNodeDrag(event: PointerEvent): void {
       if (applied) {
         setSingleSelection(sourceNodeId, false);
         scheduleRender();
-        board.focus({ preventScroll: true });
+        focusBoard(board);
         return;
       }
     }
@@ -16337,7 +16336,7 @@ function finishNodeDrag(event: PointerEvent): void {
 
   setStatus("No valid drop target.", true);
   dragOverlayFrame.invalidate();
-  board.focus({ preventScroll: true });
+  focusBoard(board);
 }
 
 canvas.addEventListener("pointerup", finishNodeDrag);
@@ -16689,7 +16688,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (markdownPreviewMode && event.key === "Escape") {
     event.preventDefault();
     hideMarkdownPreview();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 
@@ -17050,14 +17049,14 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key === "]") {
     event.preventDefault();
     EnterScopeCommand(viewState.selectedNodeId);
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 
   if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key === "[") {
     event.preventDefault();
     ExitScopeCommand();
-    board.focus({ preventScroll: true });
+    focusBoard(board);
     return;
   }
 

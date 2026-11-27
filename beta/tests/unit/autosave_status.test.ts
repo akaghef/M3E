@@ -21,7 +21,7 @@ function setup(fetch: ReturnType<typeof vi.fn>, snapshotError = false) {
     let localSaveFailure = null, localSaveRevision = 0, localSavedRevision = -1;
     let saveStateTracker = null, saveInFlight = null, preparedSaveState = null, preparedSaveView = "";
     let lastServerSavedAt = "initial", lastServerBaseState = { original: true };
-    const deltaBroadcast = null;
+    const deltaBroadcast = null, agentNodePresence = { change() {} };
     const grabSession = null, collabEntityId = null, collabToken = null, cloudSyncEnabled = false;
     const LOCAL_MAP_ID = "test", TAB_ID = "test-tab", AUTOSAVE_DELAY_MS = 700;
     const lineSelection = { status: () => "Ready" };

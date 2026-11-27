@@ -214,6 +214,50 @@ export function refreshCapturedNodeFragment(root: SVGSVGElement, id: string, fra
   }
   owners.set(id, retained);
 }
+/** Measure only the changed paint under the same SVG/ancestor CSS context.
+ * The retained full SVG stays display:none; exposing it for getBBox/focus would
+ * make each small edit lay out every retained node. The temporary sibling is
+ * removed synchronously, before a frame or input can observe it. */
+export function captureHiddenNodePaint(root: SVGSVGElement, ids: Set<string>): PaintScene {
+  if (!root.hasAttribute('hidden')) return captureSvgPaintScene(root, ids, true);
+  const owners = captureNodeElements.get(root);
+  if (!owners || !root.parentElement) throw new Error('Partial capture requires an attached, previously captured SVG');
+  const stage = root.cloneNode(false) as SVGSVGElement;
+  stage.removeAttribute('hidden');
+  stage.style.position = 'absolute'; stage.style.opacity = '0'; stage.style.pointerEvents = 'none';
+  stage.setAttribute('aria-hidden', 'true'); stage.dataset.captureStage = '';
+  const definitions = captureDefinitions.get(root) || '';
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = definitions; stage.append(defs);
+  const ancestors = new Map<Element, Element>([[root, stage]]);
+  const parentClone = (element: Element): Element => {
+    const previous = ancestors.get(element); if (previous) return previous;
+    if (!element.parentElement) throw new Error('Detached capture element');
+    const copy = element.cloneNode(false) as Element;
+    parentClone(element.parentElement).append(copy); ancestors.set(element, copy); return copy;
+  };
+  const copied = new Map<string, SVGGraphicsElement[]>();
+  const cache = new WeakMap<SVGGraphicsElement, { key: string; commands: PaintCommand[] }>();
+  const originalCache = captureCaches.get(root);
+  const originals = new Map<SVGGraphicsElement, SVGGraphicsElement>();
+  for (const id of ids) {
+    const elements: SVGGraphicsElement[] = [];
+    for (const element of owners.get(id) || []) {
+      const copy = element.cloneNode(true) as SVGGraphicsElement;
+      parentClone(element.parentElement!).append(copy); elements.push(copy);
+      captureOwners.set(copy, id); originals.set(copy, element);
+      const previous = originalCache?.get(element); if (previous) cache.set(copy, previous);
+    }
+    copied.set(id, elements);
+  }
+  captureNodeElements.set(stage, copied); captureDefinitions.set(stage, definitions); captureCaches.set(stage, cache);
+  root.parentElement.append(stage);
+  try {
+    const result = captureSvgPaintScene(stage, ids, true);
+    for (const [copy, original] of originals) { const value = cache.get(copy); if (value) originalCache?.set(original, value); }
+    return result;
+  } finally { stage.remove(); }
+}
 /** Capture changed SVG elements only during a local edit. Full renders reset CSS dependencies. */
 export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<string>, incremental = false): PaintScene {
   // A partial capture needs ownership/order from a complete scene first.
