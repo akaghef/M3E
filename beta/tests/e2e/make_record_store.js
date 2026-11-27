@@ -1,17 +1,48 @@
 "use strict";
-// Creates an empty record store for a store-mode run of the e2e specs.
-//   node tests/e2e/make_record_store.js <new or empty directory> [workspace id]
-// Then: M3E_STORE_DIR=<that directory> M3E_WORKSPACE_ID=<workspace id> M3E_PORT=... npx playwright test ...
-// Needs `npm run build` first. Temporary directories only: never a directory of the personal workspace.
-const path = require("path");
+// Creates an empty record store in a given Neo4j and prints the environment that starts a server on it.
+//   node tests/e2e/make_record_store.js <bolt uri> [store name] [workspace id]
+// When the Neo4j requires authentication, M3E_NEO4J_USER and M3E_NEO4J_PASSWORD
+// (or M3E_NEO4J_PASSWORD_FILE) and M3E_NEO4J_DATABASE are read and, except the password, printed back.
+// Refuses port 7687. Needs `npm run build` first.
+const { randomUUID } = require("crypto");
 const { RecordWorkspaceStore } = require("../../dist/node/record_store/store");
 const { toSnapshot } = require("../../dist/shared/record_model/to_snapshot");
+const { neo4jConnectionFromEnv } = require("../../dist/node/record_store/neo4j_durability");
 
-const dir = process.argv[2];
-const workspaceId = process.argv[3] || "ws_e2e_store";
-if (!dir) {
-  console.error("Usage: node tests/e2e/make_record_store.js <directory> [workspace id]");
-  process.exit(2);
+async function main() {
+  const bolt = process.argv[2];
+  const storeName = process.argv[3] || `e2e-${randomUUID()}`;
+  const workspaceId = process.argv[4] || "ws_e2e_store";
+  if (!bolt || bolt.startsWith("-")) {
+    console.error("Usage: node tests/e2e/make_record_store.js <bolt uri> [store name] [workspace id]");
+    process.exit(2);
+  }
+  if (/:7687\b/.test(bolt)) {
+    console.error("Refusing port 7687 (the Neo4j that holds real data).");
+    process.exit(2);
+  }
+  const fromEnv = neo4jConnectionFromEnv(process.env, "M3E_NEO4J");
+  const connection = { uri: bolt };
+  if (fromEnv && fromEnv.user) {
+    connection.user = fromEnv.user;
+    connection.password = fromEnv.password ?? "";
+  }
+  if (fromEnv && fromEnv.database) connection.database = fromEnv.database;
+  await RecordWorkspaceStore.createInNeo4j(connection, storeName, toSnapshot(workspaceId, [], { now: new Date().toISOString() }));
+  const lines = [
+    `M3E_RECORD_STORE=${storeName}`,
+    `M3E_NEO4J_BOLT=${bolt}`,
+    `M3E_WORKSPACE_ID=${workspaceId}`,
+  ];
+  if (connection.user) lines.push(`M3E_NEO4J_USER=${connection.user}`);
+  if (connection.database) lines.push(`M3E_NEO4J_DATABASE=${connection.database}`);
+  const passwordFile = process.env.M3E_NEO4J_PASSWORD_FILE;
+  if (passwordFile) lines.push(`M3E_NEO4J_PASSWORD_FILE=${passwordFile}`);
+  else if (connection.user) console.error("M3E_NEO4J_PASSWORD is not printed; export the same value for the server.");
+  for (const line of lines) console.log(line);
 }
-RecordWorkspaceStore.create(path.resolve(dir), toSnapshot(workspaceId, [], { now: new Date().toISOString() }));
-console.log(`Record store created: ${path.resolve(dir)} (workspace ${workspaceId})`);
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});

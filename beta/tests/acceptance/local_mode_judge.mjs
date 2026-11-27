@@ -1,7 +1,8 @@
 // Acceptance judge for local mode (design: .kiro/specs/rapid-persistence-redesign/local-mode-design.md §8).
 // Owned by the orchestrator. Runs one remote and two locals as separate processes on temp dirs.
 // Usage: node local_mode_judge.mjs <beta dir>
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -10,13 +11,16 @@ import { createRequire } from "node:module";
 
 const BETA = path.resolve(process.argv[2] ?? ".");
 const SERVER = path.join(BETA, "dist/node/start_viewer.js");
-const CLI = path.join(BETA, "dist/node/record_store_cli.js");
 const require = createRequire(import.meta.url);
 const { toSnapshot } = require(path.join(BETA, "dist/shared/record_model/to_snapshot.js"));
+const { RecordWorkspaceStore } = require(path.join(BETA, "dist/node/record_store/store.js"));
+const { Neo4jDurability, neo4jConnectionFromEnv } = require(path.join(BETA, "dist/node/record_store/neo4j_durability.js"));
 const WS = "ws_judge";
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-local-judge-"));
 const results = [];
 const servers = new Set();
+const namedStores = [];
+process.env.M3E_LOCAL_STORE_SUFFIX = "data-dir";
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -32,8 +36,9 @@ async function start(name, env, port) {
     ...process.env, M3E_FORBID_LIVE_DATA: "1", M3E_PORT: String(port), M3E_WORKSPACE_ID: WS,
     M3E_OPEN_BROWSER: "0", M3E_CLOUD_SYNC: "0", M3E_AUTO_SYNC: "0", M3E_SKIP_SAMPLE_GENERATION: "1", M3E_DB_FILE: "data.sqlite",
   };
-  for (const k of ["M3E_STORE_DIR", "M3E_SYNC_REMOTE", "M3E_NEO4J_BOLT", "M3E_TAILSCALE_USERS", "M3E_HOST"]) delete full[k];
+  for (const k of ["M3E_SYNC_REMOTE", "M3E_NEO4J_BOLT", "M3E_NEO4J_USER", "M3E_NEO4J_PASSWORD", "M3E_NEO4J_PASSWORD_FILE", "M3E_NEO4J_DATABASE", "M3E_RECORD_STORE", "M3E_LOCAL_STORE_SUFFIX", "M3E_TAILSCALE_USERS", "M3E_HOST"]) delete full[k];
   Object.assign(full, env);
+  if (full.M3E_DATA_DIR) fs.mkdirSync(full.M3E_DATA_DIR, { recursive: true });
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env: full, stdio: ["ignore", "pipe", "pipe"] });
   const log = [];
   child.stdout.on("data", (c) => log.push(String(c)));
@@ -85,25 +90,35 @@ function check(id, ok, detail) {
   console.log(`${ok ? "PASS" : "FAIL"} ${id} ${detail ?? ""}`);
 }
 
+function testConnection() {
+  const connection = neo4jConnectionFromEnv(process.env, "M3E_TEST_NEO4J");
+  if (!connection || /:7687\b/.test(connection.uri)) throw new Error("local mode needs M3E_TEST_NEO4J_BOLT on the disposable Neo4j (not port 7687).");
+  return connection;
+}
+
+async function emptyStore(connection, label) {
+  const name = `${label}-${randomUUID()}`;
+  namedStores.push(name);
+  await RecordWorkspaceStore.createInNeo4j(connection, name, toSnapshot(WS, [], { now: "2026-11-23T00:00:00.000Z" }));
+  return name;
+}
+
 async function main() {
   // Remote with an empty store, then two maps written on the remote itself (setup, not under test).
-  const snap = path.join(root, "empty.jsonl");
-  fs.writeFileSync(snap, toSnapshot(WS, [], { now: "2026-11-23T00:00:00.000Z" }).map((r) => JSON.stringify(r)).join("\n") + "\n");
-  const created = spawnSync(process.execPath, [CLI, "--create", path.join(root, "remote/store"), "--from-snapshot", snap], { encoding: "utf8" });
-  if (created.status !== 0) throw new Error(`create remote store: ${created.stderr}`);
-  const remote = await start("remote", { M3E_DATA_DIR: path.join(root, "remote"), M3E_STORE_DIR: path.join(root, "remote/store") });
+  const connection = testConnection();
+  const neo4jEnv = {
+    M3E_NEO4J_BOLT: connection.uri,
+    M3E_LOCAL_STORE_SUFFIX: "data-dir",
+    ...(connection.user ? { M3E_NEO4J_USER: connection.user, M3E_NEO4J_PASSWORD: connection.password ?? "" } : {}),
+    ...(connection.database ? { M3E_NEO4J_DATABASE: connection.database } : {}),
+  };
+  const remoteName = await emptyStore(connection, "remote");
+  const remote = await start("remote", { M3E_DATA_DIR: path.join(root, "remote"), M3E_RECORD_STORE: remoteName, ...neo4jEnv });
   const seedState = { rootId: "j_root", nodes: { j_root: node("j_root", null, ["j_a", "j_b"], "Judge"), j_a: node("j_a", "j_root", [], "a0"), j_b: node("j_b", "j_root", [], "b0") }, links: {} };
   for (const id of ["m1", "m2"]) {
     const r = await call(remote.base, "POST", `/api/maps/${id}`, { version: 1, savedAt: new Date().toISOString(), state: seedState });
     if (r.status !== 200) throw new Error(`seed ${id}: ${r.status} ${JSON.stringify(r.body)}`);
   }
-  const bolt = process.env.M3E_TEST_NEO4J_BOLT;
-  if (!bolt || /:7687\b/.test(bolt)) throw new Error("local mode needs M3E_TEST_NEO4J_BOLT on the disposable Neo4j (not port 7687).");
-  const neo4jEnv = {
-    M3E_NEO4J_BOLT: bolt,
-    ...(process.env.M3E_TEST_NEO4J_USER ? { M3E_NEO4J_USER: process.env.M3E_TEST_NEO4J_USER, M3E_NEO4J_PASSWORD: process.env.M3E_TEST_NEO4J_PASSWORD ?? "" } : {}),
-    ...(process.env.M3E_TEST_NEO4J_DATABASE ? { M3E_NEO4J_DATABASE: process.env.M3E_TEST_NEO4J_DATABASE } : {}),
-  };
   const localEnv = (n) => ({ M3E_DATA_DIR: path.join(root, n), M3E_SYNC_REMOTE: remote.base, ...neo4jEnv });
   let A = await start("A", localEnv("A"));
   const B = await start("B", localEnv("B"));
@@ -153,7 +168,7 @@ async function main() {
   const pOff = await push(A);
   const stOff = await status(A);
   check("AC4-down", stOff.remote?.state === "unreachable" && stOff.unsent >= 1, `push=${pOff.status} status=${JSON.stringify(stOff).slice(0, 200)}`);
-  const remote2 = await start("remote", { M3E_DATA_DIR: path.join(root, "remote"), M3E_STORE_DIR: path.join(root, "remote/store") }, remotePort);
+  const remote2 = await start("remote", { M3E_DATA_DIR: path.join(root, "remote"), M3E_RECORD_STORE: remoteName, ...neo4jEnv }, remotePort);
   await push(A);
   check("AC4-up", (await textOf(remote2, "m1", "j_a")) === "offline" && (await status(A)).unsent === 0);
 
@@ -187,7 +202,14 @@ async function main() {
   // AC10 confirmed seq and no duplicate commits
   await pull(A); await pull(B);
   const rs = await remoteSeq(remote2);
-  const journal = fs.readFileSync(path.join(root, "remote/store/journal.jsonl"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const opened = await RecordWorkspaceStore.openNeo4j(connection, remoteName, { warm: false });
+  let journal;
+  try {
+    journal = await opened.readJournalAfter(0);
+  } finally {
+    await opened.close();
+  }
+  if (!journal) throw new Error("the remote journal could not be read back from Neo4j");
   const ids = journal.map((l) => l.commandId).filter(Boolean);
   check("AC10", (await status(A)).confirmedSeq === rs && (await status(B)).confirmedSeq === rs && new Set(ids).size === ids.length, `remoteSeq=${rs} A=${(await status(A)).confirmedSeq} B=${(await status(B)).confirmedSeq} dupIds=${ids.length - new Set(ids).size}`);
 
@@ -201,9 +223,8 @@ async function main() {
   check("AC11", st11?.mode === "local" && st11b.unsent === st11.unsent + 1 && (await textOf(remote2, "m1", "j_a")) === "no-env", `mode=${st11?.mode} unsent ${st11?.unsent}->${st11b?.unsent}`);
 
   // AC9 fencing: point A at another remote (other history)
-  const created2 = spawnSync(process.execPath, [CLI, "--create", path.join(root, "other/store"), "--from-snapshot", snap], { encoding: "utf8" });
-  if (created2.status !== 0) throw new Error(`create other store: ${created2.stderr}`);
-  const other = await start("other", { M3E_DATA_DIR: path.join(root, "other"), M3E_STORE_DIR: path.join(root, "other/store") });
+  const otherName = await emptyStore(connection, "other");
+  const other = await start("other", { M3E_DATA_DIR: path.join(root, "other"), M3E_RECORD_STORE: otherName, ...neo4jEnv });
   const otherSeq0 = await remoteSeq(other);
   await stop(A);
   A = await start("A", { M3E_DATA_DIR: path.join(root, "A"), M3E_SYNC_REMOTE: other.base, ...neo4jEnv });
@@ -222,9 +243,11 @@ try {
   for (const s of [...servers]) await stop(s);
   try {
     const { dropDevicesUnder } = require(path.join(BETA, "dist/node/sync/local.js"));
-    const { neo4jConnectionFromEnv } = require(path.join(BETA, "dist/node/record_store/neo4j_durability.js"));
     const connection = neo4jConnectionFromEnv(process.env, "M3E_TEST_NEO4J");
-    if (connection) await dropDevicesUnder(connection, root);
+    if (connection && !/:7687\b/.test(connection.uri)) {
+      for (const name of namedStores) await Neo4jDurability.drop(connection, name);
+      await dropDevicesUnder(connection, root);
+    }
   } catch (error) {
     console.error(`cleanup: ${error instanceof Error ? error.message : error}`);
   }
