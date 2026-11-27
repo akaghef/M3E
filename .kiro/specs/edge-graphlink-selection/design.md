@@ -6,7 +6,7 @@
 
 ### Goals / Non-Goals
 
-候補集合・順序・選択遷移・編集可否を DOM から分離し、Lane の帯や Disperse の枠でも同じ選択 identity を保つ。既存 renderer、node navigation、履歴を活用する。新しい renderer / server / layout engine / relation edge 作成 UI / 親子構造編集は作らない。
+候補集合・順序・選択遷移・編集可否を DOM から分離し、Lane の帯や Disperse の枠でも同じ選択 identity を保つ。既存 renderer、node navigation、履歴を活用する。新しい renderer / server / 配置の計算 / relation edge 作成 UI / 親子構造編集は作らない。
 
 ## Boundary Commitments
 

@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-11-27-001
+
+- Date: 2026-11-27
+- Topic: M3E の database と永続・検査・query は Neo4j
+- Status: accepted
+- Decision: Neo4j が永続する現在状態・map の表示・全ての検査と query を担う。確定は 1 回の Neo4j の write transaction で行う。journal は Neo4j の `Commit` node に置く端末と remote の交換記録であり、状態の保存先ではない。snapshot はある seq の時点の Neo4j の状態で、別の snapshot ファイルや JSON の database は置かない。JSON は push / pull / clone の wire format と export に用いる。
+- Why: 永続する現在状態と確定・検査・読み出しを同じ database で扱うため。
+- Next: `neo4j-database-design.md` に従い、通常 Beta の保存・検査・読取りと clone / export を Neo4j に接続する。
+- Source: akaghef の 2026-11-27 の決定、[Neo4j を database にする設計](../../.kiro/specs/rapid-persistence-redesign/neo4j-database-design.md)。
+- Promoted: [DB 仕様書](../03_Spec/Database_Spec.md)、[ADR 014](../09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)
+
 ## 2026-11-18-001
 
 - Date: 2026-11-18
@@ -42,13 +53,13 @@
 - Status: accepted
 - Decision:
   - **Surface View 正本を5種に戻す: `Tree / Axial / Radial / Disperse / System`。**
-  - **Radial と Disperse は同一の力学配置エンジン（WebCola）を共有し、親子関係の投影方式だけが異なる**: Radial は親子を **parent edge** で描画（relation edge も表示）。Disperse は親子を **入れ子（group/包含）** で描画（画面の線は relation edge のみ）。
+  - **Radial と Disperse は同一の力学による配置の計算（WebCola）を共有し、親子関係の投影方式だけが異なる**: Radial は親子を **parent edge** で描画（relation edge も表示）。Disperse は親子を **入れ子（group/包含）** で描画（画面の線は relation edge のみ）。
   - ADR_010 が指摘した「角度系（clockwise/counterclockwise/balanced）の実装実体が無かった」という事実認定は維持し、**角度系 option は正本から削除したまま**にする。Radial 概念自体を無効とした結論のみを撤回する。
   - Radial / Disperse の subtype は `scatter`（人が置いた座標をそのまま使う）/ `force`（力学配置）の2つに統一。**`cluster` subtype は廃止** — tree の group 投影は Disperse の切替可能な subtype ではなく、Disperse の既定の親子表現そのものであるため。
   - **全 Surface View は同じ tree（+ relation edge）構造の上に立つ**、という前提を正本の「意味上の分離」に明記した。View 間の違いは構造の有無ではなく投影方式の違い。「自由配置」はレイアウトアルゴリズムの性質であり、データ構造が自由という意味ではない。
   - Radial に group 投影は無いため、collapse した部分木は縮約されて単なる1ノードになる（Disperse と同じ「縮約」操作だが footprint を持たない）。
 - Why: ADR_010 は「Radial は Tree と実体を共有していた」という正しい観察から、「Radial 概念自体が無効」という誤った結論に踏み込んだ。akaghef が Radial(parent edge)/Disperse(group) という固有の意味を与えたことで、角度系に依らない正当な区別が成立する。また「木だから自由配置という説明はおかしい」という指摘により、Surface View 全体の構造記述を「構造の有無」から「同一構造の投影方式」へ訂正した。
-- Next: seam lab（layout-lab）に Radial の scatter/force コントロールを追加。Disperse の実装（`disperse_layout.ts` 等）と配置エンジンを共有させる形で Radial を再導入する。角度系コードは復元しない。
+- Next: seam lab（layout-lab）に Radial の scatter/force コントロールを追加。Disperse の実装（`disperse_layout.ts` 等）と配置の計算を共有させる形で Radial を再導入する。角度系コードは復元しない。
 - Source: 2026-08-27 akaghef「radial, disperseの違いがわからないという話だったが、両者を復活させたい。ラディアルは親子のエッジを表示する。グラフリンクも表示する。一方でディスパースは、親子同士はエッジではなく、入れ子のカテゴリとして表す」+「構造としては木だから[Radial/Disperseが自由配置で構造を持たないかのような]説明は変だ」
 - Promoted: [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md), [../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md)
 - Superseded in part by [2026-10-17-001](#2026-10-17-001): Surface View の種別一覧と layered architecture 図の対応のみ。Radial / Disperse の決定は維持する。
@@ -130,10 +141,10 @@
 ## 2026-08-23-003
 
 - Date: 2026-08-23
-- Topic: Disperse の layout engine に WebCola を採用
+- Topic: Disperse の配置の計算に WebCola を採用
 - Status: working-agreement
 - Decision:
-  - **Disperse の layout engine は WebCola**（cola.js）。理由は思想の適合であり、ベンチマークによる選定ではない（akaghef 指示「実測はしない。思想で決める」）。
+  - **Disperse の配置の計算は WebCola**（cola.js）。理由は思想の適合であり、ベンチマークによる選定ではない（akaghef 指示「実測はしない。思想で決める」）。
   - 要件3つ（**矩形の非重複** / **group が第一級** / **collapse で縮約**）に対し、WebCola は制約ベースで「傾向でなく保証」を与え、矩形非重複と group を第一級に持つ。ほぼ一対一で対応する。
   - **d3-force は不採用**: 衝突が円で矩形の非重複を保証できず、group を自作することになる。
   - **elkjs は不採用**: compound は native だが思想の重心が層化（Sugiyama）された図であり、「近接と密度で読む」Disperse の主眼と向きが違う。既存決定 2026-06-06-001 の elkjs 優先は `Axial.subtype=pipeline` / `System.subtype=architecture` の文脈で、Disperse には射程が及ばない。
@@ -373,9 +384,9 @@
 ## 2026-03-30-003
 
 - Date: 2026-03-30
-- Topic: Freeplane-first から独自描画エンジン方針へ転換
+- Topic: Freeplane-first から独自の描画の仕組みを使う方針へ転換
 - Status: accepted
-- Decision: Freeplane は参考実装および `.mm` 互換入力形式として扱い、描画エンジンと操作系は M3E 側で自作する
+- Decision: Freeplane は参考実装および `.mm` 互換入力形式として扱い、描画の仕組みと操作系は M3E 側で自作する
 - Why: M3E 固有の研究思考支援 UI は Freeplane の外側の補助レイヤーではなく、表示と操作の設計そのものに宿るため
 - Next: MVP 定義、方針文書、ADR を独自描画前提へ更新する
 - Source: このスレッドでの方針転換の会話

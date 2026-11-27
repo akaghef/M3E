@@ -14,22 +14,22 @@ sync-principles.md と sync-requirements.md の local 側を実装するため�
 - local：`M3E_SYNC_REMOTE=<remote の origin>` を持つ server。viewer・MCP からは今の server と同じに見える。
 - local は自分で確定しない。local の seq（working store の commit 番号）は remote の seq と別物であり、remote の seq を偽造しない。
 
-local のデータディレクトリ（`M3E_DATA_DIR`）：
+local の状態は端末の Neo4j に置く。confirmed と working store は同じ database の異なる `ws` である。
 
-| パス | 中身 |
+| 置き場 | 中身 |
 |---|---|
-| `sync/remote.json` | remote の origin、`workspaceId`、`historyId`、`epoch`、`confirmedSeq`、working store の基点（`working`：working store のどの通し番号が confirmed のどの通し番号と同じ中身か） |
-| `sync/confirmed/` | remote の確定系列の複製（record store。seq は remote の seq） |
-| `sync/outbox.jsonl` | 未送信・結果不明の Command（fsync 後に local commit 完了） |
-| `sync/conflicts.jsonl` | remote が conflict・reject を返した Command（消さずに保全） |
-| `store/` | working store（confirmed に outbox を載せた状態。viewer・MCP はここを読み書きする） |
+| Neo4j の同期設定 | remote の origin、`workspaceId`、`historyId`、`epoch`、`confirmedSeq`、working store の基点 |
+| Neo4j の confirmed 用 store | remote の確定系列の複製。seq は remote の seq |
+| Neo4j の `Outbox` node | 未送信・結果不明の Command。working store の変更と同じ transaction で保存する |
+| Neo4j の conflict の記録 | remote が conflict・reject を返した Command。消さずに保全する |
+| Neo4j の working store | confirmed に outbox を載せた状態。viewer・MCP はここを読み書きする |
 
-初回起動で `sync/remote.json` が無ければ clone する：`GET /api/sync/clone` → `sync/confirmed/` と `store/` を同じ snapshot から作る。
+初回起動で同期設定が無ければ `GET /api/sync/clone` で remote の Neo4j の状態を受け取り、confirmed と working store を作る。clone payload は輸送の形式であり、別の snapshot ファイルを database として使わない。
 
 ## 3. local commit
 
 - viewer・MCP の書込みは、working store に今までどおり commit する。
-- 同時に、その commit を outbox の entry として fsync する。entry は remote で compare-and-set（R7.1）できる形で持つ：
+- 同じ Neo4j の write transaction で、その Command を `Outbox` node に保存する。entry は remote で compare-and-set（R7.1）できる形で持つ：
   - 内容の変更：`MapCommand`（`commandId`・`actor`・`intent`・`changes: RecordChange[]`、各 change は `before`/`after` を持つ）。`saveWholeMap` の差分（`diffState`）もこの形にする。
   - map 単位の操作：`{mapOp: "create" | "delete" | "rename" | "columns", ...}`。作成は初期内容を `changes` で運ぶ。
 - parent edge の変更は、子の ID と `{parentId, ord}` の `before` / `after` を持つ。兄弟の index をずらす変更は作らない。working store と remote は、通常の移動・兄弟順を確定順の LWW とし、古い基点の outbox の移動も受ける。循環は拒否し、他の field は CAS、射影の書き戻しは位置も CAS とする。`index` 形式の既存 entry は読み取れ、受理した変更は順序キー形式で journal / outbox に書く。どちらの形で再送しても同じ Command と判定する。
@@ -46,11 +46,11 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
 2. remote は、まず要求全体の照合（R6.2）を行い、食い違えば何も確定せず要求全体を拒否する。
 3. 照合を通れば entry ごとに結果を返す（R6.3）：
    - `committed` / `no-op`（変更後の値と一致）：outbox から外す。内容は次の pull で confirmed に入る。
-   - `conflict` / `rejected`：outbox から外し、`sync/conflicts.jsonl` に理由と一緒に移す。黙って捨てない。
+   - `conflict` / `rejected`：outbox から外し、Neo4j の conflict の記録 に理由と一緒に移す。黙って捨てない。
    - 通信断・結果不明：outbox に残す。同じ `commandId` で再送する（remote は重複を検出する）。
 4. push の後に pull を行う。
 
-outbox の新しい entry は `attempted: false` を持つ。各 push の全送信対象を最初の送信前に `attempted: true` として永続化する。途中で止まって未送信になった後続も保守的に集約対象から外す。欄がない既存 entry は送信履歴不明として集約しない。送信済み・結果不明の ID と内容は再送時にも変えない。この欄は transport に送らない。集約・送信対象の記録は既存の atomic rename と fsync で outbox 全体を置き換えるため、途中停止時は完全な旧版か新版が残る。処理対象は outbox の pending とその changes だけで、workspace は読まない。
+outbox の新しい entry は `attempted: false` を持つ。各 push の全送信対象を最初の送信前に `attempted: true` として永続化する。途中で止まって未送信になった後続も保守的に集約対象から外す。欄がない既存 entry は送信履歴不明として集約しない。送信済み・結果不明の ID と内容は再送時にも変えない。この欄は transport に送らない。集約・送信対象の記録はNeo4j の write transaction で対象の `Outbox` node を更新するため、途中停止時に部分適用しない。処理対象は outbox の pending とその changes だけで、workspace は読まない。
 
 集約自体は working store を書き換えない。集約後の停止で outbox の ID と working journal の ID が違っていても、基点と journal が有効なら変更された record だけを rebase する。
 
@@ -58,23 +58,23 @@ remote 側の追加：map 単位の操作（作成・削除・改名・列）を
 
 transport の実装では、同じ issuer が続く entry を JSON 本文（workspace と世代の照合情報を含む）4,000,000 byte までまとめ、それより大きい単一 Command は分割せず単独で送る。remote の非圧縮 JSON 本文の上限は 32,000,000 byte。上限超過は接続を破棄せず HTTP 413 `PUSH_BODY_TOO_LARGE` と `limitBytes` を返し、何も確定しない。request の `Content-Encoding` は未指定または `identity` のみを受け付ける。
 
-proxy などが batch を 413 で拒否したときは、同じ push 内の batch の上限を縮め、単一 Command でも拒否されるかを確かめる。単独でも拒否されたら、outbox と後続の順序を保持し、同期状態に `push.state: "blocked"`・`code: "PUSH_COMMAND_TOO_LARGE"`・`commandId`・map 名・intent・理由・送信 byte 数・remote が返した上限を出す。状態は `sync/remote.json` に保持し、接続確認が成功しても消さない。push は明示操作で再試行でき、対象 Command の結果が確定したら解除する。journal の記録内容は変えない。これは transport の実装上限であり、K10 の変更対象数・依存数などの未決事項を確定するものではない。
+proxy などが batch を 413 で拒否したときは、同じ push 内の batch の上限を縮め、単一 Command でも拒否されるかを確かめる。単独でも拒否されたら、outbox と後続の順序を保持し、同期状態に `push.state: "blocked"`・`code: "PUSH_COMMAND_TOO_LARGE"`・`commandId`・map 名・intent・理由・送信 byte 数・remote が返した上限を出す。状態は Neo4j の同期設定に保持し、接続確認が成功しても消さない。push は明示操作で再試行でき、対象 Command の結果が確定したら解除する。journal の記録内容は変えない。これは transport の実装上限であり、K10 の変更対象数・依存数などの未決事項を確定するものではない。
 
 ## 5. pull（手動）
 
 1. `GET /api/sync/pull?after=<confirmedSeq>` に `workspaceId`・`historyId`・`epoch` を付けて要求する。応答も同じ三つを返し、local は食い違えば取り込まない。
-2. 返った journal の行を seq の連続を確かめてから `sync/confirmed/` に追記・適用する（R5.4：確定時の変更をそのまま再生し、merge 規則で再判定しない）。
-3. working store をその場で rebase する（[同期の思想](sync-principles.md)の「手間は変化分に比例させる」）。基点より後に pending が変えた record と、届いた行が変えた record だけを confirmed の値に戻し（1 行の `local-rebase` として working store の journal に書く）、pending を順に commit し直す。載らない pending（前提が崩れたもの）は conflicts に移す。手間は届いた行と pending に比例し、workspace の大きさに依らない。届いた行が無く、pending も変わっていなければ何もしない。途中で失敗したら基点を消し、次の pull か起動で全体を作り直す。
+2. 返った journal の行を seq の連続を確かめてから Neo4j の confirmed 用 store に transaction で保存・適用する（R5.4：確定時の変更をそのまま再生し、merge 規則で再判定しない）。
+3. working store をその場で rebase する（[同期の思想](sync-principles.md)の「手間は変化分に比例させる」）。基点より後に pending が変えた record と、届いた行が変えた record だけを confirmed の値に戻し（`local-rebase` の変更を working store の Neo4j の transaction で保存する）、pending を順に commit し直す。載らない pending（前提が崩れたもの）は conflicts に移す。手間は届いた行と pending に比例し、workspace の大きさに依らない。届いた行が無く、pending も変わっていなければ何もしない。途中で失敗したら基点を消し、次の pull か起動で全体を作り直す。
 4. viewer に map の更新を通知する（既存の watch / SSE）。
-5. remote が `reclone` を返した場合（保持期間切れ）：outbox と conflicts を保ったまま clone し直し、working store を新しいディレクトリに全体から作り直して入れ替える（Δ が全体なので全体に比例してよい）。
+5. remote が `reclone` を返した場合（保持期間切れ）：outbox と conflicts を保ったまま clone し直し、Neo4j の別の `ws` に working store を全体から作り直して入れ替える（Δ が全体なので全体に比例してよい）。
 
 起動時は、基点が working store の journal と outbox に合っていれば、working store をそのまま開き、止まっている間に届いた行だけを 3 と同じく rebase する。合わなければ（初回、作り直しの途中で止まった、など）全体から作り直す。
 
 ## 6. workspace と世代の照合（fencing）
 
-- remote の store は `workspaceId`（既存）、`historyId`（store を作ったときに一度だけ生成）、`epoch`（remote を作り直したときに増やす。初期値 1）を持ち、snapshot の header に記録する。既存の store で欠けていれば、開いたときに一度だけ生成して保存する。
+- remote の store は `workspaceId`（既存）、`historyId`（store を作ったときに一度だけ生成）、`epoch`（remote を作り直したときに増やす。初期値 1）を持ち、Neo4j の `Head` node に記録し、clone / export の header にも渡す。既存の store で欠けていれば、開いたときに一度だけ生成して保存する。
 - `/api/sync/clone`・`pull`・`push` の応答はこの三つを返す。`pull`・`push` の要求が三つを付けて来て一致しなければ 409 `FENCED` を返す。
-- local は `sync/remote.json` に clone 時の三つを保存し、以後すべての要求に付ける。食い違いの応答を受けたら同期を止め、状態に「同期を拒否された」と出す。
+- local は Neo4j の同期設定に clone 時の三つを保存し、以後すべての要求に付ける。食い違いの応答を受けたら同期を止め、状態に「同期を拒否された」と出す。
 
 ## 7. 同期状態（viewer）
 
@@ -86,11 +86,11 @@ proxy などが batch を 413 で拒否したときは、同じ push 内の batc
 
 ## 8. 受入条件（判定は orchestrator が持つ）
 
-remote 1 台と local 2 台（A・B）を別プロセス・別ディレクトリで動かして判定する。
+remote 1 台と local 2 台（A・B）を別プロセス・別の Neo4jで動かして判定する。
 
 | ID | 手順 | 合格 |
 |---|---|---|
-| AC1 | A・B を空のディレクトリから起動 | 両方が clone し、map 一覧と内容が remote と一致 |
+| AC1 | A・B を空の Neo4j から起動 | 両方が clone し、map 一覧と内容が remote と一致 |
 | AC2 | A で node の text を変え、push | remote に確定、B の pull 後に B で見える。A の `unsent` は 0 |
 | AC3 | A で編集し push しない | remote は変わらない（R6.1） |
 | AC4 | remote を止めて A で編集、remote を戻して push | 確定する。止まっている間 A の状態は `unreachable`、`unsent` > 0 |

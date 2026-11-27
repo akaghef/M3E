@@ -47,7 +47,7 @@
 ### S3. 保存・同期・復元の信頼性を先に固める
 
 - 状態: 並走中
-- 現在地: Cloud Sync 競合 UI 改善、data runtime / distribution 経路の整理を継続
+- 現在地: Neo4j を永続する現在状態・map の表示・検査・query に使う実装を継続。journal は Neo4j の `Commit` node に置く端末と remote の交換記録で、snapshot は Neo4j の状態。端末は remote の clone、remote は定期 export で復旧する（[設計](../../.kiro/specs/rapid-persistence-redesign/neo4j-database-design.md)）。通常 Beta のファイル・メモリによる保存は、この実装の対象である。
 - 数日内の焦点: 仕様は 3 平面語彙（読み=openCypher/GQL、書き=Command intent、精錬=materialize/derive）で記述し、ad-hoc 用語を導入しない
 
 ### S16. 局所正本の連邦化（収穫モード）

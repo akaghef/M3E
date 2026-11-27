@@ -9,7 +9,7 @@
 Git の cloud と local の関係に倣う。
 
 - remote は workspace ごとにちょうど一つ置く。置き場所は選べる（社内の一つの端末、外部のサービス）。特定の置き場所には固定しない。
-- local は複数あってよい。どの local も server・engine・viewer を持ち、編集できる。
+- local は複数あってよい。どの local も server・database・viewer を持ち、編集できる。
 - 確定するのは remote である。local の commit は確定ではない。
 - online とは、その local がその workspace の remote と push / pull できる状態をいう。online かどうかは workspace ごとに判定する。remote に届くのに拒否される状態は、online とは別の「同期の失敗」として扱う。まだ push していない件数は、online とは別の軸で示す。
 - push / pull は当面は手動で行う。挙動を確かめるためである。
@@ -18,27 +18,27 @@ Git の cloud と local の関係に倣う。
 - remote を作り直すときは、届くすべての local から、連続していて検証済みの最長の部分を集める。新しい履歴 ID と世代を発行し、古い remote には二度と書かせない。どこまで保全を確認できたかを画面に出す。
 - 閲覧専用の端末（iPad など）は clone を持たず、remote に接続して読む。
 - branch は持たない。確定の系列は workspace ごとに一つである。
-- 確定は remote の journal への fsync で成り立つ。remote の保存媒体を失えば、どの local にもまだ配られていない確定は失われうる。そのときは、復旧した地点と、欠けたかもしれない範囲を示す（複雑さを避けるための暫定。二媒体での保全は当面持たない）。
+- 確定は remote の Neo4j の write transaction で成り立つ。remote の保存媒体を失えば、どの local にもまだ配られていない確定は失われうる。そのときは、復旧した地点と、欠けたかもしれない範囲を示す（複雑さを避けるための暫定。二媒体での保全は当面持たない）。
 
 これにより、物理配置の原則の「確定者（writer）を端末に固定する」「Mac mini を集約点にする」「他の PC は確定者へ Command を送る」を、remote と local の関係に置き換える。
 
 ## データの形
 
-- 権威を二つに分ける（DC39）。
-  - durability authority（system of record）は journal と snapshot である。replication・backup・PITR の単位はこの二つで、engine には依存しない。
-  - semantic authority は各端末の Neo4j である。ドメインモデルを保持し、invariant の検査と query を担う。Neo4j は journal と snapshot から replay で再構築できる。
-- journal は確定の記録である。workspace に一本で、remote が全順序を付ける。確定の順番、`commandId`、端末、世代、履歴 ID を持ち、復旧と push / pull に使う。未確定の Command は端末ごとの outbox に置く。
-- 1 件の確定は、次の順に workspace ごとに 1 件ずつ処理する：Neo4j の上で検査する → journal に追記して fsync する（ここで確定）→ 同じ内容を transaction で Neo4j に適用する → 応答する。応答は適用の後に返すので、確定の直後に読めば新しい値が返る。
-- 兄弟順キーは、parent edge（Neo4j の relationship）の property に置く。
-- journal と端末の未確定の Command（outbox）は、当面 jsonl のまま置く。書きかけの行の後始末、scope ごとの pull や重複排除の検索の遅さ、outbox の不具合が繰り返し起きたら、SQLite への切り替えを検討する。
+- Neo4j が durability authority（永続する現在状態）と semantic authority（invariant の検査と query）を担う。map の表示も Neo4j の問い合わせから出す。
+- journal は端末と remote の間で、確定した変更を確定順に push / pull するための記録である。workspace に一本で、remote が全順序を付ける。Neo4j の `Commit` node に置き、状態の保存先にはしない。
+- snapshot は、ある `seq` の時点の状態という役割であり、Neo4j の状態である。別の snapshot ファイルや JSON の database は置かない。record のファイルは一度きりの移行入力、export、clone payload に限る。
+- 1 件の確定は、Neo4j の write transaction の中で検査し、record の変更、`Commit` と `CommandResult` の作成、`Head.seq` の更新を同じ transaction で書く。確定後に応答する。非同期の適用や、journal より Neo4j が遅れる状態は無い。
+- 兄弟順キーは parent edge の record に置く。
+- confirmed と working store は同じ Neo4j の異なる `ws` に置く。outbox は Neo4j の `Outbox` node に置く。JSON は push / pull / clone の wire format と export に用いる。
+- 端末の Neo4j は remote から clone して復旧し、remote は database 全体の定期 export で保全する。
 
 ## 手間は変化分に比例させる
 
 2026-11-25、akaghef が絶対原則として決めた。そうしなければ、workspace が育つとすぐに使えなくなる。M3E は Miro の共同編集と GitHub の版管理を一つに束ねる（[Home](../../../docs/00_Home/Home.md)）。git が巨大なリポジトリでも使えるのは、diff・commit・fetch・rebase のどれもが変化分にしか触れないからで、この原則はその体現である。
 
 - 書き込み・確定・push・pull・表示の更新の手間は、その処理が運ぶ変化分（Δ）の大きさに比例させる。Δ は、1 件の Command が変える record、pull で届く確定の行、push で送る pending、画面に要る範囲などである。workspace 全体・map 全体・journal 全体の大きさに比例する処理を、これらの経路に置かない。
-- 全体に比例してよいのは、Δ そのものが全体である処理だけである。初回の clone、取り直し（reclone）、format の移行、明示の作り直し、復旧がこれに当たる。state をメモリに持つ限り、起動時に workspace を読み込むことも一度だけ全体に比例する。起動時にそれ以上の全体処理（複製、書き直し、読み直し）を重ねない。
-- journal の畳み込みは全体を書き直す。1 行あたりに均した手間が一定に収まる契機（行数）でだけ走らせる。
+- 全体に比例してよいのは、Δ そのものが全体である処理だけである。初回の clone、取り直し（reclone）、format の移行、明示の作り直し、復旧がこれに当たる。通常の起動で workspace 全体をメモリに読み込まず、Neo4j から必要な範囲を問い合わせる。
+- journal を畳み込んで snapshot ファイルを作る処理は置かない。現在状態は Neo4j が保持する。
 - 全体に比例する処理を見つけたら、計測を待たずに直す。正しい直し方に設計が要るものは、実装ログに無駄を名指しして記録する。
 - 試験は、Δ を固定して workspace の大きさを変えたとき、処理が読み書きする record の数とバイト数が変わらないことで確かめる。
 
@@ -80,7 +80,7 @@ Git の cloud と local の関係に倣う。
 過去の情報は目的ごとに要る期間が違う（復旧、同期、Undo、由来）。残し方は領域ごとに分ける。
 
 - Flash：ほぼ残さない。
-- Rapid：作業のしやすさを優先する。journal は保持期間（時間か件数）の分だけ残し、手放す前に snapshot を作る。remote は local の追いつきを待たない。保持期間より遅れた local は snapshot から clone し直し、未確定の Command は前提条件つきで push し直す。重複排除の記録は保持期間より長く残す。死んだ端末は明示の操作で登録から外す。
+- Rapid：作業のしやすさを優先する。journal は保持期間（時間か件数）の分だけ残し、手放す前に、Neo4j の現在状態と必要な履歴・再送結果・定期 export の保全を検証する。remote は local の追いつきを待たない。保持期間より遅れた local は snapshot から clone し直し、未確定の Command は前提条件つきで push し直す。重複排除の記録は保持期間より長く残す。死んだ端末は明示の操作で登録から外す。
 - Deep：Git のように積み上げる。版ごとに誰が・いつ・なぜを持つ。私的な情報だけは読めなくする手段を用意する。遅れた local も差分を pull できる。
 - Deep も journal の版をすべて残すことはしない。journal の保持は Rapid と同じ仕組み（時間と容量の上限）に従う。transaction time の履歴（いつ何が記録されたか）を残す目的は復旧・Undo・監査で、それは保持期間と snapshot で足りる。as-is と to-be、退職の前と後のような意味のある状態の違いは、版の履歴に頼らず、データとして明示的に置く（別の面にする、有効期間を持たせる、など）。
 - Rapid と Deep の違いは保持の方針ではなく、その scope を何として扱うかという態度である。Rapid は作業の文書（木）で、同じ実体が別々の node として現れてもよく、名寄せは昇格のときに行う。Deep は面が重なり合った体系の graph で、node を作る時点で既存の実体かどうかを判断する。態度は構造から導けないので、scope に band（rapid / deep）として宣言する。欄が無ければ Rapid とし、Deep だけに印を付ける。Deep から射影した面は常に Rapid だが、Flash で取り込んだものや手で作ったものも Rapid である。
@@ -94,7 +94,7 @@ Git の cloud と local の関係に倣う。
 - 保持の方針は権限と同じ継承と上書きの規則で解決する。
 - 複数の scope に関わる op は、関わる scope のうち最も長い保持期間で残す。
 - 重複排除の記録は scope の保持期間に連動させず、workspace 単位で再送が来うる期間より長く持つ。
-- archive に移した journal は 90 日で削除する。削除の条件は、その範囲を覆う snapshot の検証が通っていることである。
+- journal の保持対象外の確定記録は、Neo4j の現在状態、必要な履歴・再送結果・名前付き snapshot・定期 export の保全を検証してから削減する。journal の archive は置かない。
 - 保持期間の短縮は、過去を即座に捨てる破壊的な操作なので、確認つきの明示の操作にする。
 - 古すぎる local の判定と clone し直しは scope ごとに行う。
 

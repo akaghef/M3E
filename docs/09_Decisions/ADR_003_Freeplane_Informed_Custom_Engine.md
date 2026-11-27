@@ -1,4 +1,4 @@
-# ADR 003: Freeplane-Informed Custom Engine
+# ADR 003: Freeplane を参考にした描画と操作の仕組み
 
 ## Status
 
@@ -26,7 +26,7 @@ Freeplane に UI と操作を委ね続けると、次の制約が大きい。
 ## Decision
 
 M3E は Freeplane を参考実装および互換入力形式として扱い、
-描画エンジンと操作系は M3E 側で自作する。
+描画の仕組みと操作系は M3E 側で自作する。
 
 ## Decision Details
 

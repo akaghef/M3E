@@ -32,7 +32,7 @@ Neo4jを大域semantic graphの優先adapterとする。Git、Obsidian、provide
 
 proposal、pending assertion、pending transferはjournalをcanonical sourceとする。database内でowner source、record role、owner revision、provenanceを区別し、Neo4jを全contentの一律canonical storeにしない。
 
-M3E-owned accepted record の Recovery Gate は、engine 非依存の snapshot と操作履歴である journal の replay だけによる復旧実証を要求する。engine 依存の backup / restore は補助経路として検証してよいが、Gate 通過根拠にはしない。
+M3E-owned accepted record の Recovery Gate は、端末の Neo4j を remote の clone から、remote の Neo4j を定期 export から復旧できることを実証する。snapshot は Neo4j のある seq の状態であり、別の snapshot ファイルは置かない。journal は Neo4j の `Commit` node に置く端末と remote の交換記録とする。
 
 ### 4. Neo4j導入はDemand Gateを通す
 

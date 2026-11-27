@@ -123,7 +123,7 @@ S16 の中核命題「局所正本の連邦化＋再構築可能な materialized
 - **JD1 確定**: ADR_008 Decision 3（M3E-owned accepted Deep graph の Gate 後 canonical runtime）を記載どおり承認。activation は Recovery Gate（snapshot + journal replay での復旧実証。backup は gate 根拠にしない）で拘束。
 - **JD2 処理済み**: 指針原文は `docs/ideas/260718_llm_graph_protocol_directive_original.md` へ退避。PR #75 版が正本。
 - **PR #75 merge 済み**（squash c743cf3）。
-- **復旧語彙の定義**: journal = 操作の歴史（replay）/ backup = 物理複製（restore、エンジン依存）/ snapshot = 論理直列化（rebuild、エンジン非依存）。意味的保証は snapshot + journal。Rebuild Gate = 他者の正本から rebuild、Recovery Gate = 自己の復旧根拠から recover。
+- **復旧語彙の定義**: journal = Neo4j の `Commit` node に置く端末と remote の確定順の交換記録 / backup = remote の Neo4j 全体の定期 export / snapshot = ある seq の時点の Neo4j の状態。Rebuild Gate = canonical owner source から rebuild、Recovery Gate = 端末は remote の clone、remote は定期 export から復旧する実証。
 - **データ精錬度軸 D0〜D3**: D0 生data / D1 集計 / D2 傾向 / D3 法則・主張。各 Dn+1 は Dn の materialization（変換 + provenance 必須）。graph へ入るのは D3 と選ばれた D2 のみ。D0/D1 は identity 参照。
 - **操作 3 平面**: 読み = openCypher / ISO GQL 語彙（独自 query 言語禁止）/ 書き = Command intent / 精錬 = materialize・aggregate・derive。
 - **数学オントロジー命題**: `docs/ideas/260719_math_ontology_graphdb_thesis.md`。Neo4j は本命 use case 確定済みの遅延採用。Demand Gate query は数学コンテンツ運用からも採取。relationType 語彙は数学関係型を第一検証対象。

@@ -147,7 +147,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 |---|---:|---|---|
 | [09_Decisions/ADR_001_Freeplane_First.md](<./09_Decisions/ADR_001_Freeplane_First.md>) | Markdown | ADR 001: Freeplane First | Superseded |
 | [09_Decisions/ADR_002_React_UI_Basis.md](<./09_Decisions/ADR_002_React_UI_Basis.md>) | Markdown | ADR 002: React UI Basis | Accepted |
-| [09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md](<./09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md>) | Markdown | ADR 003: Freeplane-Informed Custom Engine | Accepted |
+| [09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md](<./09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md>) | Markdown | ADR 003: Freeplane を参考にした描画と操作の仕組み | Accepted |
 | [09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md](<./09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md>) | Markdown | ADR 004: SQLite for Rapid MVP | Accepted |
 | [09_Decisions/ADR_005_DataDir_Config.md](<./09_Decisions/ADR_005_DataDir_Config.md>) | Markdown | ADR 005: Data Directory Configuration per Environment | Accepted |
 | [09_Decisions/ADR_006_Resource_Schema_Version.md](<./09_Decisions/ADR_006_Resource_Schema_Version.md>) | Markdown | ADR 006: Resource 追加時の Schema Version 方針 | Open (議論中) |
@@ -158,7 +158,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](<./09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md>) | Markdown | ADR_011: Agent Orrery を M3E の map として実装する | ADR_009 は凝集先（M3E）・Disperse 解釈・out-of-process plugin・projection を決めたが、 |
 | [09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](<./09_Decisions/ADR_012_Radial_Surface_View_Restoration.md>) | Markdown | ADR_012: Radial Surface View を復活させ、Disperse と力学配置を共有する | ADR_010 は、当時の実装が canon の角度系（`clockwise / counterclockwise / balanced`）を |
 | [09_Decisions/ADR_013_Lane_Surface_View.md](<./09_Decisions/ADR_013_Lane_Surface_View.md>) | Markdown | ADR_013: Lane Surface View を追加し System と区別する | 層状の図式は、root node の直下の子 node を並列に見せ、その下の孫 node 間の関係を読む。root node は必ずしも scope ではない。この投影はレーンに整列できないフローチャート様の構造を扱う System... |
-| [09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md](<./09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md>) | Markdown | ADR 014: Journal Canonical Sources and Neo4j Engine for Rapid | Proposed |
+| [09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md](<./09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md>) | Markdown | ADR 014: Neo4j による永続と journal による端末間の交換 | Proposed |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections

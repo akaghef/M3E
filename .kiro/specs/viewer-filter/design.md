@@ -10,7 +10,7 @@ Layout を保持して濃淡と件数だけを更新する。判定・操作・�
 
 ### Non-Goals
 
-新しい描画エンジン、server、保存 schema、npm 依存は追加しない。mock の実装 runtime、Domain の固定集合、候補 relation edge を移植しない。未対応 Surface View の WebGL 化や Radial の実装は別件である。
+新しい描画の仕組み、server、保存 schema、npm 依存は追加しない。mock の実装 runtime、Domain の固定集合、候補 relation edge を移植しない。未対応 Surface View の WebGL 化や Radial の実装は別件である。
 
 ## Existing Architecture Analysis
 

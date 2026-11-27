@@ -49,6 +49,33 @@
 
 ## 記録
 
+### 2026-11-27 覚えた拒否への再送には、拒否の種類・理由・衝突した欄を同じに返し、map の状態は答える時点のものを付ける
+
+- 種類: 気づき
+- 書いた agent: Neo4j を database にする作り直しの session（store 担当）
+- 対象: DB 仕様書 5.3、`beta/src/node/record_store/store.ts` の `rememberResult`・`commandResult`、`beta/tests/unit/record_store_resend.test.ts`
+- 中身: 確定的な拒否を最初の結果として覚える決定（同じ ID には同じ拒否を返す）について、覚えるのは拒否の種類（code）、理由（message）、衝突した欄（conflicts）とする。拒否の応答に付く map の状態（current）は覚えず、再送に答える時点の、問い合わせた map の状態を付ける。拒否の応答の current は、もともと答える時点の状態である。拒否のたびに map 全体の状態を Neo4j に書くと、拒否の経路の手間が map の大きさに比例し、手間を変更分に比例させる原則に反する。
+- 根拠: 再送の試験 10 件が通る（`M3E_TEST_NEO4J_BOLT=bolt://127.0.0.1:7688 npx vitest run tests/unit/record_store_resend.test.ts`）。map の ID を変えた後の再送で、今の map の状態が付くことも試験で確かめた。
+- 扱い: 実装で解消（codex/neo4j-database）。
+
+### 2026-11-27 pull の rebase が運ぶ操作の数が、workspace が大きいと増えることがある
+
+- 種類: 問題
+- 書いた agent: Neo4j を database にする作り直しの session（store 担当）
+- 対象: `beta/src/node/sync/local.ts` の pull と working store の rebase、`beta/tests/unit/local_sync_store.test.ts` の「a pull rebases in proportion to the delta and the pending Commands, not to the size of the workspace」
+- 中身: dev-beta の CI（b20b520 の 1 回目）で、5,000 node の workspace に対する rebase が 3 個の操作を運び、10 node の workspace では 1 個だった（`expected 3 to be 1`）。2 回目と 1d6b5eb では通った。手間が変更分に比例する原則（sync-principles）に反し、結果が実行ごとに変わる。原因（反復の順序、rebase の二重の起動、死活確認や push との競合）は未確認。
+- 根拠: CI の失敗の記録（親 session からの報告）。この session では再現していない。
+- 扱い: 未対応。Neo4j の local モードの作り直しで、rebase の操作の数を「変更分と未確定の Command の数」に固定する試験を、workspace の大きさを変えて 20 回繰り返して流す形で足す。CI の再実行で緑にすることを解消とはしない。
+
+### 2026-11-27 通常 Beta はファイルとメモリ上の record で動き、Neo4j が接続されていない
+
+- 種類: 問題
+- 書いた agent: DB 仕様記録の修正を担当した Codex
+- 対象: 通常 Beta の launcher と server、DB 仕様書 1・6・7・8 節、[Neo4j を database にする設計](neo4j-database-design.md)
+- 中身: 通常 Beta は `snapshot.jsonl`・`journal.jsonl` とメモリ上の record 集合で動いていた。どの launcher も `M3E_NEO4J_BOLT` を設定せず、server には Neo4j から読む経路がなく、Neo4j はどこにも接続されていなかった。原因は snapshot を Neo4j の外にある database 非依存のファイルとして定義し、永続と復旧をそのファイルと journal に置いたことにある。永続する現在状態・map の表示・全ての検査と query は Neo4j に置き、journal は同じ transaction で作る `Commit` node として端末と remote の交換に使う。
+- 根拠: 本作業へ引き継がれた 2026-11-27 の通常 Beta 調査結果と、`neo4j-database-design.md` 1・4・5・7・8・10 節。通常 Beta の再起動・実動作の再検証は本作業では行っていない。
+- 扱い: 実装中（[neo4j-database-design.md](neo4j-database-design.md)）
+
 ### 2026-11-27 拒否と忘却を記録する `sync-rejections.jsonl` は compact されず、伸び続ける
 
 - 種類: 問題
@@ -181,12 +208,12 @@
 - 根拠: `beta/tests/unit/local_sync.test.ts` に試験を 2 つ足した。同じ issuer の 3 件が 1 リクエストになること（直す前は 3 リクエストで失敗する）と、issuer が変わる所でリクエストが分かれること。
 - 扱い: 実装で解消（このログと同じ commit）
 
-### 2026-11-25 空の attributes・nodeViews と、nodeType が無い node は、record store を通ると形が変わる
+### 2026-11-25 空の attributes・nodeViews と、nodeType が無い node は、store を通ると形が変わる
 
 - 種類: 気づき
 - 書いた agent: unscopen の競合パネルを直した Claude Code の session
 - 対象: `beta/src/shared/map_changes.ts` の `fieldConflicts`、`beta/src/shared/record_model/from_snapshot.ts:143` と `:244`
-- 中身: record store には、空の `nodeViews` / `attributes` の入れ物を表す record がない。そのため、読み戻すと欄そのものが無くなる。`nodeType` が無い node は `"text"` として読み戻される。viewer は `nodeViews: {}` を持ち、unscopen では `nodeType` を消す。そのため、Command の `before` と今の値の照合（compare-and-set）が食い違い、local モードの unscopen と、その後の scopen が毎回 409 `DOC_NODE_CONFLICT_Q` になっていた。照合では、空の入れ物と欄が無いことを同じとみなし、node の `nodeType` が無いことと `"text"` を同じとみなす。適用する側の `assignFields` は、もともと空の入れ物を値として扱っていなかった。
+- 中身: store には、空の `nodeViews` / `attributes` の入れ物を表す record がない。そのため、読み戻すと欄そのものが無くなる。`nodeType` が無い node は `"text"` として読み戻される。viewer は `nodeViews: {}` を持ち、unscopen では `nodeType` を消す。そのため、Command の `before` と今の値の照合（compare-and-set）が食い違い、local モードの unscopen と、その後の scopen が毎回 409 `DOC_NODE_CONFLICT_Q` になっていた。照合では、空の入れ物と欄が無いことを同じとみなし、node の `nodeType` が無いことと `"text"` を同じとみなす。適用する側の `assignFields` は、もともと空の入れ物を値として扱っていなかった。
 - 根拠: 使い捨ての remote と local を実際のブラウザで動かし、409 を再現した。直した後は保存も push も通り、通常の Beta でも 200 で通ることを確かめた。回帰試験は `beta/tests/unit/map_changes.test.ts`。
 - 扱い: 実装で解消（26e93e9: unscopen で競合パネルが出ないようにした。8b5f69d: unscopen の後の scopen で出ないようにした）
 
@@ -349,7 +376,7 @@
 - 種類: 問題
 - 書いた agent: format 2 の同期入口の session
 - 対象: DB 仕様書 14 節、`beta/src/node/sync/min_seq.ts`
-- 中身: record store が開いていないとき、minSeq が 0 より大きい read は `ENGINE_BEHIND` を返す。SQLite の command_log には workspace の applied seq が無い。0 は待たない。
+- 中身: store が開いていないとき、minSeq が 0 より大きい read は `ENGINE_BEHIND` を返す。SQLite の command_log には workspace の applied seq が無い。0 は待たない。
 - 根拠: `enforceMinSeq` は `activeRecordStore()` が null で minSeq が 0 より大きいとき 503 を返す。
 - 扱い: 未対応
 
@@ -395,7 +422,7 @@
 - 書いた agent: format 2 の band と射影の session
 - 対象: format2-requirements.md 14 節 U14.4（crypto-shredding の消去単位）
 - 中身: 消去単位、鍵の共有、鍵の backup、offline 復元の条件は未決である。保持期間の実装は archive の file の期限と印だけを扱い、crypto-shredding はしない。
-- 根拠: U14.4 を読んだ。record store に鍵の単位は無い。
+- 根拠: U14.4 を読んだ。store に鍵の単位は無い。
 - 扱い: 未対応
 
 ### 2026-11-22 書き戻しの CONFLICT は Command 全体を拒否する
@@ -434,12 +461,12 @@
 - 根拠: `readProjectionView` の observe 分岐を読んだ。scope の record に畳みの欄は無い。
 - 扱い: 未対応
 
-### 2026-11-22 面の中の木のエンジンは足していない
+### 2026-11-22 面の中の木の database は足していない
 
 - 種類: 気づき
 - 書いた agent: format 2 の band と射影の session
 - 対象: format2-requirements.md 14 節 U14.1、DB 仕様書 12.5 節
-- 中身: 面の中を扱う木のエンジンは、計測するまで要件ではない。射影は、store がすでに持つ parent edge の木を歩く。
+- 中身: 面の中を扱う木の database は、計測するまで要件ではない。射影は、store がすでに持つ parent edge の木を歩く。
 - 根拠: U14.1 を読んだ。`collectPlane` は parent edge を辿る。
 - 扱い: 未対応
 
@@ -494,7 +521,7 @@
 - 書いた agent: format 2 の commit 時の意味の session
 - 対象: DB 仕様書 3.2 節、同期の要件 R2.7、`beta/src/node/record_store/operations.ts`
 - 中身: AI agent の unlock は、同じ scope の `m3e:unlock` で、`committedAt` より前に期限が来ていない grant を要する。出し手がその scope をまだ編集できるかは、scope の編集権が record に無いので判定しない。出し手は編集できるものとして扱う。期限の瞬間（`committedAt >= expiresAt`）は拒否する。下位の scope への継承はしない。
-- 根拠: DB 仕様書 3.2 節と record store の record の種類を読んだ。編集権の record は無い。
+- 根拠: DB 仕様書 3.2 節と store の record の種類を読んだ。編集権の record は無い。
 - 扱い: 未対応
 
 ### 2026-11-22 射影の面上の OC2 は projection.dissolved を記録できない
@@ -513,14 +540,14 @@
 - 対象: [Glossary](../../../docs/00_Home/Glossary.md) の alias の行、DB 仕様書 0・1・12 節、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)、[sync-principles](sync-principles.md)、この spec の各文書
 - 中身: 2026-11-21 に akaghef が「"正本"って言い方曖昧だからやめろ。別の意味を定義せよ」と指摘し、2026-11-22 に「間違いではないが、含まれたニュアンスを明確にしたい」と述べた。仕様と ADR での使い方は、少なくとも次の五つに分かれる。
   1. 復旧の起点（durability authority、system of record）。他はここから作り直せる。例: 「journal と snapshot が正本の形式」「replay の正本は確定したレコード差分」。
-  2. 正しさを判定する場所（semantic authority）。不変条件の検査と問い合わせの答えを出す。例: 「Neo4j は各端末の正本エンジン」。
+  2. 正しさを判定する場所（semantic authority）。不変条件の検査と問い合わせの答えを出す。例: 「Neo4j は各端末の database」。
   3. 導出元。導出物（materialization、書き出しの形式、cache）と対になる。例: 「SQLite は書き出しの形式で、正本ではない」「何を正本 data とし、何を導出値とするか」。
   4. 実体を置く唯一の面。他の面には alias として現れる。例: 「実体は一つの面に一つだけ置く。その面を正本の面と呼ぶ」、akaghef の「組織図を正本として」。
   5. 文書の single source of truth。例: 「正本 doc」「Authoring Map は編集正本」「Live の正本は Vault の Markdown」。
 
   五つに共通する核は「写しが食い違ったら、こちらが勝つ。他はこちらから作り直すか、こちらを指す」という優先である。この核は常に成り立つので、どの用法も間違いではない。ただし、何の写しに対する優先か（bytes、解釈、導出物、出現、文書）が用法ごとに違う。修飾なしで書くと、読み手はどれか分からない。
 
-  実害は、すでに一度起きている。2026-11-18 の項「何を正本とするかの記述が、二つの文書で食い違っている」では、「正本エンジン」を 1 と読むか 2 と読むかで、同期・復旧・backup の設計が二通りに分かれた。
+  実害は、すでに一度起きている。2026-11-18 の項「何を正本とするかの記述が、二つの文書で食い違っている」では、「database」を 1 と読むか 2 と読むかで、同期・復旧・backup の設計が二通りに分かれた。
 - 根拠: Glossary、DB 仕様書、ADR 014、この spec の文書で「正本」を grep し、文脈を読んで分類した（2026-11-22）。数えたのは約 200 か所で、全件を分類したわけではない。
 - 扱い: 決定（2026-11-22 akaghef）。修飾なしの「正本」は使わない。1 と 2 は durability authority / semantic authority、3 は「導出元」と書く。4 は名前を付けるまで「実体を置く面」と説明的に書く。5 は文書運用の語として範囲外にする。既存の文書の書き換えは、Glossary の語の変更として別の作業で、語の組と範囲を確かめてから一括で行う（未着手）。それまでは、新しく書く文でだけ修飾なしの「正本」を使わない。
 
@@ -529,9 +556,9 @@
 - 種類: 仕様と実装のずれ
 - 書いた agent: 物理量と拡張の土台の session（DB 仕様書 12 節の書き手）
 - 対象: DB 仕様書 12.1〜12.4・12.6〜12.8 節、`docs/04_Architecture/Multi_Select.md`
-- 中身: akaghef が 2026-11-22 に、未決をすべて案のとおりに決めた（発言は「Neo4j 化について作業を進める」session で受けた）。12 節で決定になったもの: 射影と書き戻しの形（scope の `projection` の欄 `mode`・`from`・`range`・`baseSeq`・`dissolved`）、観測用のフィルタの面は alias と parent edge のレコードを保存しない、既存の Deep entity に結ぶことは node を alias に変えて表す、名前付きの snapshot はレコードの種類 `namedSnapshot` と削減の対象から外した archive の file で持つ、作業の面は書き戻した後も残す、消す操作を四つ（面から外す、関係を解く、実体を終える、実体を取り消す）に分け、面を移す操作は今は置かない、実体を終えた状態は node の有効期間（`valid.from`・`valid.to`）で持つ、実体を取り消すと他の面の alias は `broken` で残る、コピーは同一性と範囲などの軸で定義し、範囲の中の alias は省いたとき alias のまま写す。案が無かった項目は、12 節の書き手が選んだ: scope に帯域の欄 `band` を置く（射影で作った面は必ず `rapid`）、有効期間の欄の形、`namedSnapshot` の欄の形。面の中を扱う木のエンジン（12.5 節）は、計測してから決めるので、提案のままである。語の組（facet、「正本の面」という言い方）と、鍵やメニューへの割り当ては、保留である。
+- 中身: akaghef が 2026-11-22 に、未決をすべて案のとおりに決めた（発言は「Neo4j 化について作業を進める」session で受けた）。12 節で決定になったもの: 射影と書き戻しの形（scope の `projection` の欄 `mode`・`from`・`range`・`baseSeq`・`dissolved`）、観測用のフィルタの面は alias と parent edge のレコードを保存しない、既存の Deep entity に結ぶことは node を alias に変えて表す、名前付きの snapshot はレコードの種類 `namedSnapshot` と削減の対象から外した archive の file で持つ、作業の面は書き戻した後も残す、消す操作を四つ（面から外す、関係を解く、実体を終える、実体を取り消す）に分け、面を移す操作は今は置かない、実体を終えた状態は node の有効期間（`valid.from`・`valid.to`）で持つ、実体を取り消すと他の面の alias は `broken` で残る、コピーは同一性と範囲などの軸で定義し、範囲の中の alias は省いたとき alias のまま写す。案が無かった項目は、12 節の書き手が選んだ: scope に帯域の欄 `band` を置く（射影で作った面は必ず `rapid`）、有効期間の欄の形、`namedSnapshot` の欄の形。面の中を扱う木の database（12.5 節）は、計測してから決めるので、提案のままである。語の組（facet、「正本の面」という言い方）と、鍵やメニューへの割り当ては、保留である。
 - 根拠: 「Neo4j 化について作業を進める」session の記録で、akaghef の 2026-11-22 の発言（すべて案のとおりに要件をまとめる）を読んだ。実装のコードは、この件では読み直していない。
-- 扱い: 仕様へ反映（DB 仕様書 12 節）。record store は OC1–OC4、node の valid.from / valid.to、Command のコピー（範囲の中の alias は alias のまま、来歴は node の copyOf）を持つ。scope の band、射影、書き戻し、namedSnapshot は実装で解消（この commit。射影の面、書き戻し、昇格、既存の Deep entity への結び、名前付きの portable snapshot の印）。OC5 は未対応。3.1 節のレコードの一覧に、namedSnapshot、scope の band、node の valid は、まだ載っていない（3 節の書き手へ依頼）
+- 扱い: 仕様へ反映（DB 仕様書 12 節）。store は OC1–OC4、node の valid.from / valid.to、Command のコピー（範囲の中の alias は alias のまま、来歴は node の copyOf）を持つ。scope の band、射影、書き戻し、namedSnapshot は実装で解消（この commit。射影の面、書き戻し、昇格、既存の Deep entity への結び、名前付きの portable snapshot の印）。OC5 は未対応。3.1 節のレコードの一覧に、namedSnapshot、scope の band、node の valid は、まだ載っていない（3 節の書き手へ依頼）
 
 ### 2026-11-22 Rapid と Deep、昇格、射影のモードの決定を、DB 仕様書 12 節に反映した。保存の形で決めることが三つ出た
 
@@ -577,7 +604,7 @@
   - 【決定】declared は copy の出所の subtree だけである。agent が出所を明示する引数は、まだ作っていない。
   - 【決定】並びは、declared を先に、次に observed を読んだのが新しい順に置く。上限の 100 件はこの順で埋める。
   - 【決定】SQLite の上で動くときは record key が無いので、`items` は空になる。道具の名前（`tool`）は残らない（`intent` が残る）。
-- 根拠: `beta/tests/unit/journal_provenance.test.ts` の 4 件。修正を外すと 4 件とも失敗する。他者の書き換えを外す条件を抜くと 1 件、自分の書き換えを残す条件を抜くと 1 件失敗することも確かめた。MCP・確定・record store・server の既存試験（151 件）は通る。
+- 根拠: `beta/tests/unit/journal_provenance.test.ts` の 4 件。修正を外すと 4 件とも失敗する。他者の書き換えを外す条件を抜くと 1 件、自分の書き換えを残す条件を抜くと 1 件失敗することも確かめた。MCP・確定・store・server の既存試験（151 件）は通る。
 - 扱い: 実装で解消（commit「Journal provenance takes the frozen shape」。provenance を決めた形にし、読み取り集合から observed を作った）。仕様へ反映（DB 仕様書 6 節。決定との差 3 点のうち provenance の 1 点が解消する。文面は DB スキーマ設計 session へ送る）。6 件の【決定】は、2026-11-22 に akaghef が案のとおりに決めた。
 
 ### 2026-11-21 「消す」の意味を、出現・関係・実体に分ける案を、DB 仕様書 12.7 節に【提案】として書いた
@@ -598,12 +625,12 @@
 - 根拠: `git grep` で「子を持たない」「cannot own children」を探して読んだ。
 - 扱い: 仕様へ反映（DB 仕様書 3.2・4・12.2 節、2026-11-22 に `operation-algebra-requirements.md` 96 行目も整合）。残る文書（現行実装の説明である `Data_Model.md`・`map-write-protocol.md` と草案 `draft-record-model.md`）および実装（上記 4 か所）は未対応。viewer が alias の子をどう描くか、alias を畳んだときの表示、MCP の応答の形は決まっていない
 
-### 2026-11-21 射影・書き戻し・エンジンの分担を、DB 仕様書 12 節に【提案】として書いた
+### 2026-11-21 射影・書き戻し・database の分担を、DB 仕様書 12 節に【提案】として書いた
 
 - 種類: 気づき
 - 書いた agent: 物理量と拡張の土台の session（DB 仕様書の書き手）
 - 対象: DB 仕様書 12.3〜12.6 節、1 節、8 節、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)
-- 中身: akaghef の読み（体系から一側面を面として切り出し、整理して書き戻す。Rapid は木、Deep は graph で、保存エンジンの層で扱いを分けたい）を受けて、射影の入力と出力、scope の `projection` 欄、書き戻しの対応表、エンジンの分担を案として書いた。エンジンの分担を採ると、「Neo4j は各端末の正本エンジン」（ADR 014、DB 仕様書 1・8 節）を「面の中は木のエンジン、面をまたぐものは Neo4j」に改めることになる。
+- 中身: akaghef の読み（体系から一側面を面として切り出し、整理して書き戻す。Rapid は木、Deep は graph で、database の層で扱いを分けたい）を受けて、射影の入力と出力、scope の `projection` 欄、書き戻しの対応表、database の分担を案として書いた。database の分担を採ると、「Neo4j は各端末の database」（ADR 014、DB 仕様書 1・8 節）を「面の中は木の database、面をまたぐものは Neo4j」に改めることになる。
 - 根拠: 2026-11-21 の akaghef との対話。workload の表の数値（面は通常 10 node、最大約 1,100）は、同期の要件 R10.1 の値である。処理の速さは測っていない。
 - 扱い: akaghef の判断待ち（12.3〜12.5 の採否と、12.6 の五点）
 
@@ -618,7 +645,7 @@
   - `ev` の割り当ては、`attributes` → `m3e:attribute`、`extensions` → `m3e:extension`、parent edge の `source`・`target`・`ord`・`scopeId`・`type` と scope の `rootNodeId` → `m3e:structure`、新規 → `m3e:create`、削除 → `m3e:delete`、それ以外（text、本文、surface と nodeView の位置を含む）→ `m3e:content`。位置の変更に別の種類を作るかは未決。`m3e:target` は対象の欄が決まるまで出さない。
   - snapshot の `format` は 1 のまま。format 2 への切り替え（base snapshot の作成）は、parent edge の欄や extension 定義など他の format の変更と一緒に行う。archive の名前の `f1` はその前の区間を示す。
   - journal の `provenance` は、今までどおり Command の provenance をそのまま書く（MCP からは `{contextId, tool}`）。DB 仕様書 6 節の【決定】の形 `{items, truncated?}` とは違う。確定済みの Command を読む既存の経路がこの値を返しているため変えていない。Command の provenance を `items` へどう写すかは未決。
-- 根拠: `beta/tests/unit/record_store_compaction.test.ts` の 9 件が通り、変更前の `store.ts` では 9 件とも落ちることを確かめた。最初の snapshot と全 journal の行から作り直したレコード、途中の snapshot とその後の行から作り直したレコード、store 自身の snapshot と後続の行から開いたレコードが、元のレコードと一字一句一致する。既存の record store の試験も実行した。
+- 根拠: `beta/tests/unit/record_store_compaction.test.ts` の 9 件が通り、変更前の `store.ts` では 9 件とも落ちることを確かめた。最初の snapshot と全 journal の行から作り直したレコード、途中の snapshot とその後の行から作り直したレコード、store 自身の snapshot と後続の行から開いたレコードが、元のレコードと一字一句一致する。既存の store の試験も実行した。
 - 扱い: 実装で解消（journal を消さない畳み込みの commit）。仮決めの 5 点は、変えるなら akaghef の判断で直す。出来事の種類の割り当ては m3e:reparent、m3e:order、m3e:end であり、位置と m3e:target は別項である。DB 仕様書 6 節の「圧縮は journal を空にする」「journal を空にしている」「手放す操作は v1 では実装しない」の 3 文は、この実装と 90 日の決定に合わなくなったので、DB 仕様書の担当へ直しを依頼した
 
 
@@ -638,7 +665,7 @@
 - 対象: [操作の代数の要件](operation-algebra-requirements.md) 9・11・12 節
 - 中身: 【決定】(1) scope の移動だけでは relationType を変えず推論もしない。(2) unscopen で処分の方針が決まっていない所有データ（linear-text・注釈・Surface View の設定）があれば拒否する。(3) shallow copy は選んだ node だけ、scope copy は deep で同じ root の別の方向の scope を含めない。(4) deep copy の外側を指す参照は共有し、境界をまたぐ relation edge は既定では複製しない。(5) dissolve で条件・根拠を持つ中間 node、join で attribute を本文だけに落とすものは拒否し、中身のない中間 node 自身の色と配置の削除は明示して許す。(6) copy の来歴は journal を圧縮しても失わない形で残す。
 - 根拠: akaghef の決定（2026-11-22）。
-- 扱い: 仕様へ反映（[操作の代数の要件](operation-algebra-requirements.md) 9・11・12 節）。copy の来歴は node の copyOf として record store が持つ。dissolve の条件、join、unscopen の所有データの扱いは未対応
+- 扱い: 仕様へ反映（[操作の代数の要件](operation-algebra-requirements.md) 9・11・12 節）。copy の来歴は node の copyOf として store が持つ。dissolve の条件、join、unscopen の所有データの扱いは未対応
 
 ### 2026-11-19 ADR 014 の「stream の輸送は Syncthing」が、remote と outbox の形と合わない
 
@@ -786,7 +813,7 @@
 - 対象: DB 仕様書 6 節・8.3 節、`beta/src/node/neo4j_store/apply.ts:192`（`appliedSeq` の書き込み）
 - 中身: 復旧の正本が snapshot と journal なら、グラフの中身だけでなく、権限、未解決の conflict、Command の結果（重複排除の記録）、世代、端末の失効も、そこから戻せなければならない。Neo4j にだけ置いた状態は、指定された復旧の経路で失われる。また、journal に fsync した後、Neo4j に適用する前に止まった確定は、適用の失敗を理由に未確定へ戻せない。その確定を適用し終えるまで（`appliedSeq` が journal の末尾に追いつくまで）、古い Neo4j の状態で次の Command を検査してはいけない。どちらも今の DB 仕様書には書かれていない。
 - 根拠: GPT-6 Pro の回答（第 1 往復）の指摘を、DB 仕様書 8.3 節の「反映した位置は `appliedSeq` に持つ」と照らした。確定の処理が、検査の前に `appliedSeq` の遅れを解消しているかどうかは確かめていない（未確認）。
-- 扱い: 仕様へ【提案】として記載（[DB 仕様書 6.1 節「復旧で戻す状態と、engine に未適用の確定」](../../../docs/03_Spec/Database_Spec.md#recovery-state-and-unapplied-commits)）。akaghef の確認待ち
+- 扱い: 仕様へ【提案】として記載（[DB 仕様書 6.1 節「復旧で戻す状態と、database に未適用の確定」](../../../docs/03_Spec/Database_Spec.md#recovery-state-and-unapplied-commits)）。akaghef の確認待ち
 
 ### 2026-11-19 journal の畳み込みがどこからも呼ばれていない
 
@@ -802,9 +829,9 @@
 - 種類: 問題
 - 書いた agent: Neo4j 化の本線の session
 - 対象: DB 仕様書 1 節、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)、[sync-principles](sync-principles.md)（dev-beta に統合済み。2026-11-19 に同期の思想の session が確かめた）
-- 中身: DB 仕様書と ADR 014 は「正本は journal と snapshot、Neo4j は端末ごとの導出物で、同期も backup もしない」とする。今の実装もこの形である。一方 `sync-principles.md` は「Neo4j は正本エンジンで、他の何かの写しではない」とする。どちらも 2026-11-16 の akaghef の決定（brief の「正本エンジンは Neo4j」）を根拠にしており、「正本エンジン」の読み方が分かれている。このままでは同期・復旧・backup の設計が二通りになる。
+- 中身: DB 仕様書と ADR 014 は「正本は journal と snapshot、Neo4j は端末ごとの導出物で、同期も backup もしない」とする。今の実装もこの形である。一方 `sync-principles.md` は「Neo4j は database で、他の何かの写しではない」とする。どちらも 2026-11-16 の akaghef の決定（brief の「database は Neo4j」）を根拠にしており、「database」の読み方が分かれている。このままでは同期・復旧・backup の設計が二通りになる。
 - 根拠: 両方の文書の該当行を読んで比べた。
-- 扱い: 仕様へ反映（freeze v1。Neo4j は各端末の正本エンジンで semantic authority、journal と snapshot は durability authority。DB 仕様書 0・1 節と ADR 014 を改めた）
+- 扱い: 仕様へ反映（freeze v1。Neo4j は各端末の database で semantic authority、journal と snapshot は durability authority。DB 仕様書 0・1 節と ADR 014 を改めた）
 
 ### 2026-11-18 一部の attribute だけを読んだ状態からの保存は、読んでいない attribute を消さない。ただし 2 つの操作が衝突として拒否される
 

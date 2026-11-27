@@ -1,4 +1,4 @@
-# 保存エンジン候補 — 外部調査
+# database 候補 — 外部調査
 
 2026-10-24。Director が委任した調査エージェントによる。npm registry、GitHub API、各ベンダー文書、ローカル計測。**F** は出典付きの確認事実、**I** は推論。採否の推奨は含めない。
 
@@ -31,9 +31,9 @@
 - F: Cypher 25 は ISO GQL に部分準拠（未実装の必須機能あり）。<https://neo4j.com/docs/cypher-manual/current/appendix/gql-conformance/>
 - I: PC ごとに JVM サービス（起動・停止、heap と page cache の調整、port）を管理する必要がある。起動時間は未計測。
 - I: M3E が Neo4j のバイナリを同梱配布すると GPLv3 の義務がかかる。Apache-2.0 の driver で Bolt 通信するだけなら、その義務は生じない。
-- I: Community では online backup がないため、snapshot は「停止 → dump → 再起動」か、アプリ側の export になる。エンジン非依存の snapshot と journal があれば、この制約に依存しない。
+- I: Community では online backup がないため、snapshot は「停止 → dump → 再起動」か、アプリ側の export になる。remote の Neo4j 全体を定期 export して保全し、端末は remote から clone して復旧する。
 
-## 3. Node.js に組み込めるグラフエンジン
+## 3. Node.js に組み込める graph database
 
 - Kùzu — F: 2025-10-10 に archive、最終版 0.11.3。Apple が Kùzu Inc. を買収（2025-10-09）。<https://github.com/kuzudb/kuzu>、<https://www.theregister.com/2025/10/14/kuzudb_abandoned/>
 - LadybugDB（Kùzu の fork）— F: MIT、Cypher、serializable ACID。`@ladybugdb/core` 0.21.2（2026-10-01）、darwin-arm64 / win32-x64 の prebuilt あり。直近 90 日の commit は 100 件以上で、うち 89 件が 2 人による。v0.21.0（2026-09-29）では主キーの破損、checkpoint 失敗後の WAL 復元、CSR の rollback など保存層の修正が多数入った。READ_WRITE はプロセスをまたいで 1 ファイル 1 つ。<https://github.com/LadybugDB/ladybug>、<https://docs.ladybugdb.com/concurrency/>

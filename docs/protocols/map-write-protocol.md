@@ -64,7 +64,7 @@ Report:
 
 ## viewer の record 差分受信
 
-record store を使う server は、既存の map watch に以下の wire を追加する。記載する ID は API の値であり、画面に表示する名前ではない。
+store を使う server は、既存の map watch に以下の wire を追加する。記載する ID は API の値であり、画面に表示する名前ではない。
 
 ### 通知
 

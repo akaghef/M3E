@@ -27,7 +27,7 @@ workspace > map > scope > node
 - node、edge、scope、Surface View の保存設定、注釈の ID は、map と workspace をまたいで一意である。
 - ID は作られた後に変わらない。消した ID は再利用しない。
 - ID に意味を埋め込まない（種別の名前、本文、親の ID を含めない）。
-- 保存エンジンが内部で振る ID は、外に出さない。
+- database が内部で振る ID は、外に出さない。
 
 ## 3. レコード
 
@@ -219,7 +219,7 @@ agent の node:
 | session の ID | 観測の証拠として残す場合の値 | 無し |
 
 - 確定 1 回につき 1 行である。node の数に比例しない。
-- journal を圧縮しても、この表は残す。
+- journal の保持対象外の確定記録を削減しても、この表は残す。
 
 ## 4. 木と alias と relation edge
 
@@ -318,13 +318,13 @@ Command が運ぶもの:
 3. 競合の判定は欄の単位で行う。変更前の値が現在の値と違う欄が一つでもあれば、拒否する。同じ node でも、触った欄が重ならなければ両方通る。
 4. 検査を通した Command は、変えた欄だけを現在のレコードに当てる。
 5. 確定のたびに、workspace で一本の通し番号が 1 増える。触ったレコードの `rev` は、その番号になる。
-6. journal への追記が成功した時点が確定である。その後に保存エンジンへの反映が失敗しても、取り消さない。反映が追いつくまで、その workspace の次の確定を止める。
+6. 1 Command を 1 回の Neo4j の write transaction で確定する。Neo4j の状態で検査し、record の変更・`Commit`・`CommandResult`・`Head.seq` を同じ transaction で保存する。確定後に応答し、非同期の適用や未反映の確定は置かない。
 
 再送の規則:
 
 - 確定済みの ID と同じ ID の Command には、最初の結果を返す。
 - 同じ ID で中身が違う Command は、拒否する。
-- 基準の通し番号が journal の圧縮より古い Command は、状態を取り直させてから受ける。
+- 基準の通し番号が journal の保持範囲より古い Command は、状態を取り直させてから受ける。
 
 Undo は、逆向きの Command を出すことで行う。
 
@@ -348,12 +348,13 @@ Undo は、逆向きの Command を出すことで行う。
 - どの agent がどの scope に居るかは、保存しない。サーバのメモリだけに持つ。
 - 一つの agent が、同時に複数の scope に居てよい。
 
-## 12. 正本と保存エンジン
+## 12. 永続する状態と database
 
-- 正本は、journal（Command の追記専用の列）と snapshot（レコードを 1 行ずつ並べた、エンジンに依らない直列化）である。
-- 保存エンジン（Neo4j）は、journal から作り直せる導出物である。
-- 空のエンジンへ、snapshot と journal だけから復元できる。
-- SQLite は、書き出しの形式として残る。
+- M3E の database は Neo4j であり、永続する現在状態・map の表示・検査・query を担う。
+- journal は Neo4j の `Commit` node に置く。確定した変更を確定順に端末と remote の間で交換するための記録であり、状態の保存先ではない。
+- snapshot はある seq の時点の Neo4j の状態という役割で、別の snapshot ファイルは置かない。record のファイルは一度きりの移行入力、export、clone payload に限る。
+- JSON は push / pull / clone の wire format と export に用いる。JSON の database は置かない。
+- 端末は remote から clone して復旧し、remote は Neo4j 全体の定期 export で保全する。
 
 ## 13. 保存しないもの
 

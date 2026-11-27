@@ -156,7 +156,7 @@ S16 の最初の価値は、Neo4j server を起動することではない。**r
 | M3E semantics を Cypher schema に直接定義させる | 不採用 |
 | M3E Semantic Core を storage から分離する | 採用 |
 
-Neo4j は `Node`、`Relationship`、`Label`、`Property` を第一級に扱う property graph database であり、Deep の横断探索・経路探索・依存解析に適合する。一方、物理的には専用 binary store、index、transaction log、page cache を持つ database engine であり、Git diff 可能な semantic source ではない。したがって semantics は **Neo4j-defined ではなく Neo4j-backed** とし、canonical runtime にする M3E-owned record も portable recovery evidence を別 failure domain に持つ。
+Neo4j は `Node`、`Relationship`、`Label`、`Property` を第一級に扱う property graph database であり、Deep の横断探索・経路探索・依存解析に適合する。一方、物理的には専用 binary store、index、transaction log、page cache を持つ database database であり、Git diff 可能な semantic source ではない。したがって semantics は **Neo4j-defined ではなく Neo4j-backed** とし、canonical runtime にする M3E-owned record も portable recovery evidence を別 failure domain に持つ。
 
 #### S16.2 現構造が限界に達した理由
 

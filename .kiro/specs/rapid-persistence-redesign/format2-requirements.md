@@ -1,28 +1,28 @@
 # 保存の再設計 要件一覧（format 2）
 
-この文書は、2026-11-22 時点の決定を、実装者と受入者が同じリストで確認するための要件だけを集めたものである。出典は `docs/03_Spec/Database_Spec.md`、`.kiro/specs/rapid-persistence-redesign/` の `sync-requirements.md`、`sync-principles.md`、`operation-algebra-requirements.md`、`record-schema.md`、`snapshot-format.md`、`quantities-requirements.md`、`implementation-log.md` の決定済み項目、`docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md` である。用語は `docs/00_Home/Glossary.md` に従う。
+この文書は、2026-11-27 時点の決定を、実装者と受入者が同じリストで確認するための要件だけを集めたものである。出典は `docs/03_Spec/Database_Spec.md`、`.kiro/specs/rapid-persistence-redesign/` の `sync-requirements.md`、`sync-principles.md`、`operation-algebra-requirements.md`、`record-schema.md`、`snapshot-format.md`、`quantities-requirements.md`、`implementation-log.md` の決定済み項目、`docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md` である。用語は `docs/00_Home/Glossary.md` に従う。
 
-【決定】と【仮決め】は要件である。出典が推奨を示していた未決は、その推奨で確定したものとして書く。12.5 の木のエンジン、KB5、QB4 は要件にせず、14 にだけ置く。二つの出典が食い違うときは両方を書き、「食い違い」と出典を付ける。状態は、`beta/src/shared/record_model/`、`beta/src/node/record_store/`、`beta/src/node/neo4j_store/`、`beta/src/node/mcp_service.ts` を見た結果である。実装済みと一部には、そのコードのファイルと行を付ける。
+【決定】と【仮決め】は要件である。出典が推奨を示していた未決は、その推奨で確定したものとして書く。12.5 の順序付き index、KB5、QB4 は要件にせず、14 にだけ置く。二つの出典が食い違うときは両方を書き、「食い違い」と出典を付ける。状態は、`beta/src/shared/record_model/`、`beta/src/node/record_store/`、`beta/src/node/neo4j_store/`、`beta/src/node/mcp_service.ts` を見た結果である。実装済みと一部には、そのコードのファイルと行を付ける。
 
 ## 1 保存の形とレコード
 
 ### R1.1
-durability authority を置くとき、remote は journal と snapshot だけを replication・backup・recovery の単位にする。
-- 出典: ADR 014 Decision 1、Database_Spec.md 1節、record-schema.md freeze v1、sync-principles.md「データの形」
-- 状態: 一部。snapshot と journal は workspace ディレクトリの `snapshot.jsonl` と `journal.jsonl` である（`beta/src/node/record_store/store.ts:71-72`）。Neo4j は同期も backup もしない、という運用の入口は、この範囲のコードには無い。
-- 受入: エンジンのデータだけを消して snapshot と journal から同じレコードが戻る。Neo4j のファイルを複製しなくても復旧が完了する。
+永続する現在状態は各端末と remote の Neo4j に置く。端末は remote の clone で復旧し、remote は database 全体の定期 export で保全する。
+- 出典: ADR 014 Decision 1、Database_Spec.md 1節、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 端末の Neo4j を remote の clone から、remote の Neo4j を定期 export から戻し、内容と管理状態が一致する。
 
 ### R1.2
-semantic authority を置くとき、各端末の Neo4j が不変条件の検査と query を担い、壊れたら base snapshot と log suffix の replay だけで再構築する。
-- 出典: ADR 014 Decision 1・2、Database_Spec.md 1節・8節、sync-requirements.md R5.7
-- 状態: 一部。確定後に Neo4j へ非同期反映する（`store.ts:1352-1353`、`beta/src/node/neo4j_store/apply.ts:182`）。不変条件はメモリ上のレコード集合で検査する（`store.ts:1272-1276`）。
-- 受入: 空の Neo4j に最新の base snapshot とそれより後の journal だけを入れると、反映前と同じ query 結果になる。検査を Neo4j の古い状態に対して行っていないことが、遅れがある間の次の Command で分かる。
+各端末の Neo4j が map の表示・不変条件の検査・全ての query を担う。検査と確定は同じ Neo4j の write transaction で行う。
+- 出典: ADR 014 Decision 1・2、Database_Spec.md 1節・8節、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: map の読取りも Command の検査も Neo4j から行われ、非同期の反映待ちは生じない。
 
 ### R1.3
-食い違い。journal の単位について、Database_Spec.md 2節、ADR 014 Decision 4、sync-principles.md「データの形」は workspace に一本とする。Glossary.md の journal の行は、単位を workspace × 書き手端末とする。
-- 出典: 上記
-- 状態: 実装済みの側は workspace に一本である（`store.ts:3-5`、`store.ts:71-72`）。端末ごとの journal は無い。
-- 受入: 一つの workspace ディレクトリに journal が一つあり、端末を増やしても journal ファイルが増えない。受入は、どちらの出典を正とするかを決めたあとで、その文面に合わせる。
+journal は workspace に一本で、remote の sequencer が全順序を付ける。Neo4j の `Commit` node に保持し、端末と remote の間で確定順に交換する。
+- 出典: Database_Spec.md 2節、ADR 014 Decision 4、Glossary.md journal
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 端末を増やしても workspace の確定系列は一本で、journal のファイルを作らない。
 
 ### R1.4
 remote を置くとき、workspace ごとに remote はちょうど一つであり、その sequencer が `seq` の全順序を付ける。
@@ -49,16 +49,16 @@ ID を発行するとき、node・edge・scope・Surface View の保存設定・
 - 受入: 同じ入力を二度変換すると ID と `idMap` が一致する。
 
 ### R1.8
-レコードを書くとき、種別と key の組がレコードの識別であり、snapshot の 1 行が 1 レコードである。
+レコードを書くとき、種別と key の組がレコードの識別であり、移行入力・export・clone payload の 1 行が 1 レコードである。永続する状態は Neo4j に置く。
 - 出典: Database_Spec.md 3節、snapshot-format.md 1節
 - 状態: 実装済み（`beta/src/shared/record_model/jsonl.ts:36-43`）
-- 受入: 同じ key の行が二行ある snapshot は開けない（`store.ts:417`）。
+- 受入: 同じ store に同じ key の record を二つ作れず、重複した key の輸送・export の行は取り込まない。
 
 ### R1.9
-format 2 の snapshot を書くとき、1 行目は `kind` が `snapshot`、`format` が 2、`workspaceId` と、その snapshot が含む最後の `seq` を持つ。
-- 出典: Database_Spec.md 3.1・7節、record-schema.md freeze v1
-- 状態: 未実装。ヘッダの `format` は 1 に固定されている（`types.ts:8-14`）。
-- 受入: 新しい base snapshot の先頭行が `format: 2` であり、それより前の journal を新形式へ書き換えない。
+輸送・export の header は `kind: "snapshot"`、`format`、`workspaceId`、`seq` を持つ。snapshot は Neo4j の状態という役割であり、別の database ファイルではない。
+- 出典: Database_Spec.md 3.1・7節、snapshot-format.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: clone / export から対象の状態と format が分かり、journal の切り替え点より前を新形式へ書き換えない。
 
 ### R1.10
 レコードの種別を増やすとき、format 2 は `map`、`node`、`details`、`connection`、`scope`、`linearText`、`surface`、`nodeView`、`annotation`、`relationTypeDef`、`prefix`、`lock`、`namedSnapshot`、`grant`、`account`、`commit`、`idMap`、`extensionDef` を持つ。
@@ -139,7 +139,7 @@ relationType の名前を書くとき、名前は接頭辞付きで、一度使�
 - 受入: MCP からの新規の無接頭辞名は拒否され、既存の無接頭辞 key の更新は通る。アプリ内の別経路から無接頭辞名を書くと、その経路も拒否する。
 
 ### R1.23
-`rev` を付けるとき、`rev` はそのレコードを最後に変えた確定の `seq` であり、`commit`、`idMap`、`nodeView`、snapshot の先頭行は持たない。`nodeView` は属する Surface View の `rev` に従う。
+`rev` を付けるとき、`rev` はそのレコードを最後に変えた確定の `seq` であり、`commit`、`idMap`、`nodeView`、輸送・export の header は持たない。`nodeView` は属する Surface View の `rev` に従う。
 - 出典: Database_Spec.md 3.1、snapshot-format.md 2節
 - 状態: 実装済み（`types.ts:136`、`types.ts:202-220`。put の `rev` は確定番号 `store.ts:1232`）
 - 受入: 触っていないレコードの `rev` は増えず、`nodeView` の行に `rev` が無い。
@@ -192,7 +192,7 @@ map の最終更新を示すとき、読み手は `touched` の `mapId` から�
 Command を確定するとき、remote は最終状態で不変条件を検査し、一つでも破るなら部分効果を公開も確定もしない。
 - 出典: Database_Spec.md 4節、operation-algebra-requirements.md 3節
 - 状態: 一部。破ると journal へ書く前に拒否する（`store.ts:1275-1280` の `refuse` は `append` より前）。検査は map 全体である（`store.ts:1272-1276`）。
-- 受入: 循環を作る Command のあと、journal の行もメモリも増えていない。
+- 受入: 循環を作る Command のあと、Neo4j の record と `Commit` が変わっていない。
 
 ### R2.2
 root 以外の node を確定するとき、remote はその node に入る parent edge がちょうど 1 本であることを要求し、map の root には 0 本であることを要求する。
@@ -323,34 +323,34 @@ Command を受けるとき、remote は出した側の ID、基準、意図、�
 - 受入: 連続する二つの確定の `seq` が 1 違い、触ったレコードの `rev` がその `seq` と一致する。
 
 ### R3.7
-確定の境界を置くとき、remote は journal への追記と fsync の成功を確定とし、その後の Neo4j 反映の失敗では取り消さない。
-- 出典: Database_Spec.md 5.2 規則 6、sync-principles.md「データの形」、record-schema.md「確定の仕組み」
-- 状態: 実装済み（`store.ts:1332-1353`。fsync のあとメモリ更新と enqueue。失敗時は切り詰めて例外）
-- 受入: fsync 前の停止では成功にならない。fsync 後に Neo4j を落としても、再起動後の replay にその確定がある。
+確定の境界は remote の Neo4j の write transaction の確定である。record の変更・`Commit`・`CommandResult`・`Head.seq` を同じ transaction で書く。
+- 出典: Database_Spec.md 5.2・6.1、sync-requirements.md R5.2・R5.3、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: transaction の確定前に停止すれば部分的な確定は残らず、確定後の応答喪失では同じ commandId の再送に元の結果が返る。
 
 ### R3.8
-成功応答を返すとき、remote は fsync と、その確定までの engine 適用の両方を終えている。
-- 出典: sync-requirements.md R5.2、sync-principles.md「データの形」
-- 状態: 未実装。`commitMapCommand` は fsync とメモリ更新のあと、Neo4j の適用を待たずに成功を返す（`store.ts:1320` は `append` の中で enqueue するだけ、`store.ts:1353`）。
-- 受入: 成功応答の直後の読みが、その確定より古い値を返さない。適用前の停止では成功応答が無い。
+成功の応答は Neo4j の write transaction の確定後に返す。
+- 出典: Database_Spec.md 5.2・6.1、sync-requirements.md R5.2・R5.3、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 成功の応答の直後の Neo4j の読みが、その確定より古い値を返さない。
 
 ### R3.9
-食い違い。Database_Spec.md 5.2 規則 6 は、fsync 成功の時点を確定とし、Neo4j の失敗では取り消さない、とする。sync-requirements.md R5.2 は、成功応答に engine 適用の完了を要求する。確定点と成功応答の条件が一致しない。
-- 出典: 上記
-- 状態: fsync 確定は実装済み（R3.7）。成功応答が適用を待つ側は未実装（R3.8）。
-- 受入: どちらの文面を正とするかを決めたあと、その試験が通る。
+確定点と成功の応答は Neo4j の write transaction に対応する。journal の別ファイルへの fsync と非同期の Neo4j 適用は置かない。
+- 出典: Database_Spec.md 5.2・6.1、sync-requirements.md R5.2・R5.3、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: record と `Commit` が同じ transaction で確定し、確定済み・未適用という状態が無い。
 
 ### R3.10
-未適用の確定があるとき、remote は古い engine 状態で次の Command を検査せず、先行する確定の適用を回復する。
-- 出典: Database_Spec.md 5.2 規則 7、sync-requirements.md R5.3
-- 状態: 一部。次の検査は、fsync 直後に更新したメモリを使う（`store.ts:1352` のあと次の `commitMapCommand`）。Neo4j の遅れ自体では検査を止めない（`store.ts:981-984`）。遅れが上限を超えると拒否する（R3.11）。
-- 受入: `0→1` を fsync したあと適用前に落ちても、再起動後の次の Command は `1` を含む状態で評価される。
+次の Command は、workspace の `Head` を lock した Neo4j の write transaction 内で record を読み検査する。
+- 出典: Database_Spec.md 5.2・6.1、sync-requirements.md R5.2・R5.3、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: `0→1` の確定後の Command は `1` を含む Neo4j の状態で評価される。
 
 ### R3.11
-Neo4j の遅れが既定 10,000 確定を超えたとき、remote は次の確定を `ENGINE_BEHIND` で拒否する。
-- 出典: Database_Spec.md 5.2 規則 6
-- 状態: 実装済み（`store.ts:79`、`store.ts:986-1005`）
-- 受入: 遅れが 10,000 未満なら確定でき、10,000 以上なら `ENGINE_BEHIND` が返り、journal は増えない。
+確定そのものが Neo4j の transaction なので、journal より Neo4j が遅れる状態も、遅れを根拠とする受付制限も無い。
+- 出典: Database_Spec.md 5.2・6.1、sync-requirements.md R5.2・R5.3、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: Neo4j の transaction が失敗したときは確定せず、成功した確定に非同期の反映待ちが生じない。
 
 ### R3.12
 scope をまたぐ移動の Command を受けたとき、remote は未対応として確定せず、同じ scope の中の移動は通常どおり確定する。
@@ -395,10 +395,10 @@ scope をまたぐ移動の Command を受けたとき、remote は未対応と�
 - 受入: 保持期間を超えても、再送窓の中の同じ ID は二重適用されない。期限後に結果が確認できなければ、未処理とは断定しない。
 
 ### R3.19
-基準が journal の圧縮より古い Command を受けたとき、remote は状態を取り直させてから受け、消した node を再送で復活させない。
+基準が journal の保持範囲より古い Command を受けたとき、remote は状態を取り直させてから受け、消した node を再送で復活させない。
 - 出典: Database_Spec.md 5.3、record-schema.md「確定の仕組み」
 - 状態: 未実装。
-- 受入: archive より前の基準を持つ Command は、取り直しを求める結果になり、適用されない。
+- 受入: journal の保持範囲より前の基準を持つ Command は、取り直しを求める結果になり、適用されない。
 
 ### R3.20
 結果が確認できない再送期限後の Command を復帰するとき、local はそれを保留し、自動で新しい ID を付けて再発行しない。
@@ -550,13 +550,13 @@ branch を作らない方針のとき、remote は workspace の確定系列を�
 - 状態: 未実装。branch を作るコードは無いが、競合を未解決状態として残す機構も無い。
 - 受入: 二つの local が同じ欄を別の値へ編集して push すると、未解決の conflict が残り、第二の確定系列はできない。
 
-## 4 journal・snapshot・archive・retention
+## 4 journal・snapshot・export・retention
 
 ### R4.1
-journal を書くとき、remote は UTF-8 の JSON Lines とし、1 行を 1 確定とし、行に schemaVersion を持たせない。版は base snapshot の header の `format` と `seq` だけで決まる。
-- 出典: Database_Spec.md 6節・7節
-- 状態: 一部。JSON Lines で 1 行 1 確定であり、行に format は無い（`store.ts:1337`）。base snapshot の `format` はまだ 1 である（`types.ts:8`）。
-- 受入: journal の行を単体で見て版を決める必要が無く、切り替え点は snapshot header の `{format, seq}` だけで分かる。
+journal は Neo4j の `Commit` node に保持する。1 件は 1 確定で、状態の保存先ではない。JSON は push / pull / clone の wire format と export に用いる。format と切り替え点の seq は `Head` に持つ。
+- 出典: Database_Spec.md 6節・7節、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: pull が指定した seq より後の `Commit` を順に返し、journal ファイルに依存しない。
 
 ### R4.2
 journal の行を書くとき、remote は `seq`、`committedAt`、`issuer`、`sessionId`、`commandId`、`mapId`、`intent`、`actor`、`changes`、`changesHash`、`ops`、`touched`、`provenance` を持ち、map の削除・改名・一覧の欄だけの変更では `mapOp` と `newMapId` を持つ。
@@ -589,49 +589,49 @@ event kind を付けるとき、remote は `m3e:create`、`m3e:delete`、`m3e:co
 - 受入: 確定行に送られた変更と post-image の両方がある。試験が通ったあとで `ops` をやめる変更は、別の明示の format 判断になる。
 
 ### R4.7
-journal を開くとき、remote は末尾の書きかけの行を切り捨て、途中の壊れと通し番号の飛びでは開くのを止める。
-- 出典: Database_Spec.md 6節
-- 状態: 実装済み（`store.ts:362`、`store.ts:501`、`store.ts:515`）
-- 受入: 末尾だけ壊れたファイルは開き、途中が壊れたファイルと欠番のファイルは開かない。
+途中停止からの回復は Neo4j の transaction log が担う。pull の受信は seq の連続と世代を検査する。
+- 出典: Database_Spec.md 6節、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: transaction の部分適用を公開せず、欠番や世代不一致の配送を取り込まない。
 
 ### R4.8
-log compaction をするとき、remote は journal を消すのではなく、封じた segment と置き換わる snapshot を `archive/` へ移し、新しい snapshot で `snapshot.jsonl` を書き直し、journal を空にする。
-- 出典: Database_Spec.md 6節、implementation-log.md の畳み込みの決定
-- 状態: 実装済み（`store.ts:860-907`、`journal_archive.ts:185-206` は hard link、失敗時は copy）
-- 受入: compaction のあと、archive に移した範囲を replay すると compaction 前のレコードと一致する。hot の journal は空である。
+現在状態は Neo4j に保持し、journal を畳み込む log compaction と journal の archive は置かない。
+- 出典: Database_Spec.md 6節、neo4j-database-design.md 10節
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 通常の保存と起動で `snapshot.jsonl` を書き直さず、journal の archive を作らない。
 
 ### R4.9
-compaction の契機を判定するとき、remote は snapshot より後の journal が 50,000 行に達した確定の直後と、開いたときに判定し、時刻では起動しない。環境変数で 0 にすると止める。失敗は確定を失敗にしない。
-- 出典: Database_Spec.md 6節
-- 状態: 実装済み（`store.ts:77`、`store.ts:944-955`、`store.ts:1354-1355`）
-- 受入: 49,999 行では archive が増えず、50,000 行の確定のあとで増える。compaction の失敗のあとでも、その確定は journal に残る。
+Neo4j の現在状態を journal の行数に応じて別の snapshot ファイルに書き直す処理は置かない。
+- 出典: Database_Spec.md 6節、neo4j-database-design.md 10節
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 確定件数が増えても JSON Lines の compaction が起動しない。
 
 ### R4.10
-schemaVersion を上げるとき、remote は上げた直後の snapshot を base snapshot として書き、replay を保証するのはそこから後だけであり、それより前の journal の upcasting はしない。
-- 出典: Database_Spec.md 6節・7節、record-schema.md freeze v1、ADR 014 Decision 1
-- 状態: 未実装。`format` は 1 のまま（`types.ts:8`）。
-- 受入: format 2 の base snapshot より前の行を、format 2 の規則で読み替えない。新しいエンジンは base snapshot と log suffix だけで復元する。
+schemaVersion を上げるとき、Neo4j の状態を移行し、`Head` に format と切り替え点の seq を保存する。切り替え点より前の journal の upcasting はしない。
+- 出典: Database_Spec.md 6節・7節、record-schema.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: clone / export の header が切り替え点を示し、移行前の確定記録を新しい format で解釈しない。
 
 ### R4.11
-archive の segment を削除するとき、remote は移してから 90 日を過ぎ、その範囲を覆う snapshot が fsync 済みで checksum を検証できたものだけを消し、問題が一つでもあれば何も消さない。
-- 出典: Database_Spec.md 6節、ADR 014 Decision 1、sync-requirements.md R8.7
-- 状態: 一部。90 日と、現在の snapshot の checksum と被覆の検査はある（`journal_archive.ts:26`、`journal_archive.ts:242-263`）。名前付き snapshot を削減対象から外す印は無い（R4.12）。
-- 受入: checksum が違うと 90 日を過ぎたファイルも残る。検証が通った範囲だけが消える。
+保持対象外の確定記録を削減する前に、Neo4j の現在状態、必要な履歴・再送結果・名前付き snapshot・定期 export の保全を検証し、問題があれば削減しない。
+- 出典: Database_Spec.md 6節、sync-requirements.md R8.7
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 検証に失敗した場合は確定記録を削減せず、有効な再送結果と名前付き snapshot を失わない。
 
 ### R4.12
-名前付き snapshot の file に削減対象外の印があるとき、remote は retention でその file を消さない。
-- 出典: Database_Spec.md 6節・12.4
-- 状態: 未実装。`pruneArchive` は期限の来た entry を一律に消す（`journal_archive.ts:251-263`）。
-- 受入: 印のある file が 90 日を過ぎても残る。印を外した削除操作のあとでは、通常の期限で消える。
+名前付き snapshot は Neo4j にその seq の時点の状態として保持し、履歴期限だけで削減しない。
+- 出典: Database_Spec.md 12.4、sync-requirements.md R8.5
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 名前付き snapshot の状態を Neo4j から取得でき、削除は確認つきの明示操作だけで起きる。
 
 ### R4.13
-食い違い。Glossary.md の journal は、書き換えと削除をしない、と書く。Database_Spec.md 6節は、hot journal を空にし、archive を 90 日で削除する。
-- 出典: 上記
-- 状態: 実装は削除する側である（`store.ts:904-907`、`journal_archive.ts:261`）。
-- 受入: 正とする文面を決めたあと、90 日削除が禁止されるか、Glossary の「削除しない」が hot journal の追記中だけを指すかが試験で区別できる。
+journal の保持対象外の確定記録は保持条件を検証して削減する。現在状態は Neo4j にあり、hot journal と archive のファイルは置かない。
+- 出典: Database_Spec.md 6節、Glossary.md journal
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 履歴の削減後も現在状態が Neo4j に残り、遅れた local は remote の clone で取り直せる。
 
 ### R4.14
-scope の `retention` が `{ms?, bytes?}` のとき、remote はその scope の履歴を、先に達した上限から手放す。`ms` が無いときの既定は 30 日（2,592,000,000 ミリ秒）であり、archive の 90 日とは別である。現在の状態と未解決 conflict は履歴期限で消さない。
+scope の `retention` が `{ms?, bytes?}` のとき、remote はその scope の履歴を、先に達した上限から手放す。`ms` が無いときの既定は 30 日（2,592,000,000 ミリ秒）である。現在の状態と未解決 conflict は履歴期限で消さない。
 - 出典: Database_Spec.md 6節、sync-requirements.md R8.1、sync-principles.md「過去の情報の残し方」
 - 状態: 未実装。scope の型に `retention` は無い（`types.ts:102-111`）。
 - 受入: 短い時間上限と容量上限を別々に先に到達させると、過去の履歴だけが削減対象になり、今の node は残る。
@@ -658,7 +658,7 @@ Deep の履歴を残すとき、remote は版をすべては残さず、Rapid �
 食い違い。sync-requirements.md R8.5 と sync-principles.md「過去の情報の残し方」は、Deep が版をすべて残し、時間と容量の既定を無制限とし、廃止を retraction として残す、とする。Database_Spec.md 12.1 は、Deep も全版は残さず、名前付き snapshot で昇格時点を残す、とする。
 - 出典: 上記
 - 状態: どちらも未実装。
-- 受入: 正とする側で、三つの版を作ったあとに通常の compaction が過去版を消すか残すかが分かれる。
+- 受入: 正とする側で、三つの版を作ったあとに確定記録の削減が過去版を消すか残すかが分かれる。
 
 ### R4.19
 node そのものを期限で消す設定は、履歴の保持とは別の明示的な有効化がある scope にだけ付ける。
@@ -673,10 +673,10 @@ node そのものを期限で消す設定は、履歴の保持とは別の明示
 - 受入: 確認の無い短縮 Command は確定しない。確認のあとで、短縮後の上限より古い履歴が削減対象になる。
 
 ### R4.21
-copy の来歴と、長く残す provenance を置くとき、書き手は journal ではなく record 側に置き、compaction と 90 日削除で失わない。
+copy の来歴と、長く残す provenance を置くとき、書き手は journal ではなく record 側に置き、保持対象外の確定記録の削減で失わない。
 - 出典: Database_Spec.md 6節、operation-algebra-requirements.md 11節（仮決めを確定）、quantities-requirements.md Q1（推奨を確定。全期間の出来事と出所の参照。本文の復元は別保証）
 - 状態: 未実装。journal の `provenance` はあるが、record 側の来歴欄は型に無い。
-- 受入: archive を削除したあとでも、copy の元、基準の `seq`、方式、ID 対応がレコードから読める。本文そのものの復元は、この要件の不合格にしない。
+- 受入: 保持対象外の確定記録を削減したあとでも、copy の元、基準の `seq`、方式、ID 対応がレコードから読める。本文そのものの復元は、この要件の不合格にしない。
 
 ### R4.22
 減衰する量の累積を置くとき、snapshot は尺度ごとの `{v[k], t}` を状態として持つ。
@@ -685,34 +685,34 @@ copy の来歴と、長く残す provenance を置くとき、書き手は journ
 - 受入: journal を 90 日分消したあとでも、同じ評価時刻の減衰値が、消す前と一致する。
 
 ### R4.23
-複製を取るとき、書き手は `commit-index.json`、`snapshot.jsonl`、`journal.jsonl` を一度に写し、複製の途中に確定を挟まない。
-- 出典: Database_Spec.md 6節
-- 状態: 実装済み（`store.ts:680-699`）
-- 受入: 複製中に別の確定を入れても、複製先の三ファイルが一つの時点の組である。
+複製は Neo4j の整合した到達地点の状態を clone / export として取り出す。ファイルを database として複製しない。
+- 出典: Database_Spec.md 1節・6節、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 別の確定が並行しても clone / export の record と `Head.seq` が同じ時点を表す。
 
 ### R4.24
-commit-index を書くとき、remote は map ごとの最後の確定、直近 100,000 件の Command の ID と hash、snapshot の `{seq, sha256}` を書き、索引は journal と snapshot から作り直せる。
-- 出典: Database_Spec.md 1節・6節
-- 状態: 実装済み（`store.ts:888-898`）
-- 受入: 索引を消して snapshot と journal から開くと、同じ最新 `seq` と再送判定が戻る。
+再送の判定は Neo4j の `CommandResult` node に commandId・hash・対象 map の集合・元の結果・seq を保持し、`Head` に最後の seq を保持する。
+- 出典: Database_Spec.md 5.3・6.1、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: clone / export から再送の判定と最後の seq が戻り、有効な結果を件数上限だけで落とさない。
 
 ### R4.25
-確定の表を圧縮するとき、remote は確定 1 回につき `committedAt`、発行者、任意の `sessionId` を残し、journal を圧縮してもこの表を残す。
+確定の時刻・発行者・任意の sessionId を Neo4j の record に保持する。journal の保持対象外の変更内容を削減しても、残すと決めた確定の時刻と発行者は保持する。
 - 出典: Database_Spec.md 3.7、record-schema.md DA2
-- 状態: 一部。`commit` レコードは確定のときにメモリへ入る（`store.ts:1359`）。compaction が全レコードを snapshot へ書くので、その時点の `commit` は残る（`store.ts:886`）。90 日で archive の過去行が消えたあと、表の全履歴が残るかは、snapshot が過去の `commit` を全部持つかに依存し、削除後の保証試験は指定コードからは読めない。
-- 受入: compaction と 90 日削除のあと、残すと決めた確定の時刻と発行者が `commit` から引ける。
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 確定記録の削減後も、残すと決めた時刻と発行者を Neo4j から引ける。
 
 ### R4.26
-snapshot の行を並べるとき、書き手は `kind`、次に key の文字列順とし、値が無い欄と null は書かない。行の順序に意味は無い。
+移行入力・export・clone payload の行を並べるとき、書き手は `kind`、次に key の文字列順とし、値が無い欄と null は書かない。行の順序に意味は無い。
 - 出典: Database_Spec.md 7節、snapshot-format.md 1節
 - 状態: 実装済み（`jsonl.ts:11-28`、`jsonl.ts:31-33`）
 - 受入: 同じレコード集合の二度の書き出しがバイト単位で一致する。
 
 ### R4.27
-PITR の窓を示すとき、remote は最新の snapshot と 90 日分の archive を窓とする。
-- 出典: Database_Spec.md 6節
-- 状態: 一部。archive の 90 日削除はある（R4.11）。窓としての復元操作は、指定範囲に専用の入口が無い。
-- 受入: 90 日以内の archive の任意の snapshot と、その後の journal から、その時点の状態が再構成できる。91 日目は、検証済み削除のあとでは再構成できない。
+復旧の到達地点は保全された Neo4j の定期 export と確定記録の範囲で示す。保持を確認していない時点の PITR を保証しない。
+- 出典: Database_Spec.md 6節、sync-requirements.md R5.1
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 定期 export からの復旧で到達地点と欠けた可能性のある範囲を示す。
 
 ### R4.28
 未送信・結果不明・park・取り込み待ちの Command を local が持つとき、local は履歴の保持期限を理由に outbox の内容、依存、結果照合を捨てない。
@@ -721,10 +721,10 @@ PITR の窓を示すとき、remote は最新の snapshot と 90 日分の archi
 - 受入: 履歴期限を超えて再起動しても、各 Command の内容と状態が残る。容量不足のとき、完了済みの local commit を黙って消して空きを作らない。
 
 ### R4.29
-compaction が安全条件を満たす前に、remote は復旧、再送窓、保証中の履歴に必要な情報を残すことを検証してから、旧記録を破棄する。
-- 出典: sync-requirements.md R8.7、quantities-requirements.md R3（仮を確定）
-- 状態: 一部。snapshot の checksum と被覆は削除の条件である（`journal_archive.ts:253-258`）。再送窓と出来事履歴の保存済み位置を確かめてから消す手順は無い。
-- 受入: snapshot 作成の途中で停止しても、従来の復旧経路が残る。必要な過去の出来事が欠けた状態で archive が消えると不合格である。
+確定記録を削減する前に、Neo4j の現在状態、復旧・再送窓・保証中の履歴・名前付き snapshot・定期 export を保全する。
+- 出典: Database_Spec.md 6節、sync-requirements.md R8.7
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: export の途中で停止しても検証済み export は残り、必要な状態が欠ければ確定記録を削減しない。
 
 ## 5 Neo4j
 
@@ -771,10 +771,10 @@ relationship を作るとき、Neo4j は `SOURCE`、`TARGET`、`ROOT`、`OF`、`
 - 受入: relationship を消して node の property だけから snapshot を書き戻すと、元と一致する。
 
 ### R5.8
-反映位置を記録するとき、Neo4j は `RecordStoreMarker` の `appliedSeq` に持つ。
-- 出典: Database_Spec.md 8.3
-- 状態: 実装済み（`apply.ts:20`、`apply.ts:74-77`、`apply.ts:192`）
-- 受入: 途中で停止したあと、marker の `appliedSeq` から続きだけを適用できる。
+store ごとの最後の確定位置は Neo4j の `Head.seq` に持ち、record の変更と `Commit` と同じ write transaction で更新する。
+- 出典: Database_Spec.md 8.3、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: record・`Commit`・`Head.seq` が同時に確定し、journal より Neo4j が遅れない。
 
 ### R5.9
 Neo4j の内部 ID を外へ返すとき、remote は返さない。参照は自前の ID だけを使う。
@@ -783,10 +783,10 @@ Neo4j の内部 ID を外へ返すとき、remote は返さない。参照は自
 - 受入: API の応答に Neo4j の内部 ID が無い。
 
 ### R5.10
-食い違ったとき、復旧は Neo4j を replay で作り直し、journal と snapshot の側は直さない。
-- 出典: Database_Spec.md 1節、ADR 014 Decision 1
-- 状態: 一部。engine は snapshot と journal から再投入できる（`store.ts:961-968` が全レコードと後続 commit を渡す）。自動で「食い違ったら作り直す」判定は、このキューの中では backlog 拒否までである。
-- 受入: Neo4j の property を手で壊したあと、replay だけで snapshot と一致し、snapshot ファイルは変わらない。
+端末の Neo4j の破損は remote から clone して復旧する。remote の Neo4j は database 全体の定期 export で保全する。
+- 出典: Database_Spec.md 1節、neo4j-database-design.md 8節
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: clone / export で内容と管理状態が戻り、JSON の状態ファイルを database として使わない。
 
 ### R5.11
 製品として同梱する JVM の方式、組込み系への切替、export した SQLite を読む閲覧専用 mode は、この一覧の要件にしない。
@@ -1003,10 +1003,10 @@ alias の `access` が read のとき、remote は参照先の実体の内容の
 - 受入: 書き戻しのあと同じ面で続けて作業でき、次の差分の基準が新しい `seq` である。要らなくなった面は人の削除でだけ消える。
 
 ### R7.16
-書き戻しが確定したとき、remote は確定後の状態を指す名前付き snapshot を作り、`namedSnapshot` のレコードと、削減対象外の印を付けた archive の file で持つ。欄は `id`、`name`、`seq`、`scopeId`、`reason`、`rev` である。
+書き戻しが確定したとき、remote は確定後の状態を指す名前付き snapshot を作り、`namedSnapshot` のレコードと、その seq の時点の状態として Neo4j に保持する。欄は `id`、`name`、`seq`、`scopeId`、`reason`、`rev` である。
 - 出典: Database_Spec.md 12.4・3.1・12.6 KB9
 - 状態: 未実装。
-- 受入: 書き戻しの `seq` の snapshot が archive にあり、保持期限で消えない。削除は `namedSnapshot` を消す確認つきの操作だけで起き、消したときに印が外れる。
+- 受入: 書き戻しの `seq` の状態が Neo4j にあり、保持期限で消えない。削除は `namedSnapshot` を消す確認つきの操作だけで起き、消したときにその状態の保持を解除する。
 
 ### R7.17
 すでに実在する Deep entity に結ぶとき、remote はその node を、その実体を `target` とする alias に変え、ID、面の中の位置、子を保つ。結びを外すときは alias でない node に戻す。別の binding レコードは置かない。一つの node が結べる実体は一つである。
@@ -1134,7 +1134,7 @@ OC3 または OC4 を alias から出したとき、対象は参照先の実体�
 実体を複製したとき、remote は来歴に元、基準の通し番号、方式、ID 対応を残し、方式には選んだ引数の値を含める。出現を増やしたときは `target` が記録なので、別の来歴を持たない。他の面にある alias は複製に付いてこない。
 - 出典: Database_Spec.md 12.8、operation-algebra-requirements.md 11節
 - 状態: 未実装。
-- 受入: journal を圧縮したあとでも来歴が読め、人が後から引数の値を確認できる。複製先の実体は、元の実体が他の面に持っていた alias を持たない。
+- 受入: journal の保持対象外の確定記録を削減したあとでも来歴が読め、人が後から引数の値を確認できる。複製先の実体は、元の実体が他の面に持っていた alias を持たない。
 
 ### R8.17
 貼り付けのとき、remote は alias と relation edge の付随情報と `collapsed` を写す。
@@ -1250,7 +1250,7 @@ AI agent はロックを掛けられる。外せるのは、その scope の有�
 許可の来歴を追うとき、誰が許可していたかは journal の保持期間だけ追える。
 - 出典: sync-requirements.md R2.7
 - 状態: 未実装。
-- 受入: 取り消し後、archive の保持の中では付与 Command が読め、90 日削除のあとには読めなくてよい。
+- 受入: 取り消し後、journal の保持期間の中では付与 Command が読め、保持対象外になったあとには読めなくてよい。
 
 ### R9.11
 ロックは権限の代わりではない。権限の判定は別に行う。
@@ -1261,10 +1261,10 @@ AI agent はロックを掛けられる。外せるのは、その scope の有�
 ## 10 同期（remote・outbox・push/pull・minSeq）
 
 ### R10.1
-local の commit を完了通知するとき、local は Command の内容、`commandId`、依存を outbox へ fsync してから通知し、永続化に失敗した操作を完了にしない。outbox の 1 件は `{commandId, baseSeq, command, createdAt}` であり、`baseSeq` は作った時点で端末が知っていた最後の通し番号である。
+local の commit を完了通知するとき、local は Command の内容、`commandId`、依存を Neo4j の `Outbox` node に transaction で保存してから通知し、永続化に失敗した操作を完了にしない。outbox の 1 件は `{commandId, baseSeq, command, createdAt}` であり、`baseSeq` は作った時点で端末が知っていた最後の通し番号である。
 - 出典: Database_Spec.md 2節、sync-requirements.md R4.1、ADR 014 Decision 4
 - 状態: 未実装。指定範囲に outbox は無い。
-- 受入: fsync 後・通知前に停止して再起動すると、同じ ID・内容・依存が復元される。容量不足で fsync が失敗すると、完了通知は出ず、未保存と分かる。
+- 受入: Neo4j の transaction の確定後・通知前に停止して再起動すると、同じ ID・内容・依存が復元される。容量不足で Neo4j の transaction が失敗すると、完了通知は出ず、未保存と分かる。
 
 ### R10.2
 Command を端末の状態へ当てるとき、local は当てる前に outbox へ追記し、再読込や再起動のあと、残った Command を同じ `commandId` で送り直す。
@@ -1297,9 +1297,9 @@ Command を端末の状態へ当てるとき、local は当てる前に outbox �
 - 受入: remote 切断後の新しい問い合わせは利用不能になり、local clone への切替や編集受付は起きない。
 
 ### R10.7
-server、engine、viewer は同じ端末に同居し、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
+server、database、viewer は同じ端末に同居し、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
 - 出典: ADR 014 Decision 5
-- 状態: 未実装。record store は同じプロセスで確定できる（`store.ts:704`）が、同居を強制する構成は指定範囲に無い。
+- 状態: 未実装。store は同じプロセスで確定できる（`store.ts:704`）が、同居を強制する構成は指定範囲に無い。
 - 受入: 編集の確定が、remote への往復を待たずに local の outbox まで終わる。閲覧専用端末だけが遠い server を読む。
 
 ### R10.8
@@ -1318,7 +1318,7 @@ remote を作り直すとき、届くすべての local から連続していて
 remote の保存媒体を失ったとき、remote は復旧した地点と、欠けたかもしれない確定の範囲を示し、欠けが無いと確認できない復旧を完全な復旧と表示しない。二媒体での保全は持たない。
 - 出典: Database_Spec.md 5.2、sync-requirements.md R5.1、sync-principles.md「remote と local」、ADR 014 の確定点
 - 状態: 未実装。
-- 受入: 確定 101 を fsync したあと、どの local も pull しないうちに媒体を失うと、「100 まで復旧、101 以降は欠けた可能性がある」と表示される。
+- 受入: 確定 101 の Neo4j の transaction を完了したあと、どの local も pull しないうちに媒体を失うと、「100 まで復旧、101 以降は欠けた可能性がある」と表示される。
 
 ### R10.11
 受信内容を検証するとき、local は正しい remote が提示した履歴 ID、世代、到達地点を基準に、欠損、破損、取り違えを検出する。正当な番号の欠番が、非公開 scope の更新に由来することだけを理由に同期を失敗させない。
@@ -1327,10 +1327,10 @@ remote の保存媒体を失ったとき、remote は復旧した地点と、欠
 - 受入: 同じ到達地点の応答について、途中の除去、内容の変更、別履歴への置換は検証が失敗する。remote 自身の矛盾の検出と、権限外 scope の更新量の秘匿は、この要件の不合格にしない。
 
 ### R10.12
-読み込みが `minSeq` を受けたとき、remote はその通し番号まで反映してから返す。再送には確定済みの結果を返す。push の結果は確定の通し番号である。
-- 出典: Database_Spec.md 14節
-- 状態: 未実装。`minSeq` を受ける読みは、指定範囲に無い。
-- 受入: `minSeq` より適用が遅れている読みが、古い値を返さず、追いついてから返す。
+読み込みが `minSeq` を受けたとき、remote はその番号以上の確定済み状態を Neo4j から返す。確定は Neo4j の transaction であり、非同期の反映を待つ状態は無い。再送には確定済みの結果を返す。
+- 出典: Database_Spec.md 14節、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 確定した seq を minSeq として読み出すと、同じ確定を含む状態が返る。
 
 ### R10.13
 権限を判定するとき、remote は pull と確定の両方を現在の権限で認可し、過去に clone や編集できたことを代用にしない。権限の単位は scope であり、認可は保存層ではなく提供層が行う。
@@ -1401,11 +1401,11 @@ abort 条件を通過した push を処理するとき、remote は Command ご�
 ### R10.24
 push の途中で停止、通信断、fencing が起きたとき、remote は既に成立した確定を維持し、未確定部分と区別して照会できる。
 - 出典: sync-requirements.md R6.4
-- 状態: 一部。1 件の fsync は原子的である（`store.ts:1338-1348`）。複数 Command の push を途中で分けるプロトコルは無い。
+- 状態: 一部。1 件のファイル追記は fsync する（`store.ts:1338-1348`）。複数 Command の push を途中で分けるプロトコルは無い。
 - 受入: 二件目の確定後、三件目の前に停止すると、復旧後に二件は一度だけ成立し、三件目は確定済みと偽らない。
 
 ### R10.25
-確定済みで端末へまだ反映していない間の push 結果は、確定の通し番号である。
+remote の Neo4j で確定済みで、local がまだ pull していない間の push 結果は、確定の通し番号である。
 - 出典: Database_Spec.md 14節
 - 状態: 未実装。push が無い。local の `commitMapCommand` は成功時に `seq` を返す（`store.ts:1320`）。
 - 受入: push の成功応答に通し番号があり、拒否には理由のコードがある。
@@ -1417,16 +1417,16 @@ push の途中で停止、通信断、fencing が起きたとき、remote は既
 - 受入: push の成功を受けても取り込みを遅らせると、編集が消えず取り込み待ちと分かる。取り込んだあと一度だけ確定表示へ移る。
 
 ### R10.27
-同期・復旧・競合の状態を問い合わせられたとき、remote は権限の範囲内で、確定地点、適用地点、scope ごとの到達地点、Command の結果、依存による停止理由、resolution、実行主体と端末、容量計測の範囲を返す。権限外の本文は診断へ出さない。
+同期・復旧・競合の状態を問い合わせられたとき、remote は権限の範囲内で、Neo4j の確定地点、local の pull の到達地点、scope ごとの到達地点、Command の結果、依存による停止理由、resolution、実行主体と端末、容量計測の範囲を返す。権限外の本文は診断へ出さない。
 - 出典: sync-requirements.md R10.4
 - 状態: 未実装。
 - 受入: 適用停止、応答喪失、依存の park、媒体喪失のそれぞれで、確定済みと適用済みと未確認が区別できる。
 
 ### R10.28
-clone または backup から local を新しく成立させるとき、local は新しい端末 ID を使い、復元した Command の ID、内容、依存は維持する。
+remote の clone から local を新しく成立させるとき、local は新しい端末 ID を使い、復元した Command の ID、内容、依存は維持する。
 - 出典: sync-requirements.md R9.4
 - 状態: 未実装。
-- 受入: 一つの backup から二つの local を復元すると、端末 ID は異なり、保存済み Command の ID は同じである。
+- 受入: 定期 export から復旧した remote を clone して二つの local を作ると、端末 ID は異なり、保全して戻した Command の ID は変わらない。
 
 ### R10.29
 client が互換範囲外のとき、local は push を止め、outbox の原内容を保全したまま更新し、意味や前提が変わる変換を同じ Command の再送として実行しない。
@@ -1461,14 +1461,14 @@ crypto-shredding の成功を通知するとき、remote は管理対象内の�
 ### R10.34
 復旧対象に、内容に加えて権限、未解決 conflict、必要な Command 結果、世代、履歴 ID、端末の失効、消去の状態を含める。
 - 出典: Database_Spec.md 5.2、sync-requirements.md R5.5
-- 状態: 未実装。snapshot は内容レコードが中心で、これらの管理状態の種別が揃っていない。
-- 受入: engine を消して復旧すると、失効した権限と失効した端末が復活しない。未解決 conflict が残る。
+- 状態: 未実装。Neo4j を database にする実装と、管理状態を含めた clone / export の検証が必要である。
+- 受入: 端末の Neo4j を remote の clone から、remote の Neo4j を定期 export から復旧すると、失効した権限と失効した端末が復活しない。未解決 conflict が残る。
 
 ### R10.35
-snapshot を復旧用として公開するとき、remote は対象範囲、履歴 ID、世代、到達地点、検証情報を特定でき、未完成の snapshot を有効な復旧基点として公開しない。
-- 出典: sync-requirements.md R5.6
-- 状態: 一部。checksum と `seq` はある（`store.ts:887`、`journal_archive.ts:210-235`）。履歴 ID と世代は行に無い。
-- 受入: 生成途中で停止した snapshot を基点にすると、復旧が完了しない。完全な snapshot と後続 journal では状態を再構成できる。
+Neo4j の状態を clone / export として公開するとき、対象範囲・履歴 ID・世代・到達地点・検証情報を特定でき、未完成の payload を有効な復旧基点にしない。
+- 出典: sync-requirements.md R5.6、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 途中で停止した payload からの復旧は完了せず、完全な payload からは対応する状態を Neo4j に復元できる。
 
 ### R10.36
 二つの scope にまたがる変更には、両方の scope への書き込み権限が要る。
@@ -1489,10 +1489,10 @@ snapshot を復旧用として公開するとき、remote は対象範囲、履�
 - 受入: 長く接続が無いことだけでは端末登録が消えず、明示の操作のあとで失効が復旧状態に含まれる。
 
 ### R10.39
-journal と outbox のファイル形式は、当面 JSON Lines のままである。
-- 出典: sync-principles.md「データの形」
-- 状態: 一部。journal は JSON Lines である（`store.ts:1337`）。outbox は無い。
-- 受入: 確定行と outbox の 1 件が、それぞれ 1 行の JSON として読める。
+journal と outbox は Neo4j の `Commit` node と `Outbox` node に置く。JSON は push / pull / clone の wire format と export に用いる。
+- 出典: sync-principles.md「データの形」、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 状態の保存と再送が JSON Lines ファイルに依存しない。
 
 ## 11 計算で求まる値と減衰の累積
 
@@ -1518,13 +1518,13 @@ journal と outbox のファイル形式は、当面 JSON Lines のままであ�
 node の書かれる頻度を数えるとき、remote は node か自身の details に実際の差分を与えた確定を node ごとに 1 件と数え、node と details を同時に変えても 1 件であり、再送、拒否、作り直し、`rev` だけの差分では増えない。計算で求まる値だけが変わった子孫には足さない。減衰には確定時刻を使う。
 - 出典: quantities-requirements.md R4、Database_Spec.md 6節
 - 状態: 一部。`touched` が `rev` だけの差を除く（`journal_archive.ts:87`、`journal_archive.ts:115`）。頻度のカウンタは無い。
-- 受入: 圧縮なし、途中で圧縮、圧縮後にキャッシュを捨てる、の三経路で、同じ定義と評価時刻の頻度が一致する。
+- 受入: 履歴削減なし、途中で履歴削減、履歴削減後にキャッシュを捨てる、の三経路で、同じ定義と評価時刻の頻度が一致する。
 
 ### R11.5
 内容の変更と確認の申告を、別の出来事として保存する。確認は、対象とした内容の版に結び付く。
 - 出典: quantities-requirements.md R5（仮を確定）
 - 状態: 未実装。
-- 受入: 内容を変えない確認が圧縮後に残る。v1 を読んだあとに v2 ができても、v1 の確認を v2 の確認とみなさない。
+- 受入: 内容を変えない確認が履歴削減後に残る。v1 を読んだあとに v2 ができても、v1 の確認を v2 の確認とみなさない。
 
 ### R11.6
 scope の書かれる頻度を出すとき、出来事は当時の所属先に計上し、node を移しても移動前の scope の出来事を移動先へ付け替えない。
@@ -1637,7 +1637,7 @@ MCP の書き込みを受けるとき、入口は `m3e_context`、`m3e_get`、`m
 - 受入: 一覧に無い tool 名が `UNKNOWN_TOOL` になり、状態が変わらない。
 
 ### R12.2
-MCP が record store の上で確定するとき、observed は参加が見せられた record の read set であり、rk と読んだ時点の `rev` を持つ。見せられたものは、`m3e_get` が返したページの node（details を含む）と relation edge、および変更の event が本文を見せた node である。
+MCP が store の上で確定するとき、observed は参加が見せられた record の read set であり、rk と読んだ時点の `rev` を持つ。見せられたものは、`m3e_get` が返したページの node（details を含む）と relation edge、および変更の event が本文を見せた node である。
 - 出典: Database_Spec.md 6節
 - 状態: 実装済み（`mcp_service.ts:299-310`、`mcp_service.ts:449`、`mcp_service.ts:261`、`mcp_service.ts:273`、`store.ts:605` の `shownRecords`）
 - 受入: get のページ外の node が、その get を理由に observed へ入らない。本文を見せた変更 event の node は入る。
@@ -1664,7 +1664,7 @@ declared を作るとき、中身は copy の出所の subtree だけであり�
 SQLite の上で動くとき、`provenance.items` は空になる。道具の名前は残さず、`intent` は残る。
 - 出典: Database_Spec.md 6節
 - 状態: 実装済み（`mcp_service.ts:319` は store が無いと空の items を返す。intent は `mcp_service.ts:57-64`）
-- 受入: record store が無い参加の確定で items が空であり、journal または Command の intent は残る。
+- 受入: store が無い参加の確定で items が空であり、journal または Command の intent は残る。
 
 ### R12.7
 MCP が新しい relationType または、node にまだ無い attribute の key を受けるとき、接頭辞が無ければ拒否し、既にある key の更新と削除は受け付ける。
@@ -1691,10 +1691,10 @@ Command の ID を MCP が受けるとき、空でなく 200 文字以内の文�
 - 受入: MCP の引数に書いた actor と、接続の認証主体が違うとき、journal の `issuer` は認証主体である。
 
 ### R12.11
-record store を使うのは、環境が store のディレクトリを指すときだけであり、指さない通常の経路は旧い保存のままである、ということは要件ではなく現行の運用状態である。format 2 の受入は、store を有効にした経路で行う。
-- 出典: Database_Spec.md 0節
-- 状態: 実装済み。`activeRecordStore` はディレクトリが無いと null である（`beta/src/node/record_store/active.ts:34` 付近の契約。`mcp_service.ts:302` が null を許容する）。
-- 受入: ディレクトリを設定したプロセスだけが snapshot と journal を書き、設定していないプロセスはそれを作らない。
+通常の Beta の永続・検査・query・map の表示は Neo4j を用いる。launcher と server を含む利用経路で確認する。
+- 出典: Database_Spec.md 0節、neo4j-database-design.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: 通常の Beta が Neo4j を読み書きし、`snapshot.jsonl`・`journal.jsonl` とメモリ上の record 集合を状態の保存先にしない。
 
 ## 13 移行（format 1→2、base snapshot）
 
@@ -1789,10 +1789,10 @@ linear-text の key が scope の root を指さないとき、`orphanKey` に�
 - 受入: 移行直後の snapshot の `seq` が 0 であり、旧い command log の行が新しい journal に無い。
 
 ### R13.16
-format 1 から format 2 へ切り替えるとき、切り替えは base snapshot の書き出しで行い、format 1 の journal を format 2 の行へ書き換えない。format 2 で足すのは `extensionDef`、node と edge の `extensions`、parent edge の `relationType` と `attributes`、および 3.1 の新しい種別である。
-- 出典: Database_Spec.md 3.1・6節・7節
-- 状態: 未実装（`types.ts:8` が format 1）。
-- 受入: format 2 の base snapshot より前を replay する必要が無く、format 1 の行を format 2 のパーサが黙ってアップキャストしない。
+format を切り替えるとき、Neo4j の状態と `Head.format`・切り替え点の seq を更新し、切り替え点より前の journal の upcasting はしない。format 2 で足す record と欄の意味は維持する。
+- 出典: Database_Spec.md 6節・7節、record-schema.md
+- 状態: 未実装（Neo4j を database にする実装中）。
+- 受入: clone / export の header から切り替え点が分かり、別の snapshot ファイルを書かずに状態を移行できる。
 
 ### R13.17
 等しい `ord` は移行前のデータにだけ起こりうる。その間へ入れる Command は、等しい key を持つ兄弟の振り直しを同じ Command に含める。これは、非対象の兄弟を再採番しない規則の唯一の例外である。以前の base36 の key は読み込んだ時点で振り直す。
@@ -1817,7 +1817,7 @@ map を複製するとき、複製は全 ID を振り直し、二つの map に�
 ここに書くものは要件ではない。実装も受入の合格条件もしない。
 
 ### U14.1
-面の中を扱う木のエンジンを置くかは、計測してから決める。採るまでは、Database_Spec.md 1節と 8節、ADR 014 の「各端末の正本エンジンは Neo4j」が有効である。二つのエンジンへの分割、木の索引、面の中の検査を Neo4j から外すことは、この計測の前に要件ではない。
+面の中を扱う順序付き index を足すかは、計測してから決める。永続・map の表示・全ての検査と query は Neo4j が担い、別の database への分割は要件にしない。
 - 出典: Database_Spec.md 12.5・13節、implementation-log.md の 2026-11-22 の記録
 
 ### U14.2
@@ -1843,7 +1843,7 @@ facet（Glossary.md では、PJ 直下の第一階層の scope であり、意�
   - 出典: sync-requirements.md K10
 - 操作の種類ごとの merge 表のうち、Database_Spec.md 14節の「位置は LWW、それ以外は CAS」と、R3.25 の観測集合削除と、R3.31 の未定義は人へ返す、で埋まらないマス。
   - 出典: sync-requirements.md K6・R7.7
-- 容量計測に engine、snapshot、共有履歴、二媒体、local outbox のどれを含めるか。
+- 容量計測に database、snapshot、共有履歴、二媒体、local outbox のどれを含めるか。
   - 出典: sync-requirements.md K9
 - 完全な復旧を認定する inventory と、通常の remote 移動で履歴 ID を維持する条件。最大番号だけでは認定しない、という挙動は R10.9 の要件である。
   - 出典: sync-requirements.md K8
@@ -1862,16 +1862,16 @@ facet（Glossary.md では、PJ 直下の第一階層の scope であり、意�
 
 | 項目 | 正とする側 | 内容 |
 |---|---|---|
-| R1.3 | Database_Spec.md 2 節、ADR 014 Decision 4、sync-principles.md | journal は workspace に一本で、全順序は remote の sequencer が付ける。端末ごとに持つのは local outbox である。Glossary の journal の行を揃える |
+| R1.3 | Database_Spec.md 2 節、ADR 014 Decision 4、sync-principles.md | journal は workspace に一本で、全順序は remote の sequencer が付ける。Neo4j の `Commit` node に置き、端末ごとの local outbox は `Outbox` node に置く |
 | R2.5 | Database_Spec.md 3.2・4 節・12.2、Glossary | alias は子を持てる。10.1 の「alias は子を持てない」は、芯の種類を分ける理由を「参照先が必須であること」だけに直す |
-| R3.9 | Database_Spec.md 5.2 規則 6 と 14 節 | 確定点は journal への fsync である。成功の応答は確定点の後に返す。engine への適用を待つのは、`minSeq` を付けた読み出しの側である（14 節） |
+| R3.9 | Database_Spec.md 5.2 規則 6 と 14 節 | 確定点は Neo4j の write transaction の確定である。成功の応答は確定後に返す。非同期の適用や journal より Neo4j が遅れる状態は無い |
 | R3.16 | Database_Spec.md 3.4、operation-algebra-requirements.md 8 節 | key は確定する側が作る。ID による tie-break と、対象でない兄弟の振り直しはしない。ブロックは混ぜない。record-schema.md DA27 はこれに揃える |
 | R3.23 | 両方（同じものの二つの言い方として読む） | Undo は、新しい Command を出して行う。その変更の一覧は、確定した差分の pre-image から作る（逆の molecule を組み立て直さない） |
-| R4.13 | Database_Spec.md 6 節 | log compaction は、hot journal の segment を archive へ移す。行の書き換えはしない。archive の segment は 90 日で、条件付きで削除する。Glossary の journal の行を揃える |
+| R4.13 | Database_Spec.md 6 節 | journal は Neo4j の `Commit` node に置き、保持対象外の確定記録は必要な状態の保全を検証して削減する。log compaction と journal の archive は置かない |
 | R4.15 | Database_Spec.md 6 節 | scope の `retention.ms` が無いときの既定は 30 日（2,592,000,000）である |
 | R4.18 | Database_Spec.md 12.1・12.4、sync-requirements.md R8.5（3d46acb 以降の版） | Deep も全版は残さない。昇格のときに `namedSnapshot` を残す |
 | R8.18 | Database_Spec.md 12.8、operation-algebra-requirements.md 11 節 | 貼り付けは、範囲の中の alias、範囲の中で閉じた relation edge、`collapsed` を写す。Multi_Select.md を揃える |
-| R10.14 | 両方（単位の違うものとして読む） | durability の単位は workspace である（journal と portable snapshot は workspace に一本）。端末への配送と clone は scope 単位で、開示の権限を適用する（R6.5） |
+| R10.14 | 両方（単位の違うものとして読む） | durability は Neo4j が担い、journal の確定系列は workspace に一本である。端末への配送と clone は scope 単位で、開示の権限を適用する（R6.5） |
 | R11.19 | quantities-requirements.md Q5 | 同時 16 の読みで、通常の面（約 10 node）の p95 が 200 ms 以内、最大の面（約 1,100 node）の p95 が 1 秒以内、統計の遅れが 60 秒以内を、目標とする。合否の基準にするのは、計測の仕組みができてからである |
 
 ## 16 状態の欄について

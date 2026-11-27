@@ -1,6 +1,6 @@
 # DB 仕様書
 
-最終更新: 2026-11-21（帯域と alias の同一性を追加。on-disk format は freeze v1 の format 2）
+最終更新: 2026-11-27（Neo4j の永続・確定・問い合わせと、journal・snapshot の役割）
 
 M3E の保存データ（DB）の仕様をまとめる。保存の形、識別、不変条件、書き込みと確定、journal と snapshot、Neo4j 上の持ち方、キャッシュ、拡張の仕組み、帯域（Rapid と Deep）を扱う。
 
@@ -8,9 +8,9 @@ M3E の保存データ（DB）の仕様をまとめる。保存の形、識別�
 
 - 用語は [Glossary](../00_Home/Glossary.md) に従う。線は、総称を edge、親から子への線を parent edge、木の外の関係線を relation edge と呼ぶ。
 - 決定の経緯と実測値は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) にある。本書はその決定を、現在形の仕様としてまとめたものである。
-- 基盤の決定は [ADR 014](../09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)。Neo4j は各端末の正本エンジン（semantic authority: invariant の検査と query）。durability authority（replication・backup・recovery の単位）は journal と snapshot。書き込みは Command だけ。
+- 基盤の決定は [ADR 014](../09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md) と [Neo4j を database にする設計](../../.kiro/specs/rapid-persistence-redesign/neo4j-database-design.md)。Neo4j が永続する現在状態、invariant の検査、query、map の表示を担う。journal は Neo4j の `Commit` node に置く端末と remote の交換記録であり、状態の保存先ではない。書き込みは Command だけ。
 - 関連する文書
-  - snapshot の行の形と、現行データからの変換規則: [snapshot-format.md](../../.kiro/specs/rapid-persistence-redesign/snapshot-format.md)
+  - 移行入力・export・clone payload の行の形と、現行データからの変換規則: [snapshot-format.md](../../.kiro/specs/rapid-persistence-redesign/snapshot-format.md)
   - 移行後の規則の案: [post-migration-spec.md](../../.kiro/specs/rapid-persistence-redesign/post-migration-spec.md)
 - 各節の状態を次の印で示す。
 
@@ -23,10 +23,8 @@ M3E の保存データ（DB）の仕様をまとめる。保存の形、識別�
 
 ### 現在の運用状態
 
-- 通常の Beta は、まだ旧い保存（workspace ごとの SQLite に map 全体の JSON を置く形）で動いている。
-- 本書の保存は【実装済み】である。server は、環境変数 `M3E_STORE_DIR` を設定したとき、または workspace のデータの置き場（`M3E_DATA_DIR`）に移行済みの保存（`store/snapshot.jsonl`）があるときに、本書の保存を使う。どちらも無いときは SQLite を使う（`beta/src/node/record_store/active.ts` の `recordStoreDir()`）。
-  - 通常の Beta の workspace は、2026-11-22 に SQLite の file から format 2 へ移行し、本書の保存で動いている。元の SQLite の file はそのまま残し、書き込まない。
-  - Final の workspace（Personal）と Swingby の workspace は、SQLite のままである。
+- 通常の Beta は `snapshot.jsonl`・`journal.jsonl` とメモリ上の record 集合で動いている。launcher は `M3E_NEO4J_BOLT` を設定せず、server には Neo4j から読む経路が無い。Neo4j を database にする実装は進行中である（[実装ログ](../../.kiro/specs/rapid-persistence-redesign/implementation-log.md)）。
+- Final の workspace（Personal）と Swingby の workspace は SQLite である。
 
 ## 1. 全体の構成
 
@@ -34,26 +32,29 @@ M3E の保存データ（DB）の仕様をまとめる。保存の形、識別�
            書き込み（Command）
                  │
                  ▼
-   ┌───────── 確定する側（workspace ごとに一つのサーバ）─────────┐
-   │ 検査（不変条件・欄の競合） → journal へ追記・fsync ＝ 確定    │
-   │ → メモリ上のレコードを更新 → 通知                            │
-   └──────┬────────────────────────────────┬──────────────────┘
-          │ 非同期に反映                    │ 圧縮のとき
-          ▼                                 ▼
-   Neo4j（各端末の正本エンジン）     snapshot.jsonl を書き直す
+   ┌────── 確定する側（workspace ごとに一つのサーバ）──────┐
+   │ Neo4j の write transaction                         │
+   │ Head を lock → Neo4j から読む → 検査                │
+   │ → record・Commit・CommandResult・Head.seq を書く    │
+   │ → transaction を確定 → 応答・通知                  │
+   └────────────────────────────────────────────────────┘
+                 │
+                 ▼
+        map 表示・検査・query は Neo4j から読む
 ```
 
-| 層 | 置き場 | 役割 | 状態 |
+| 役割 | 置き場 | 内容 | 状態 |
 |---|---|---|---|
-| snapshot | workspace のディレクトリの `snapshot.jsonl` | durability authority | 【実装済み】 |
-| journal | 同じディレクトリの `journal.jsonl` | durability authority（redo log） | 【実装済み】 |
-| 確定の索引 | 同じディレクトリの `commit-index.json` | 索引。圧縮のときに書き、journal と snapshot から作り直せる | 【実装済み】 |
-| 実行時のレコード | 確定する側のサーバのメモリ | 実行時の状態。replay で作り直せる | 【実装済み】 |
-| Neo4j | 端末ごとの Neo4j | 正本エンジン（semantic authority: invariant の検査と query）。同期しない。backup の対象にしない。base snapshot と log suffix の replay で再構築する | 【決定】。【実装済み】のものは確定後に反映する mirror で、invariant の検査はサーバのメモリで行っている |
-| SQLite | 書き出しの形式 | 正本ではない | 【決定】 |
+| 永続する現在状態 | 各端末と remote の Neo4j | durability authority と semantic authority。map の表示・検査・query を担う | 【決定】 |
+| snapshot | Neo4j | ある `seq` の時点の状態。別のファイルは置かない | 【決定】 |
+| journal | Neo4j の `Commit` node | 確定した変更を確定順に push / pull する記録。状態の保存先ではない | 【決定】 |
+| 再送の結果 | Neo4j の `CommandResult` node | commandId・内容照合情報・元の結果 | 【決定】 |
+| 削除済み ID | Neo4j の `Retired` node | 削除した ID の再利用を禁止する記録 | 【決定】 |
+| 未確定の Command | 端末の Neo4j の `Outbox` node | remote へ送る待ち行列 | 【決定】 |
+| JSON / SQLite | 輸送・書き出しの形式 | JSON は push / pull / clone の wire format と export。database ではない | 【決定】 |
 
-- Neo4j・索引・実行時のレコードが journal と snapshot と食い違ったら、replay で作り直す。journal と snapshot の側を直さない。
-- 空のエンジンへ、最新の base snapshot と、それより後の journal（log suffix）の replay だけで復元できる（6 節）。
+- 端末の Neo4j が壊れたら remote から clone する。remote は Neo4j 全体の定期 export で保全する。
+- record のファイルは、一度きりの移行入力、export、clone payload に限る。
 
 ## 2. 階層と識別
 
@@ -64,25 +65,25 @@ workspace > map > scope > node
 - workspace は、保存データの入れ物であり、書き込みを確定する単位である。
 - 【決定】（akaghef、2026-11-18。[sync-principles](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md)「remote と local」「データの形」）remote は workspace ごとにちょうど一つあり、確定の全順序はそこで付ける（single-leader）。確定の記録が journal で、workspace ごとに一本である。remote の sequencer が `seq` を振る。
 - local の commit は確定ではない。端末は、未確定の Command を outbox に積む。
-- 【実装済み】journal は workspace ごとに一つである。local outbox は無い。
-- 【決定】local outbox は、端末の永続の記憶に置く。Command は、端末の状態へ当てる前に outbox へ追記する。再読込や再起動の後も、outbox に残った Command を、同じ commandId で送り直す。
+- 【決定】journal は workspace ごとに一本であり、Neo4j の `Commit` node に置く。local outbox は Neo4j の `Outbox` node に置く。
+- 【決定】local outbox は端末の Neo4j に置く。Command と working store の変更は同じ Neo4j の write transaction で保存する。再読込や再起動の後も、outbox に残った Command を、同じ commandId で送り直す。
   - outbox の 1 件は `{commandId, baseSeq, command, createdAt}` である。`baseSeq` は、その Command を作った時点で端末が知っていた最後の通し番号。
   - 送り方は、HTTP の push と pull（ADR 014）。push の結果は commandId ごとの確定の通し番号か、拒否の理由である。確定した Command と、拒否された Command は、outbox から外す。拒否された Command は、端末の状態から戻す。
 - node・edge・scope・Surface View の保存設定・注釈の ID は、map と workspace をまたいで一意である。
 - ID は作った後に変えない。消した ID は再利用しない。消した Command の Undo だけが、消した node を同じ ID で戻せる。新しく作る node は、消した ID を使わない。
 - ID に意味を埋め込まない。種別の名前、本文、親の ID を含めない。
-- 保存エンジンが内部で振る ID（Neo4j の内部 ID など）は、外に出さない。
+- database が内部で振る ID（Neo4j の内部 ID など）は、外に出さない。
 - 【実装済み】移行で振り直す ID は、決定的に作る。形は「接頭辞 ＋ `sha256("<workspace>|<map>|<種別>|<種>")` の先頭 24 桁」。接頭辞は node が `n_`、edge が `c_`、scope が `s_`、Surface View が `v_`、注釈が `a_`。旧い ID との対応は `idMap` のレコードに残す（snapshot-format 3.1）。
 
 ## 3. レコード
 
-保存の単位はレコードである。各レコードは種別と key で一意に決まる。snapshot では 1 レコードが 1 行になる。
+保存の単位はレコードである。各レコードは種別と key で一意に決まる。移行入力・export・clone payload の直列化では 1 レコードが 1 行になる。snapshot は Neo4j の状態であり、database のファイル形式ではない。
 
 ### 3.1 一覧【実装済み】
 
 | 種別（`kind`） | key | 主な欄 |
 |---|---|---|
-| `snapshot` | （1 行目） | `format`（schemaVersion）、`workspaceId`、`seq`（この snapshot が含む最後の通し番号） |
+| `snapshot`（輸送・export の header） | （1 行目） | `format`（schemaVersion）、`workspaceId`、`seq`（この snapshot が含む最後の通し番号） |
 | `map` | `id` | `rootNodeId`、`tags`、`archived`、`pinned`、`source`、linear-text の表示設定、`extra`、`rev` |
 | `node` | `id` | `mapId`、`nodeType`、`text`（ラベル）、`collapsed`、`attributes`、`alias`、`valid`（任意。`from`・`to`。12.7）、`certainty`（必須。3.2）、`extra`、`rev` |
 | `details` | `nodeId` | `mapId`、`v`（形の版）、`body`（Markdown の本文）、`note`、`link`、`rev` |
@@ -188,7 +189,7 @@ workspace > map > scope > node
   - viewer / MCP の `diffState` は、読み出した `edgeOrder`（入ってくる parent edge の `ord`）と前後の兄弟の key から `fractional-indexing` で候補を作る。確定側は key の妥当性と不変条件を検査して保存する。viewer は保存の応答を受けたとき、確定した Command の key を次の保存の基点にも反映する。
   - viewer が書込み位置を渡す場合は、移動した node とその隣接 node のキーだけから差分を作り、全 node と全兄弟を列挙しない。scopen／unscopen と scope をまたぐ部分木移動の確定は、所属が変わる parent edge と関連 record だけを射影する。子孫の所属も変わる場合の手間は、その部分木に比例する。
   - 通常の parent edge の移動・兄弟順は `seq` 順の LWW とし、古い `before` であっても後に確定した有効な位置を採用する。循環を作る変更は拒否する。他の field は CAS、12.4 節の射影の書き戻しは位置も CAS とする。明示された map revision の前提条件は維持する。
-  - `index` を持つ既存の journal / outbox / Command も読み取れる。同じ Command 内の index は同時に適用する。新しく書く journal / outbox は `ord` を持ち、受信した形の hash と書き込む形の hash を保持して、再起動・compaction 後も同じ Command の再送を判定する。
+  - `index` を持つ既存の journal / outbox / Command も読み取れる。同じ Command 内の index は同時に適用する。新しく書く journal / outbox は `ord` を持ち、受信した形の hash と書き込む形の hash を保持して、再起動・確定記録の削減後も同じ Command の再送を判定する。
 - 【決定】（同期の要件 R3.4、暫定）relation edge を可視化し配送するのは、両端が同じ scope にあるときだけである。履歴を格納する先は、source 側の scope である。
 - 線の表示: `label` があればそれを、無ければ relationType の定義の表示ラベルを、それも無ければ何も表示しない。
 
@@ -214,7 +215,7 @@ workspace > map > scope > node
 
 - アカウントは認証の単位であり、書き込みの発行者になる。AI agent では Actor Instance 一つ、human ではその人一人が、アカウント一つである。
 - 権限はアカウントに直接与えず、Role に与える。アカウントは map の外のレコードで、map の node が無くても存在する。
-- 確定の表（`commit`）は、確定 1 回につき 1 行で、確定時刻・発行者・session の ID（任意）を持つ。journal を圧縮しても残す。
+- 確定の表（`commit`）は、確定 1 回につき 1 行で、確定時刻・発行者・session の ID（任意）を持つ。journal の保持対象外の確定記録を削減しても残す。
 - 移行のときに、発行者の記録が無い過去の分を表すアカウント「移行」（`acct_migration`）を一つ作る。
 
 ### 3.8 名前の接頭辞
@@ -267,32 +268,32 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 
 - 発行者は Command に書かない。【決定】サーバが認証済みの接続から決める（【実装済み】のものは、まだ端末の申告を使っている）。
 
-### 5.2 確定の規則【実装済み】
+### 5.2 確定の規則【決定】
 
 1. workspace ごとに、確定する側は一つである。
 2. Command は 1 件ずつ順に、検査から確定までを通す。
 3. 競合は欄の単位で判定する。変更前の値が現在の値と違う欄が一つでもあれば拒否する。同じ node でも、触った欄が重ならなければ両方通る。
 4. 検査を通した Command は、変えた欄だけを現在のレコードに当てる。欄の削除は「変更前にあって変更後に無い」で表す。
 5. 確定のたびに、workspace で一本の通し番号が 1 増える。触ったレコードの `rev` は、その番号になる。
-6. journal への追記と fsync が成功した時点が確定である。その後に Neo4j への反映が失敗しても取り消さない。反映は再試行し、Neo4j の遅れが上限（既定 10,000 確定）を超えたら、次の確定を `ENGINE_BEHIND` で拒否する。
-7. 【決定】（同期の要件 R5.3）fsync 済みで未適用の確定があるあいだは、古い Neo4j の状態で次の Command を検査しない。
+6. 1 Command を 1 回の Neo4j の write transaction で確定する。record の put / delete、`Commit`・`CommandResult` の作成、`Head.seq` の更新を同じ transaction で書き、確定後に応答する。耐久性は Neo4j の transaction log が担う。
+7. 【決定】（同期の要件 R5.3）Command の検査は、確定する transaction の中で Neo4j から読んだ record に対して行う。確定を非同期に Neo4j へ適用する経路は置かず、確定済み・未適用という状態は生じない。`ENGINE_BEHIND` による後追い適用の受付制限は設けない。
 8. 【決定】（同期の要件 R2.4）scope をまたぐ移動は、当面実装しない。remote は、未対応として拒否する。
 9. 【決定】（freeze v1、akaghef、2026-11-19）同じ node への同時の move は、`seq` の順の LWW で決める（後に確定した有効な move が勝つ）。cycle を作る move は拒否する（不変条件 2）。基準にした兄弟が消えていたときの位置は 3.4。
 
-- 確定点は、remote の journal への fsync である（同期の要件の Q1 は、二媒体なしの暫定）。媒体を失ったら、復旧した地点と、欠けたかもしれない範囲を示す（R5.1）。
-- 復旧の正本から戻す対象には、権限、未解決の conflict、Command の結果、世代、端末の失効、消去の状態を含める（R5.5）。
+- 確定点は remote の Neo4j の write transaction の確定である。媒体を失ったら、定期 export と届く local から復旧した地点と、欠けたかもしれない範囲を示す（R5.1）。
+- Neo4j の復旧で戻す対象には、権限、未解決の conflict、Command の結果、世代、端末の失効、消去の状態を含める（R5.5）。
 
-拒否の種類: `NOT_FOUND`、`CONFLICT`（欄の競合）、`INVALID_STATE`（不変条件）、`INVALID_COMMAND`、`SAME_ID_DIFFERENT_CONTENT`、`ENGINE_BEHIND`。
+拒否の種類: `NOT_FOUND`、`CONFLICT`（欄の競合）、`INVALID_STATE`（不変条件）、`INVALID_COMMAND`、`SAME_ID_DIFFERENT_CONTENT`。
 
 ### 5.3 再送【実装済み】
 
 - Command の ID は workspace 内で一意である。再送の判定は map ごとに分けず、触った map の集合を結果とともに保持する。map の改名で過去の Command のキーを振り直さない。
-- 同じ ID・同じ中身の Command には、最初の確定結果、確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）、または no-op を返す。状態が変わっても拒否を再評価しない。一時的な `ENGINE_BEHIND` は記憶せず、追いついた後の再送を受ける。
+- 同じ ID・同じ中身の Command には、最初の確定結果、確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）、または no-op を返す。状態が変わっても拒否を再評価しない。一時的な失敗は確定的な拒否として記憶せず、同じ commandId・内容で再送できる。
 - 同じ ID で中身が違う Command は `SAME_ID_DIFFERENT_CONTENT` で拒否する。最初の結果が拒否でも同じである。変更の一覧の正規化した JSON の sha256 で比べ、同期の Command は対象 map と map 操作を含む payload の hash も照合する。
-- journal に確定を作らない結果は、store 所有の `sync-rejections.jsonl` に追記し、fsync 後に返す。`backupTo` はこのファイルも含める。journal の 1 行は引き続き 1 回の確定であり、拒否は書かない。結果のファイルは起動時に一度だけ読み、読込みはファイル量に比例する。稼働中の再送判定は commandId の Map lookup であり、記憶した件数に対して O(1) である。
-- local の working store の rebase は、remote が未回答の Command を replay するため、ローカルの成功・no-op の記憶を外す。忘却した ID と journal 上の位置も結果のファイルへ追記する。確定的な拒否は忘れない。remote の拒否は local の `conflicts.jsonl` に保持し、outbox と replay の対象から除く。
-- 既存 journal に異なる map の同じ commandId があれば、全行のデータを適用したうえで、再送の結果だけは最初のものを保持する。衝突件数を起動時の警告に出す。
-- 【決定】基準が journal の圧縮より古い Command は、状態を取り直させてから受ける。
+- journal に確定を作らない結果も、Neo4j の `CommandResult` node に commandId・hash・対象 map の集合・元の結果を transaction で保存してから返す。journal の `Commit` node は 1 回の確定であり、拒否は書かない。再送は workspace と commandId の索引で照合し、全件を走査しない。
+- local の working store の rebase は、remote が未回答の Command を replay するため、local の成功・no-op の記憶を Neo4j の `CommandResult` から外す。確定的な拒否は忘れない。remote の拒否は local の Neo4j に conflict として保持し、outbox と replay の対象から除く。
+- 一度きりの移行入力の journal に異なる map の同じ commandId があれば、全件のデータを適用したうえで、再送の結果だけは最初のものを保持する。衝突件数を移行時の警告に出す。
+- 【決定】基準が journal の保持範囲より古い Command は、状態を取り直させてから受ける。
 
 Undo は、逆向きの Command を出すことで行う。
 
@@ -307,9 +308,9 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - 前提として照合するのは、node の `rev` だけである。読んでいない attribute も一緒に消える。
   - Undo は、record の pre-image で戻す。
 
-## 6. journal【実装済み】（format 2 の envelope と retention は【決定】）
+## 6. journal【決定】
 
-- UTF-8 の JSON Lines。1 行が 1 回の確定である。
+- Neo4j の `Commit` node に置く。1 件が 1 回の確定であり、端末と remote の交換に使う。push / pull の wire format と export は JSON とする。
 - 1 行の欄（envelope）。`touched` と `provenance` の形は【決定】（freeze v1、akaghef、2026-11-19）、それ以外は【実装済み】:
 
 | 欄 | 型 | 内容 |
@@ -329,7 +330,7 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
 | `touched` | `[{rk, ev: string[]}]` | その確定で canonical な値に実差分が出たレコードと、event kind |
 | `provenance` | `{items, truncated?}` | その確定が採用した出所 |
 
-- journal の行は schemaVersion を持たない。版は、切り替えの時点（base snapshot の header の `format` と `seq`）だけで決まる。
+- journal の各確定は schemaVersion を持たない。版は切り替え時点の Neo4j の `Head` の `format` と `seq` で決まり、clone / export の header にも渡す。
 - `seq`・`committedAt`・`issuer`・`touched` は envelope-stable な欄で、どの format でも意味を変えない。
 - `touched` の規則:
   - 確定のときに、サーバが `ops` と pre-image の diff から決定的に作る。client の申告は受けない。
@@ -347,100 +348,56 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - 位置の変更は、`touched` で `m3e:content` に数えている。
   - parent edge の付け替えと兄弟順の変更を、まだ一つの `m3e:structure` として出している（`beta/src/node/record_store/journal_archive.ts`）。
 
-- 開くとき、末尾の書きかけの行は切り捨てる。途中の行が壊れていれば、開くのを止める。通し番号の飛びも止める。
-- 【決定】（akaghef、2026-11-19）log compaction は何も消さない。封じた journal の segment は archive へ移す。
-- 【実装済み】圧縮（`compact`）の手順（`beta/src/node/record_store/journal_archive.ts`、`store.ts`）:
-  - 今の journal と、置き換える snapshot を `archive/` へ hard link する。link が使えない場所では copy する。名前は `journal.<from>-<to>.f<format>.jsonl` と `snapshot.<seq>.f<format>.jsonl`。`archive/index.json` に、各 file を archive した時刻を残す。
-  - その時点の全レコードで `snapshot.jsonl` を書き直し、journal を空にする。
-  - `commit-index.json` に、map ごとの最後の確定、確定済みの Command の ID（直近 100,000 件）、新しい snapshot の `{seq, sha256}`（`snapshot` の欄）を書く。
-  - 圧縮した後、Neo4j の追いつきと、確定済みの Command の行の読み出し（`committedCommand`）は archive を読む。再送の判定は、archive ではなく `commit-index.json` の Command の ID と hash（直近 100,000 件）で行う。
-- 【実装済み】契機: snapshot より後の journal が 50,000 行に達したとき（環境変数 `M3E_COMPACT_AFTER_LINES`、0 で止める）。確定の直後と、開いたときに判定する。圧縮と retention の失敗は確定を失敗にしない。
-- 【決定】（freeze v1、akaghef、2026-11-19）schemaVersion を上げるたびに、移行した直後の snapshot を base snapshot として書く。replay を保証するのは、最新の base snapshot から後だけである。それより前の journal を新しい format へ書き換える upcasting はしない。compaction の契機は replay の長さで決める。値は、snapshot より後の journal が 50,000 行に達したとき（上の【実装済み】の値）である。
-- 【決定】（akaghef、2026-11-19）【実装済み】archive の segment は、archive へ移してから 90 日で削除する（retention の操作。圧縮のあとと、開いたときに走る）。削除できるのは、次の二つを満たす segment だけである。
-  - その範囲を覆う base snapshot か snapshot が fsync 済みで、checksum を検証済みである。
-  - archive へ移してから 90 日を過ぎている。
-  - 検証に失敗したら、消さずに止める。
-  - `archive/index.json` で削減の対象から外す印の付いた file（名前付きの snapshot。12.4）は、消さない。
-- PITR の窓は、最新の snapshot と 90 日分の archive である。
-- 【決定】scope の `retention`（`{ms?, bytes?}`）は、その scope の journal の保持の上限である。欄が無いときの `ms` の既定値は 30 日（2,592,000,000）。archive の segment の 90 日とは別の値である。
-- 書かれる頻度は、journal から作り直せない。そのため、減衰する量の累積は snapshot に状態として持つ（9 節）。envelope-stable な欄（`seq`・`committedAt`・`issuer`・確定ごとに触れたレコードと event kind）は、90 日の窓の中での集計に使う。
-- copy の来歴と provenance は、journal ではなく record の側（attribute か専用の欄）に持つ。compaction と削除で失われないようにするためである。
-- 複製は、三つのファイルを一度に写す。確定と圧縮は同期処理なので、複製の途中に確定が入らない。
+- 確定の原子性と途中停止からの回復は、Neo4j の transaction と transaction log が担う。pull は `Commit` を seq 順に読み、受け取る側で欠番と世代を検査する。
+- JSON Lines の log compaction と journal の archive は置かない。現在状態は Neo4j にあり、journal を畳み込んで snapshot ファイルを作る必要はない。
+- schemaVersion を上げた時点の状態と `{format, seq}` は Neo4j に持つ。切り替え点より前の journal を新しい format へ書き換える upcasting はしない。
+- scope の `retention`（`{ms?, bytes?}`）は、その scope の journal の保持の上限である。欄が無いときの `ms` の既定値は 30 日（2,592,000,000）。現在状態、未解決 conflict、有効な再送結果、名前付き snapshot は履歴期限だけで消さない。
+- 保持対象外の確定記録を削減するときは、Neo4j の現在状態、必要な履歴、再送結果、名前付き snapshot と定期 export の検証を先に行い、問題があれば削減しない。保持期間より遅れた local は remote から clone する。
+- remote の Neo4j 全体を定期 export する。export は復旧用の輸送・書き出しの形式であり、database ではない。PITR の保証範囲は保全された export と確定記録の範囲に限る。
+- 減衰する量の累積は Neo4j に状態として持つ（9 節）。envelope-stable な欄は保持対象の確定記録の集計に使う。
+- copy の来歴と長く残す provenance は、journal ではなく Neo4j の record の側に持つ。
 
 <a id="recovery-state-and-unapplied-commits"></a>
 
-### 6.1 【提案】復旧で戻す状態と、engine に未適用の確定
+### 6.1 復旧で戻す状態と、確定の transaction【決定】
 
-本節は akaghef の確認待ちである。6 節の journal、7 節の snapshot、8.3 節の `appliedSeq` を、[同期の要件](../../.kiro/specs/rapid-persistence-redesign/sync-requirements.md) R4.5・R5.2〜R5.7・R9.1〜R9.2 に対応付ける。実装事実はコードを読んだ範囲で示す。復旧・故障注入の実行結果は **未確認**。コード参照のパスは repository root を基準とする。データファイルの置き場所は表内に明記する。
+【決定】（akaghef、2026-11-27）永続する現在状態は Neo4j である。端末は remote の clone、remote は Neo4j 全体の定期 export から復旧する。以下は復旧の契約であり、実データでの復旧結果は未確認である。
 
-#### 復旧対象と実装事実
-
-【提案】復旧の正本である snapshot と journal は、同じ workspace・履歴 ID・epoch・到達地点に対応する下表の状態を復元できるものとする。engine だけに復旧に必要な状態を置かない。索引と cache はこの入力から作り直せるものとし、ファイルを別にする場合も必要な構成要素と検証情報を snapshot が特定できる形にする（QA1）。
-
-| 復旧対象 | 現在の所在とコードで確認した事実 | 現在の snapshot + journal の復旧経路 | 復旧契約の案 |
-|---|---|---|---|
-| graph の内容 | store ディレクトリの `snapshot.jsonl` と `journal.jsonl`。snapshot の record 読み込みは `beta/src/node/record_store/store.ts:580-603`、journal の replay は同ファイル `623-640`・`2307-2339` | 保存された map・node・edge・scope・属性・Surface View・注釈等の record は復元する。Neo4j への再構築・差分適用は `beta/src/node/record_store/engine.ts:85-113`。実データでの復旧結果は未確認 | 【提案】値・ID・参照・兄弟順キー・rev と削除結果を、確定時の内容のまま戻す。現在の merge 規則による再判定はしない |
-| 権限・grant | `account.roles` と `grant` は record（`beta/src/shared/record_model/types.ts:284-291`・`324-334`）。grant の照合は capability・principal・scope・期限を使うが、付与した human の編集権は照合していない（`beta/src/node/record_store/operations.ts:380-392`）。scope の権限全体の保存場所は未確認 | 保存済みの account・grant は上記 record replay の対象。scope の権限全体とその失効の復元は未確認。grant が戻ることだけでは権限の復旧完了にならない | 【提案】Role との対応、scope の権限、grant の付与・取消・期限、付与者の権限喪失を判定する状態を戻す。権限を確認できない状態を許可として扱わない |
-| 未解決の conflict | local のデータディレクトリの `sync/conflicts.jsonl` に元の Command・拒否理由・時刻を保存し、同ファイルから読む（`beta/src/node/sync/local.ts:158-170`・`254-260`）。remote の拒否結果は次行の別ファイル | local の conflict は snapshot + journal だけでは戻らない。remote で conflict の登録・解決・依存の停止を一体として復元する経路は未確認 | 【提案】remote が登録した conflict の元の Command、対象、理由、未解決の状態、依存による停止と解決 Command との対応を戻す。local にしか無い pending・conflict は端末側の復旧入力として保全し、remote の確定済み状態と混同しない（R5.7） |
-| 再送判定に使う Command の結果 | store の成功結果はメモリの `commands`、journal、圧縮時の `commit-index.json`。直呼び出しは `(mapId, commandId)`（`beta/src/node/record_store/store.ts:376-377`・`980-1004`）、同期の成功は store 内で空の map key と commandId（同 `1199-1206`・`2296-2303`）。同期入口の確定的な拒否・no-op は store ディレクトリの `sync-rejections.jsonl` に、commandId・hash・結果を保存する（`beta/src/node/sync/push.ts:40-44`・`66-89`・`140`・`155-184`）。入口の構文拒否は記憶する分岐を通らない（同 `161-164`） | journal に残る成功は再登録する。圧縮済み成功の再送判定は別の `commit-index.json` に依存し、直近 100,000 件を保存する（`beta/src/node/record_store/store.ts:94`・`605-620`・`1598-1611`）。拒否・no-op は二つのファイルだけでは戻らず、store の `backupTo` もそれらのファイルを複製しない（同 `970-975`） | 【提案】有効な再送窓に必要な成功・no-op・確定的な拒否を、内容同一性の照合情報、元の結果、成功の seq、期限の根拠とともに戻す。キーを `(workspaceId, commandId)` とし、触った map の集合を結果と対応付ける。`CONFLICT`・`INVALID_STATE`・`INVALID_COMMAND` を含め、`ENGINE_BEHIND` は最初の結果として固定しない |
-| 世代・epoch・履歴 ID | snapshot header に `workspaceId`・`historyId`・`epoch`・`seq`（`beta/src/shared/record_model/types.ts:10-17`）。store は header を読み、欠けている historyId は生成、epoch は 1 とし、書き戻す（`beta/src/node/record_store/store.ts:585-588`・`651-661`） | header に保存された値は戻る。世代切替の履歴と、旧 remote が確定を続けられないことの復旧検証は未確認 | 【提案】通常の engine 復旧では識別と世代を維持する。remote の再構築・切替では、復旧地点、新しい履歴 ID・epoch、旧世代の fencing 成立を対応付ける。欠けた値の生成だけで復旧完了としない |
-| 端末の失効 | 保存場所は未確認。確認した snapshot の型一覧には端末失効の record が無い（`beta/src/shared/record_model/types.ts:366-386`）。workspace・履歴 ID・epoch の一致判定（`beta/src/node/record_store/sync_types.ts:4-11`）は端末ごとの失効記録ではない | 指定した record store の経路に、端末失効を戻す処理は確認できない。別経路の有無と engine 内だけの状態の有無は未確認 | 【提案】登録端末の識別と失効状態・失効の到達地点を戻し、失効した端末を復旧で有効にしない。失効を判定する情報が欠ければ復旧完了にしない |
-
-再送キーの workspace 単位化と確定的な拒否の記憶は、[実装ログ](../../.kiro/specs/rapid-persistence-redesign/implementation-log.md)の「再送の判定は map ごとで、通し番号は workspace で一本」「拒否した Command の結果を覚えていないため、前提が変わった後の再送が通る」の決定を前提とする。本節の【提案】は、それらを復旧入力へ含める保存契約である。
-
-【提案】R5.5 の消去状態も復旧対象に含める。削除済み ID の再利用を防ぐ記録と crypto-shredding の消去状態は別に扱う。前者は `commit-index.json` の `retired` と journal の delete から読む実装がある（`beta/src/node/record_store/store.ts:614-615`・`1613-1614`・`2317-2319`）が、後者の保存場所と復旧は未確認である。必要な記録の欠落を「未削除」「失効なし」「未処理」と推定しない。消去状態の具体的な契約は同期の要件 K4、復旧の被覆判定は K8 に従って確認する。
-
-#### fsync 済みで未適用の確定
-
-コードで確認した事実：`beta/src/node/record_store/store.ts:2211-2237` は journal を fsync した後、メモリへ適用し、engine の queue へ渡す。`beta/src/node/neo4j_store/apply.ts:208-220` は record 操作と `appliedSeq` 更新を同じ transaction で行う。適用失敗時は queue が再起動して再試行する（`beta/src/node/record_store/engine.ts:262-302`）。ただし受付制御は遅れが設定上限以上かの判定であり、既定は 10,000 確定（`beta/src/node/record_store/store.ts:98`・`980-982`・`1575-1576`）。store はメモリの状態から確定を作り、適用完了を待たず成功を返す（同 `1018-1031`・`2064-2088`）。これは R5.2・R5.3 の契約を実証するものではない。
-
-【提案】journal への追記と fsync が成功した確定は、engine への未適用・適用失敗・応答喪失を理由に取り消さない。journal を切り戻さず、seq を再利用せず、同じ Command を新規に確定し直さない。再生するのは確定済みの `ops` であり、権限・merge・不変条件の規則で元の Command を再審査しない。
-
-【提案】workspace ごとの検査から確定までの直列区間で、検査前に engine の `appliedSeq` と fsync 済み journal の末尾の seq を照合する。`appliedSeq < 末尾の seq` なら、1 件の遅れでも、その engine を使った新規 Command の検査・確定を開始しない。5.2 規則 6 の 10,000 件という上限は、古い状態での検査を許す条件にはしない。engine の所属・適用地点が未確認、または journal より先なら、受付を止めて整合を確認する。
-
-【提案】追いつくまでの server の挙動は QA2 で選ぶ。新規 Command に `ENGINE_BEHIND` を返して適用を再試行するか、先に適用を完了してから検査する。いずれも `ENGINE_BEHIND` を確定的な拒否として記憶せず、client は同じ commandId・内容を保全して再送できるものとする。fsync 済みの当該 Command は「確定済み・適用待ち」として識別し、新規 Command の一時的な受付拒否と区別する。確定成功の応答は、その seq までの適用完了後に返す（R5.2）。応答を待てなくても未確定とは扱わず、元の結果を照会できるものとする。
-
-【提案】適用は `appliedSeq + 1` から seq 順に行い、各確定の record 操作と `appliedSeq` 更新を同じ transaction にする。transaction の成否が不明なら engine の marker を読み直して再開位置を決める。遅れの範囲の読み出し・検証・適用の費用は、その範囲の行数と record 操作数・バイト数に比例させ、workspace・map・journal 全体を走査・複製しない（[Δ 比例の原則](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md#手間は変化分に比例させる)）。
-
-コードで確認した不足：`beta/src/node/record_store/store.ts:2263-2274` は journal 全体を読んでから必要な行を絞り、必要に応じ archive の segment も読む。`beta/src/node/record_store/engine.ts:101-105` は必要な履歴が得られないと全 record の再構築へ進む。したがって、現在の追いつき経路が遅れだけに比例するとはいえない。
-
-【提案】必要な suffix を取得できなければ新規 Command の受付を停止し、通常の追いつきの内部で全体の再構築へ置き換えない。engine 喪失等による明示の復旧では、検証済み snapshot と連続した journal から全体を再構築してよい（この処理の Δ は復旧対象全体）。必要な管理状態の被覆と適用完了を確認してから受付を再開し、欠けた可能性がある範囲は復旧地点とともに示す。
-
-#### akaghef の確認事項
-
-| ID | 決めること | 選択肢 | 推奨と、それぞれが変えるもの |
-|---|---|---|---|
-| QA1 | 拒否・no-op・conflict・権限・失効等の管理状態を、snapshot + journal の復旧入力にどう含めるか | OA1: 同じ snapshot の record と journal の行に含める。OA2: engine 非依存の別の構成要素に置き、snapshot がその範囲・到達地点・checksum を参照する | 【提案】OA1。復旧入力と整合する到達地点を一つの系列で扱える。拒否・no-op の結果を記録する行は graph の変更と区別する。OA1 は record・envelope・seq の意味と format の検討が必要。OA2 は各構成要素の原子的な公開・保存順・欠落検出の契約が必要で、単に別ファイルをコピーするだけでは足りない |
-| QA2 | engine が journal より遅れている間、新規 Command の要求をどう扱うか | OA3: `ENGINE_BEHIND` で直ちに受付を断り、適用は server が再試行する。OA4: 要求内で先に追いついてから検査する | 【提案】OA3。障害中に要求を長く保持せず、client は同じ Command を保全して再送する。OA4 は成功までの再送を減らせる一方、待機期限とその期限での一時応答が必要。どちらも遅れた状態での検査と fsync 済み確定の取り消しは禁止 |
-| QA3 | 復旧に残す Command 結果の再送窓と期限の証拠をどう定めるか | OA5: workspace の再送窓を時間で設定し、最初の結果の永続化時刻・期限を保存する。OA6: 結果を無期限に保持する | 【提案】OA5。具体的な期間・時計・期限延長時の扱いは akaghef の指定を要する。scope の履歴保持期間と独立させ、件数上限だけで有効な結果を落とさない。期限後に結果不明なら保留し、自動再実行しない（R4.5・R4.6）。OA6 は期限切れをなくすが、snapshot と復旧対象が累積する。窓が未決の間は有効な結果を削除できると解釈しない |
-
-#### 【提案】テスト観点（実装後の確認）
-
-| 観点 | 確認する結果 |
+| 復旧対象 | Neo4j に保持し、復旧する状態 |
 |---|---|
-| 正常系 | 【提案】engine と再生成可能な索引を除き、承認した復旧入力だけから全表の状態を戻す。成功・no-op・確定的な拒否の同一 Command を再送して元の結果が返り、別 map でも同じ workspace の ID として照合される |
-| 境界 | 【提案】snapshot の到達地点、compaction、再送窓の期限の前後を通す。未解決 conflict、権限・端末失効、結果の照合情報が保持される。遅れの行・record・バイト数を固定して workspace と journal の大きさを変え、追いつきの読み書き対象が増えないことを確認する |
-| 失敗系 | 【提案】`0→1` の fsync 直後・適用 transaction 中・適用後の応答前に停止する。前提値 `0` の後続 Command は古い engine で検査されず、再開後は `1` に対して検査される。復旧構成要素の欠落、suffix の欠落、世代不一致では受付を再開せず、確定済みの記録を切り戻さない |
+| graph の内容 | map・node・edge・scope・属性・Surface View・注釈等の値・ID・参照・兄弟順キー・rev と削除結果。現在の merge 規則で再判定しない |
+| 権限・grant | Role、scope の権限、grant の付与・取消・期限、付与者の権限喪失。確認できない状態を許可として扱わない |
+| 未解決 conflict | 元の Command、対象、理由、依存による停止、解決 Command との対応。local にしかない pending と conflict は remote の確定済み状態と区別して保全する |
+| 再送判定の結果 | `CommandResult` node の commandId、hash、対象 map の集合、元の結果、seq、期限の根拠。有効な再送窓の成功・no-op・確定的な拒否を戻す |
+| 世代・epoch・履歴 ID | `Head` の workspaceId・historyId・epoch・seq。remote の再構築・切替では、新しい履歴 ID・epoch と fencing を対応付ける |
+| 端末の失効・消去状態 | 端末の登録・失効、`Retired` node の削除済み ID、crypto-shredding の消去状態。欠落を「失効なし」「未削除」と推定しない |
 
-## 7. snapshot【実装済み】
+再送キーは `(workspaceId, commandId)` とし、触った map の集合を結果と対応付ける。`CONFLICT`・`INVALID_STATE`・`INVALID_COMMAND` も最初の結果として保持し、状態が変わっても再評価しない。一時的な失敗を最初の結果として固定しない。
 
-- workspace 一つにつき一つの、UTF-8 の JSON Lines。1 行が 1 レコード。
-- 1 行目は `{"kind":"snapshot","format":2,"workspaceId":"…","seq":…}`。
-- 【実装済み】freeze v1 の形は `format: 2` である。`format` を上げた直後の snapshot が base snapshot で、header の `{format, seq}` が版の切り替え点の記録になる。
-  - format 1 の workspace を開くと、一度だけ移行する（`beta/src/node/record_store/store.ts` の `migrateToFormat2`）。format 1 の portable snapshot と journal を、`f1` の名前で `archive/` へ移し、今の通し番号で format 2 の base snapshot を書く。以後の確定は format 2 で書く。
-  - format が 3 以上の snapshot は、開かずに拒否する。
-- 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}` は、snapshot に状態として持つ（9 節）。
-- 【決定】【実装済み】（akaghef、2026-11-23）node に必須の欄 `certainty`（3.2）を足すので、format を 3 に上げる。format 1 または 2 の workspace を開くと一度だけ移行し、format 3 の base snapshot を書く。元の portable snapshot と journal は、元の format の名前（`f1`、`f2`）で `archive/` へ移す。
-  - 移行で書く値: attribute `m3e:confidence` を持つ node は、その値から決める。`0`〜`1` の数値（Flash ingest の値）は 100 倍して整数に丸める。`high`・`medium`・`low` は `80`・`50`・`20` にする（2026-11-27。データはまだ使っていないので仮の値でよい、と akaghef）。それ以外の node と、読めない値は `-1` である。`m3e:confidence` は消す。relation edge の attribute `confidence`（実現段階）は意味が違うので対象にしない。
-  - SQLite から record store への変換（`to_snapshot.ts`）も、同じ規則で `certainty` を書く。
-  - 同期: format 3 の remote と format 2 の local は、互いの snapshot を読めない。remote と local の両方を、同じ版に更新する。
-- 値の無い欄と null は書かない。
-- 並びは `kind`、次に key の文字列順。行の順序に意味は無いが、差分を安定させるために揃える。
-- 現行データからの変換規則と、逆変換で許す差は snapshot-format 3〜4 節に従う。
+【決定】（akaghef、2026-11-27）確定そのものが Neo4j の write transaction である。検査・record の変更・`Commit` の作成・`Head.seq` の更新を同じ transaction で行うため、journal より Neo4j が遅れる状態は無い。成功の応答は transaction の確定後に返す。応答を失った client は同じ commandId・内容で再送し、元の結果を受ける。
 
-## 8. Neo4j 上の持ち方【実装済み】
+| ID | 項目 | 決定・未決 |
+|---|---|---|
+| QA1 | 管理状態を含む復旧入力 | Neo4j に保持する。端末は remote から clone し、remote は database 全体の定期 export から復旧する。別の状態ファイルは置かない |
+| QA2 | journal と Neo4j の遅れ | 確定は Neo4j の transaction であり、遅れは生じない。新規 Command も読み出しも Neo4j の状態を使う |
+| QA3 | 再送窓と期限の証拠 | workspace の再送窓を時間で設定し、最初の結果の永続化時刻・期限を保存する案。具体的な期間・時計・期限延長時の扱いは akaghef の指定を要する。未決の間は有効な結果を削除しない。期限後に結果不明なら保留し、自動再実行しない（R4.5・R4.6） |
 
-Neo4j は各端末の正本エンジン（semantic authority）であり、durability authority ではない。壊れたら、base snapshot と log suffix の replay で作り直す。ここでの持ち方は、保存の形（3 節）とは独立に変えてよい。
+検証では、clone と export から上表の状態が戻ること、成功・no-op・確定的な拒否の再送が元の結果を返すことを確認する。transaction の確定前・確定後の応答前に停止し、部分適用や重複確定が無いことを確認する。変更量を固定して workspace を増やしても、通常の確定・pull の読み書き対象が増えないことを確認する。
+
+## 7. snapshot【決定】
+
+- snapshot は、ある `seq` の時点の状態を表す役割であり、Neo4j の状態である。別の snapshot ファイルは置かない。
+- 移行入力・export・clone payload の record の直列化は UTF-8 の JSON Lines とする。1 行目の `kind: "snapshot"`、`format`、`workspaceId`、`historyId`、`epoch`、`seq` は運ぶ状態を特定する header であり、database の保存形式ではない。
+- `format` の切り替え点は Neo4j の `Head` に持つ。未対応の format は読み込まずに拒否する。
+- 減衰する量の累積 `{v[k], t}` は Neo4j の状態に持つ（9 節）。
+- node に必須の `certainty`（3.2）を足す format 3 への移行では、attribute `m3e:confidence` の `0`〜`1` の数値を 100 倍して丸め、`high`・`medium`・`low` を `80`・`50`・`20` にする。それ以外と読めない値は `-1` とし、`m3e:confidence` を消す。relation edge の `confidence` は対象にしない。変換した record は Neo4j に入れる。
+- 一度きりの移行入力は、移行後の record 数と内容の hash が一致したときだけ archive へ移し、以後は書かない。不一致なら移行を止め、入力を保全する。
+- 輸送・export の行は、値の無い欄と null を書かず、`kind`、次に key の文字列順に並べる。行の順序に意味は無い。
+- 変換規則と逆変換で許す差は snapshot-format 3〜4 節に従う。
+
+## 8. Neo4j 上の持ち方【決定】
+
+Neo4j が永続する現在状態と semantic authority を担う。端末は remote からの clone、remote は定期 export で復旧する。ここでの物理表現は、保存の形（3 節）と意味を保って変更する。
 
 ### 8.1 レコードを node にする
 
@@ -451,7 +408,7 @@ Neo4j は各端末の正本エンジン（semantic authority）であり、durab
 
 | property | 内容 |
 |---|---|
-| `rk` | `<kind>|<key>`。全レコードで一意（一意制約 `rec_rk`） |
+| `ws`、`rk` | store の名前と `<kind>|<key>`。全レコードに `ws` を持たせ、`(ws, rk)` に一意制約を置く |
 | `kind`、`id` | 種別と ID（`id` に索引） |
 | `o` | 元の行の欄の並び |
 | `f_<欄>` | Neo4j がそのまま持てる値（文字列・真偽・数値・同じ型だけの配列） |
@@ -463,7 +420,7 @@ Neo4j は各端末の正本エンジン（semantic authority）であり、durab
 - 数値: 安全な範囲の整数は Integer、それ以外は Float にする。これで元の JSON の文字列に戻る。Neo4j の Integer は 64 bit なので、読み込みの境界で 2^53−1 以下であることを確かめて数値に変える。
 - 【実装済み】時刻は、canonical な形（ISO 8601 の文字列）に加えて、epoch ミリ秒の整数を持つ。property の名前は、最上位の欄が `ms_<欄>`、attribute が `am_<key>`、`extra` が `xm_<key>` である（`beta/src/node/neo4j_store/encoding.ts`）。
 - 【実装済み】`extensions` の名前は、node のラベルにも写す（10.4）。ラベルは `Ext_` に、`name@version` の英数字以外を `_` に置き換えたものを足した名前である（例 `m3e:nodeType:task@1` → `Ext_m3e_nodeType_task_1`）。
-- 索引: `rk` の一意制約、`id`、参照を引く欄（`f_source`、`f_target`、`f_rootNodeId`、`f_nodeId`、`f_scopeId`、`f_surfaceId`、`f_mapId`）。索引が無いと、どの問い合わせも 180〜610 ms かかる。
+- 索引: `(ws, rk)` の一意制約、`id`、参照を引く欄（`f_source`、`f_target`、`f_rootNodeId`、`f_nodeId`、`f_scopeId`、`f_surfaceId`、`f_mapId`）。索引が無いと、どの問い合わせも 180〜610 ms かかる。
 - 索引に載せる値の上限は UTF-8 で 8,164 バイト（範囲索引と一意制約）、文字列索引は 32,766 バイト。
 
 ### 8.3 relationship
@@ -481,7 +438,7 @@ relationship は property から作る索引で、読み戻しには使わない
 | `ALIAS_OF` | alias → 参照先 | 参照先から alias を逆にたどれる |
 | `IN_MAP` | レコード → map | 所属 map |
 
-- 反映した位置は、`RecordStoreMarker` の node の `appliedSeq` に持つ。
+- store ごとに `Head` node を置き、`{ws, seq, workspaceId, historyId, epoch, format}` を持つ。`seq` は最後の確定の番号であり、record・`Commit` と同じ transaction で更新する。
 - 実データでの確かめ: 3 workspace（最大 100,268 レコード、28.1 MB）を取り込み、読み戻した結果がバイト単位で一致した。
 
 ## 9. キャッシュ（計算で求まる値）【提案】
@@ -491,7 +448,7 @@ relationship は property から作る索引で、読み戻しには使わない
 - 正本から計算で求まる値は、正本に入れない。
 - 確定のときに計算し、サーバの手元にキャッシュする。agent は読むだけで、計算を待つ必要も、計算方法を知る必要もない。Neo4j にも置く。
 - 時間で減る値（活動など）は、最後に確定したときの値と時刻だけを持ち、読むときに掛け算 1 回で今の値を出す。
-- 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}`（尺度 k ごとの累積と最終時刻）は、計算で求まる値ではなく、snapshot に持つ状態である。journal は 90 日で削除するので、作り直せないからである（6 節）。
+- 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}`（尺度 k ごとの累積と最終時刻）は、計算で求まる値ではなく、snapshot に持つ状態である。journal は保持期間で削減するので、作り直せないからである（6 節）。
 - 計算し直すきっかけ（親の変更、edge の変更、部分木の移動など）は、値の定義に書く。
 
 候補:
@@ -638,7 +595,7 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
   1. 体系から、関心のある領域の taxonomy を面として切り出す（射影）。
   2. その面の上で整理し、考察する（Rapid での作業）。
   3. 結果を体系へ書き戻す（昇格。Git の commit に当たる）。
-- Rapid と Deep は構造が違う（木と graph）ので、適した処理方式も違う。保存エンジンの層で扱いを分ける（12.5）。
+- Rapid と Deep は構造が違う（木と graph）ので、適した処理方式も違う。Neo4j の問い合わせ用 index を検討する（12.5）。
 
 ### 12.2 同一性【決定】（akaghef、2026-11-21）
 
@@ -665,17 +622,17 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
 - alias を消すときの子の扱いは、alias でない node を消すときと同じである。
 - alias は scope の root になれない（不変条件 5）。この制約は変えていない。
 
-alias の持ち方は、意味と、保存の形と、エンジンの中の形を分けて決める。
+alias の持ち方は、意味と、保存の形と、database の中の形を分けて決める。
 
 - 意味の上では、alias は「正本の実体から出る 1 本の edge を持つ node」と読める。その edge が同一性を表す。
 - 保存の形（レコード）では、その edge を独立したレコードにせず、alias の node の欄 `target` として持つ（3.2）。理由は三つある。
   - alias 一つにつき参照先がちょうど一つ、という制約が、欄であることで自動的に守られる。
   - 面を読むときに、alias のレコードだけで参照先が分かる。別の面にまたがる edge を、追加で読む必要が無い。面ごとの配送（3.4 の relation edge の規則）とも衝突しない。
   - 参照先を消しても、alias を `broken` として残せる。edge のレコードにすると、端点が消えたときに edge も消える（不変条件 4）。
-- エンジンの中では、問い合わせに合う形に展開する。
+- database の中では、問い合わせに合う形に展開する。
   - Neo4j では relationship `ALIAS_OF`（alias → 参照先）にする（8.3。【実装済み】）。参照先から alias を逆にたどるのは、この relationship の逆向きの traversal である。
-  - 【提案】面の中を扱う木のエンジン（12.5）は、参照先の ID から alias の ID の集まりを引く索引を持ち、確定のたびに差分で更新する。
-- どの形が速いかは、測ってから決める。測るのは、面の読み出しにかかる時間、「同じ実体の出現をすべて集める」問い合わせの時間、索引の大きさである。保存の形は、エンジンの中の形を変えても変わらない（8 節）。
+  - 【提案】面の中を扱う順序付き index（12.5）は、参照先の ID から alias の ID の集まりを引く索引を持ち、確定のたびに差分で更新する。
+- どの形が速いかは、測ってから決める。測るのは、面の読み出しにかかる時間、「同じ実体の出現をすべて集める」問い合わせの時間、索引の大きさである。保存の形は、database の中の形を変えても変わらない（8 節）。
 
 【決定】（akaghef、2026-11-22）alias の子に関して、次を定める。
 
@@ -705,7 +662,7 @@ alias の持ち方は、意味と、保存の形と、エンジンの中の形�
 - 【決定】（akaghef、2026-11-22。同期の要件 R8.6）射影のモードは二つである。どちらで作ったかは、射影を作る Command で指定し、面に記録する。
   - 観測用のフィルタ（`observe`）: 読むための面である。構造は、体系を即時に映す。体系の側で関係が変われば、面の木も変わる。
   - 作業の面（`work`）: 組み替えるための面である。構造の変更は下書きであり、書き戻し（12.4）で確定する。
-- 観測用のフィルタの面は、alias と parent edge のレコードを保存しない。保存するのは、scope と `projection`（範囲と、木として読む関係）だけで、木は読むたびに体系から求める。エンジンは、求めた結果を materialized view として持ってよい。レコードとして保存すると、体系の変更のたびに、面の数だけ追随の書き込みが要るからである。この面の中では、構造の編集（move、追加、削除）を受けない。畳んだ状態などの表示の設定は、node のレコードが無いので、scope の側（Surface View の保存設定）に、実体の ID を鍵として持つ。
+- 観測用のフィルタの面は、alias と parent edge のレコードを保存しない。保存するのは、scope と `projection`（範囲と、木として読む関係）だけで、木は読むたびに体系から求める。database は、求めた結果を materialized view として持ってよい。レコードとして保存すると、体系の変更のたびに、面の数だけ追随の書き込みが要るからである。この面の中では、構造の編集（move、追加、削除）を受けない。畳んだ状態などの表示の設定は、node のレコードが無いので、scope の側（Surface View の保存設定）に、実体の ID を鍵として持つ。
 - 射影は一つの Command で確定する。面の作成、alias の作成、parent edge の作成を含む（作業の面の場合）。
 - 作業の面に、alias でない node を足してよい。その node は、昇格するまでは、その面だけにある Rapid の node である。昇格のときに、新しい Deep entity にするか、すでにある Deep entity に結ぶかを決める（12.1、12.4）。
 
@@ -731,7 +688,7 @@ alias の持ち方は、意味と、保存の形と、エンジンの中の形�
 - 書き戻しが確定したら、`projection.baseSeq` を、その確定の通し番号に進める。
 - 【決定】（akaghef、2026-11-22。同期の要件 R8.5）書き戻しが確定したら、確定後の状態を指す名前付きの snapshot を作る。この snapshot は、保持期間の上限による削減の対象にしない。削除は、確認つきの明示の操作でだけ起きる。
 - 「すでにある Deep entity に結ぶ」は、保存の形では、その node を、その Deep entity を `target` とする alias に変えることで表す。node の ID、面の中の位置、子は変わらない。alias は子を持てる（12.2）ので、子はそのまま残る。結び付けを外すときは、alias を、alias でない node に戻す。entity binding のための別のレコードは置かない。一つの node を結べる Deep entity は、一つである。
-- 名前付きの snapshot は、レコードの種類 `namedSnapshot` と、archive の file で持つ。
+- 名前付きの snapshot は、Neo4j の `namedSnapshot` レコードと、その `seq` の時点の状態として Neo4j に保持する。別の snapshot ファイルは置かない。
 
 | 欄 | 型 | 意味 |
 |---|---|---|
@@ -742,12 +699,12 @@ alias の持ち方は、意味と、保存の形と、エンジンの中の形�
 | `reason` | string | 書き戻しの Command の理由 |
 | `rev` | int | 版 |
 
-  - 書き戻しの確定のときに、その通し番号の snapshot を `archive/` に書き、`archive/index.json` に、削減の対象から外す印を付ける（6 節の retention は、この印のある file を消さない）。
-  - `namedSnapshot` のレコードを消す操作が、名前付きの snapshot の削除である。確認つきの明示の操作でだけ起きる。消したときに、印を外す。
+  - 書き戻しの確定のときに、その通し番号の状態を Neo4j に保持し、保持期間による削減の対象から外す。
+  - `namedSnapshot` のレコードを消す操作が、名前付きの snapshot の削除である。確認つきの明示の操作でだけ起きる。消したときに、その状態の保持を解除する。
 - 作業の面は、書き戻した後も残す。`projection.baseSeq` が進むので、続けて作業できる。要らなくなった面は、人が消す。
 - 面と実体の対応は alias の `target` だけで決まるので、書き戻しのために新しい ID や、別の対応表は要らない。
 
-### 12.5 エンジンの分担【提案】
+### 12.5 Neo4j の問い合わせ用 index【提案】
 
 採否は、計測してから決める（akaghef、2026-11-22）。
 
@@ -761,12 +718,9 @@ Rapid と Deep は workload が違う。
 | 不変条件 | 親が一つ、`ord` が一意、循環しない。祖先の列をたどれば検査できる | relationType の制約、関係の重複、依存の循環。graph を見る必要がある |
 | 適したデータ構造 | (scope, 親, `ord`) の順序付き index と、子から親への参照 | property graph（index-free adjacency、label と relationType の index） |
 
-- durability authority は、帯域で分けない。journal と snapshot は workspace に一本で、通し番号の全順序も共通である（1 節、2 節）。
-- 分けるのは semantic authority（不変条件の検査と問い合わせ）である。
-  - 面の中の検査と読み書きは、確定する側のサーバが持つ、木に特化したエンジンが担う。
-  - 面をまたぐ検査と問い合わせは、Neo4j が担う。
-- 二つのエンジンは、同じ journal を順に適用する state machine である。両方に関わる Command（射影、書き戻し）も、journal の上では一つの確定なので、エンジンの間の two-phase commit は要らない。食い違ったら、replay で直す。
-- この案を採ると、1 節と 8 節、ADR 014 の「Neo4j は各端末の正本エンジン」を、「面の中は木のエンジン、面をまたぐものは Neo4j」に改めることになる。採るまでは、1 節と 8 節が有効である。
+- durability authority と semantic authority は帯域で分けず、Neo4j が担う。journal は workspace に一本で、全順序も共通である（1 節、2 節）。
+- 面の中を扱う順序付き index の追加は計測してから決める。採る場合も Neo4j の問い合わせのための index とし、永続・検査・query を別の database に分けない。
+- 射影と書き戻しの Command も、一つの Neo4j の write transaction で確定する。
 
 ### 12.6 この節の項目の扱い
 
@@ -780,7 +734,7 @@ Rapid と Deep は workload が違う。
 - **KB6**【決定】コピーの意味を、軸の組み合わせで定義する（12.8）。
 - **KB7**【決定】観測用のフィルタの面は、レコードとして保存しない。表示の設定は scope の側に持つ（12.3）。
 - **KB8**【決定】「すでにある Deep entity に結ぶ」は、node を alias に変えることで表す（12.4）。
-- **KB9**【決定】名前付きの snapshot は、レコードの種類 `namedSnapshot` と、削減の対象から外した archive の file で持つ（12.4）。
+- **KB9**【決定】名前付きの snapshot は、レコードの種類 `namedSnapshot` と、その `seq` の時点の状態として Neo4j に保持する（12.4）。
 
 ### 12.7 消す操作の意味【決定】（akaghef、2026-11-22）
 
@@ -887,7 +841,7 @@ Rapid と Deep は workload が違う。
 次の二つは、意味の軸に入れない。
 
 - attribute と `collapsed` は、常に写す（11 節）。選択肢を置かない。
-- データを物理的に共有するかどうか（copy-on-write）は、エンジンの実装の選択である。意味は変わらない。
+- データを物理的に共有するかどうか（copy-on-write）は、database の実装の選択である。意味は変わらない。
 
 「写した後も、元の変更に追従する」という選択肢は置かない。追従させたいなら、それは同じ実体であり、出現を増やす（JA1）を使う。
 
@@ -953,7 +907,7 @@ JA1 と JA2 の組み合わせが、操作の集まりになる。
 
 ## 13. 未決
 
-- 面の中を扱う木のエンジンを置くか（12.5）。計測してから決める。
+- 面の中を扱う順序付き index を置くか（12.5）。計測してから決める。
 - facet と 12.1 の「一つの側面」の語の組（12.6 の KB5）。Glossary の側で決める。
 
 ## 14. 決めた値と規則
@@ -961,7 +915,7 @@ JA1 と JA2 の組み合わせが、操作の集まりになる。
 - 計算で求まる値の定義の名前は、`m3e:derived:<名前>` とする。計算で求まる値は、レコードに保存しない（9 節）。
 - 接頭辞 `m3e:` は `urn:m3e:`、`misc:` は `urn:m3e:misc:` を指す。Turtle へ書き出すときに使う。
 - record-schema の担当の決め打ち（`note`・`link` を details に持つこと、`extra`、HTML を載せる種別など）は、record-schema に書いたとおりとする。
-- 確定済みで、端末の状態へまだ反映していない間: push の結果は確定の通し番号を返す。読み込みは `minSeq` を受け、remote がその通し番号まで反映してから返す。再送には、確定済みの結果（5.3）を返す。
+- push の結果は Neo4j の transaction で確定した通し番号を返す。読み込みは `minSeq` 以上の確定済み状態を Neo4j から返す。確定と Neo4j の反映の間に遅れは無い。再送には、確定済みの結果（5.3）を返す。
 - map の最終更新は、確定ごとに触れたレコード（`touched`）の `mapId` から、キャッシュとして求める。レコードには持たない。
 - 大きな取り込み（100 万 node）は、どの scope からもたどれない部分木として、複数の Command に分けて確定する。最後の Command が、その部分木の root を親へつなぐ。つなぐまでは、読み込みに現れない。
 - 位置（move と `ord`）は LWW（5.2 規則 9）、それ以外の欄は CAS（5.2 規則 3）で判定する。outbox から届いた、基準が古い move は LWW で受ける。ロックの判定（3 節）は、別に行う。
