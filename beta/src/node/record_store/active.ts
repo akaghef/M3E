@@ -11,6 +11,7 @@ import fs from "fs";
 import path from "path";
 import { LocalSync } from "../sync/local";
 import { RecordWorkspaceStore } from "./store";
+import { SNAPSHOT_FORMAT, type SnapshotRecord } from "../../shared/record_model/types";
 import { neo4jConnectionFromEnv } from "./neo4j_durability";
 
 let local: LocalSync | null = null;
@@ -73,22 +74,57 @@ export function recordStoreDir(): string | null {
   return null;
 }
 
+/** The empty store a remote starts with: only the snapshot header of its workspace. */
+function emptyStoreRecords(workspaceId: string): SnapshotRecord[] {
+  return [{ kind: "snapshot", format: SNAPSHOT_FORMAT, workspaceId, seq: 0 } as SnapshotRecord];
+}
+
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
 /**
  * Opens the store before the server listens: the local mode stores, or the one Neo4j store of
- * `recordStoreName()`. Refuses to start when a store is named but M3E_NEO4J_BOLT is not set.
+ * `recordStoreName()`, made empty when it does not exist yet. While Neo4j does not answer it waits
+ * and tries again (the server does not listen meanwhile), so the boot order of Neo4j and M3E does
+ * not matter. A store named without M3E_NEO4J_BOLT is an error.
  */
-export async function openActiveRecordStore(): Promise<void> {
+export async function openActiveRecordStore(log: (message: string) => void = (message) => console.error(`[record-store] ${message}`)): Promise<void> {
   if (local || active) return;
   const remote = localModeRemote();
-  if (remote) {
-    await startLocalMode();
-    return;
-  }
-  const name = recordStoreName();
-  if (name === null) return;
+  const name = remote ? null : recordStoreName();
+  if (!remote && name === null) return;
   const connection = neo4jConnectionFromEnv();
-  if (connection === null) throw new Error(`The record store ${name} lives in Neo4j, but M3E_NEO4J_BOLT is not set.`);
-  active = await RecordWorkspaceStore.openNeo4j(connection, name);
+  if (connection === null) throw new Error(`The record store lives in Neo4j, but M3E_NEO4J_BOLT is not set.`);
+  for (let attempt = 0, wait = 500; ; attempt += 1, wait = Math.min(wait * 2, 5000)) {
+    try {
+      if (remote) {
+        await startLocalMode();
+      } else {
+        try {
+          active = await RecordWorkspaceStore.openNeo4j(connection, name as string);
+        } catch (error) {
+          if (!/^No record store named /.test((error as Error).message)) throw error;
+          const workspaceId = process.env.M3E_WORKSPACE_ID?.trim() || (name as string);
+          await RecordWorkspaceStore.createInNeo4j(connection, name as string, emptyStoreRecords(workspaceId));
+          log(`created the empty store ${name} in Neo4j`);
+          active = await RecordWorkspaceStore.openNeo4j(connection, name as string);
+        }
+      }
+      if (attempt > 0) log("Neo4j answers; the store is open.");
+      return;
+    } catch (error) {
+      if (!neo4jUnreachable(error)) throw error;
+      if (attempt === 0) log(`waiting for Neo4j at ${connection.uri}: ${(error as Error).message}`);
+      await sleep(wait);
+    }
+  }
+}
+
+/** Neo4j did not answer (not started yet, restarting): worth waiting for. Any other error is not. */
+function neo4jUnreachable(error: unknown): boolean {
+  const code = (error as { code?: string }).code ?? "";
+  const message = (error as Error)?.message ?? "";
+  return code === "ServiceUnavailable" || code === "SessionExpired" || code === "DATABASE_UNAVAILABLE"
+    || /ECONNREFUSED|ServiceUnavailable|Failed to connect|connection.*(closed|refused)|ECONNRESET|socket hang up/i.test(message);
 }
 
 /** The opened store; null when store mode is off. `openActiveRecordStore()` must have run first. */

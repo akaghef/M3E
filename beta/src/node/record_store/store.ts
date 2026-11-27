@@ -356,9 +356,12 @@ export function syncHash({ mapId, command, ...operation }: SyncCommand): string 
 type MapOpCommit = { command: MapCommand; hash: string };
 
 export class RecordWorkspaceStore {
-  readonly workspaceId: string;
-  private readonly historyId: string;
-  private readonly epoch: number;
+  workspaceId = "";
+  private historyId = "";
+  private epoch = 1;
+  private readonly warmOnLoad: boolean;
+  /** Set while Neo4j is unavailable: the store answers nothing until it has read itself again. */
+  private unavailable: string | undefined;
 
   private capture: ((command: SyncCommand, issuer: string, at: string, mapName: string) => void) | undefined;
   readonly mapChanges = new MapRecordChanges();
@@ -432,12 +435,22 @@ export class RecordWorkspaceStore {
 
   private constructor(options: OpenOptions, neo4jStore: { durability: Neo4jDurability; loaded: LoadedStore }) {
     this.now = options.now ?? (() => new Date().toISOString());
+    this.warmOnLoad = options.warm !== false;
+    this.durability = neo4jStore.durability;
+    this.initFrom(neo4jStore.loaded);
+    neo4jStore.durability.onUnavailable = (reason) => this.becomeUnavailable(reason);
+    neo4jStore.durability.startProbe();
+  }
 
+  /** The state of the store, from what was read from Neo4j. Used on open and after Neo4j was unavailable. */
+  private initFrom(loaded: LoadedStore): void {
+    for (const table of [this.guardIndexes, this.all, this.extensionDefs, this.decayByMap, this.maps, this.idIndex, this.retired, this.mapSeq, this.commands]) {
+      (table as Map<unknown, unknown>).clear();
+    }
+    this.commandCollisions = 0;
     {
-      this.durability = neo4jStore.durability;
-      const loaded = neo4jStore.loaded;
       const header = loaded.records.find((record) => record.kind === "snapshot") as SnapshotHeader | undefined;
-      if (!header) throw new Error(`The Neo4j store ${neo4jStore.durability.store} has no snapshot header record.`);
+      if (!header) throw new Error(`The Neo4j store ${this.durability?.store ?? ""} has no snapshot header record.`);
       if (header.format !== SNAPSHOT_FORMAT) throw new Error(`The Neo4j store holds format ${String(header.format)}, not ${SNAPSHOT_FORMAT}.`);
       this.workspaceId = header.workspaceId;
       this.historyId = header.historyId ?? randomUUID();
@@ -482,9 +495,45 @@ export class RecordWorkspaceStore {
       if (record.kind === "idMap") entry.idMaps.set(rk, record);
       else entry.records.set(rk, record);
     }
-    if (options.warm !== false) {
+    if (this.warmOnLoad) {
       for (const entry of this.maps.values()) this.warm(entry);
     }
+  }
+
+  /**
+   * Neo4j stopped answering or a write failed: commits that were not written are gone (no client
+   * was told they were saved), so the state in this process is dropped and read again from Neo4j
+   * as soon as it answers. Until then every call refuses with code DATABASE_UNAVAILABLE.
+   */
+  private becomeUnavailable(reason: string): void {
+    if (this.unavailable !== undefined || this.closed) return;
+    this.unavailable = reason;
+    const retry = (wait: number): void => {
+      const timer = setTimeout(() => {
+        void (async () => {
+          if (this.closed || !this.durability) return;
+          const loaded = await this.durability.reload();
+          if (loaded === null) return retry(Math.min(wait * 2, 5000));
+          try {
+            this.initFrom(loaded);
+          } catch (error) {
+            console.error(`[record-store] reading the store again from Neo4j failed: ${(error as Error).message}`);
+            return retry(5000);
+          }
+          this.mapChanges.reset();
+          this.unavailable = undefined;
+          console.warn(`[record-store] Neo4j answers again; the store was read again at commit ${this.currentSeq}.`);
+        })();
+      }, wait);
+      timer.unref?.();
+    };
+    retry(500);
+  }
+
+  /** Resolves when Neo4j answers now. A read that serves state awaits this first, so nothing is served while Neo4j is down. */
+  async reachable(): Promise<void> {
+    this.assertOpen();
+    await this.durability!.reachable();
   }
 
   // ---------------------------------------------------------------- reads
@@ -1330,6 +1379,9 @@ export class RecordWorkspaceStore {
 
   private assertOpen(): void {
     if (this.closed) throw new Error("The record store is closed.");
+    if (this.unavailable !== undefined) {
+      throw Object.assign(new Error(`The database (Neo4j) is not available: ${this.unavailable}`), { code: "DATABASE_UNAVAILABLE" });
+    }
   }
 
   /** Node record without `rev`. The Undo of a delete puts this body back; any other reuse is refused. */

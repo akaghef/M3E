@@ -8,9 +8,10 @@
 //
 // The store computes a commit in its own process and hands the result here; nothing is answered
 // to a client before `durable()` resolves, i.e. before the Neo4j transaction holding the commit
-// has committed. Units are written in order; a failed write is retried with the same units, so a
-// commit is never dropped while the process lives. A commit that was never made durable was never
-// answered as committed.
+// has committed. Units are written in order. When a write fails, or Neo4j stops answering the
+// health probe, the connection is marked unavailable: the units not yet written are dropped (they
+// were never answered as committed), waiting clients are refused, and the store reads its state
+// again from Neo4j once Neo4j answers.
 
 import { readFileSync } from "fs";
 import neo4j, { type Driver, type ManagedTransaction } from "neo4j-driver";
@@ -112,8 +113,12 @@ export class Neo4jDurability {
   private failure: string | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private delay = 200;
-  private waiters: Array<{ target: number; resolve: () => void }> = [];
+  private waiters: Array<{ target: number; resolve: () => void; reject: (error: Error) => void }> = [];
   private closed = false;
+  private broken: string | undefined;
+  private probe: ReturnType<typeof setInterval> | undefined;
+  /** Told once when Neo4j becomes unavailable; the store then reads itself again with `reload()`. */
+  onUnavailable: ((reason: string) => void) | undefined;
 
   private constructor(private readonly driver: Driver, readonly store: string, private readonly database: string | undefined) {
     this.label = storeLabel(store);
@@ -132,7 +137,77 @@ export class Neo4jDurability {
   }
 
   get error(): string | undefined {
-    return this.failure;
+    return this.broken ?? this.failure;
+  }
+
+  /** True while Neo4j cannot be used: nothing is written, read or answered from the store. */
+  get unavailable(): boolean {
+    return this.broken !== undefined;
+  }
+
+  private unavailableError(): Error {
+    return Object.assign(new Error(`The database (Neo4j) is not available: ${this.broken ?? this.failure ?? "no answer"}`), { code: "DATABASE_UNAVAILABLE" });
+  }
+
+  /** Marks Neo4j unavailable: drops the units not yet written and refuses everyone waiting for them. */
+  private markUnavailable(reason: string): void {
+    if (this.broken !== undefined || this.closed) return;
+    this.broken = reason;
+    console.warn(`[record-store] Neo4j is not available for ${this.store}: ${reason}`);
+    this.handed -= this.queue.length;
+    this.queue.length = 0;
+    const waiting = this.waiters;
+    this.waiters = [];
+    for (const waiter of waiting) waiter.reject(this.unavailableError());
+    this.onUnavailable?.(reason);
+  }
+
+  /** Starts the health probe: one trivial query per second; a failure marks Neo4j unavailable. */
+  startProbe(intervalMs = 1000): void {
+    if (this.probe !== undefined) return;
+    this.probe = setInterval(() => {
+      if (this.broken !== undefined || this.closed) return;
+      void this.ping(Math.max(500, intervalMs * 2)).catch((error) => this.markUnavailable((error as Error).message));
+    }, intervalMs);
+    this.probe.unref?.();
+  }
+
+  private async ping(timeoutMs: number): Promise<void> {
+    const session = this.session(false);
+    try {
+      await session.run("RETURN 1", {}, { timeout: timeoutMs });
+    } finally {
+      await session.close();
+    }
+  }
+
+  /** Resolves when Neo4j answers now; rejects with code DATABASE_UNAVAILABLE otherwise. For reads that must not serve state while Neo4j is down. */
+  async reachable(timeoutMs = 3000): Promise<void> {
+    if (this.broken !== undefined) throw this.unavailableError();
+    try {
+      await Promise.race([
+        this.ping(timeoutMs),
+        new Promise((_, reject) => { const t = setTimeout(() => reject(new Error("no answer")), timeoutMs); t.unref?.(); }),
+      ]);
+    } catch (error) {
+      this.markUnavailable((error as Error).message);
+      throw this.unavailableError();
+    }
+  }
+
+  /** Reads the store again once Neo4j answers; null while it does not. Clears the unavailable mark. */
+  async reload(): Promise<LoadedStore | null> {
+    try {
+      await this.ping(3000);
+      const loaded = await this.load();
+      if (loaded === null) throw new Error(`The Neo4j store ${this.store} is gone.`);
+      this.broken = undefined;
+      this.failure = undefined;
+      this.written = this.handed;
+      return loaded;
+    } catch {
+      return null;
+    }
   }
 
   private session(write: boolean) {
@@ -241,6 +316,7 @@ export class Neo4jDurability {
 
   enqueue(unit: DurableUnit): void {
     if (this.closed) throw new Error("The record store's database connection is closed.");
+    if (this.broken !== undefined) throw this.unavailableError();
     this.queue.push(unit);
     this.handed += 1;
     if (this.retryTimer === undefined) void this.pump();
@@ -248,25 +324,25 @@ export class Neo4jDurability {
 
   /** Resolves when every unit handed in so far is in Neo4j. Rejects after `timeoutMs` while Neo4j cannot be written. */
   durable(timeoutMs = 15000): Promise<void> {
+    if (this.broken !== undefined) return Promise.reject(this.unavailableError());
     const target = this.handed;
     if (this.written >= target) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
-      const waiter = { target, resolve };
+      const waiter = { target, resolve, reject };
       this.waiters.push(waiter);
       const timer = setTimeout(() => {
-        this.waiters = this.waiters.filter((item) => item !== waiter);
-        reject(Object.assign(new Error(`The database (Neo4j) could not be written: ${this.failure ?? "no answer"}`), { code: "DATABASE_UNAVAILABLE" }));
+        // Not written in time: what was not written is dropped, so a refused commit never appears later.
+        this.markUnavailable(this.failure ?? "no answer from Neo4j");
       }, timeoutMs);
       timer.unref?.();
       waiter.resolve = () => {
         clearTimeout(timer);
         resolve();
       };
-      if (this.retryTimer !== undefined) {
-        clearTimeout(this.retryTimer);
-        this.retryTimer = undefined;
-        void this.pump();
-      }
+      waiter.reject = (error: Error) => {
+        clearTimeout(timer);
+        reject(error);
+      };
     });
   }
 
@@ -285,8 +361,7 @@ export class Neo4jDurability {
         });
       } catch (error) {
         this.failure = error instanceof Error ? error.message : String(error);
-        console.warn(`[record-store] Neo4j write failed for ${this.store}; retrying: ${this.failure}`);
-        this.scheduleRetry();
+        this.markUnavailable(`a write failed: ${this.failure}`);
         return;
       } finally {
         await session.close();
@@ -385,10 +460,12 @@ export class Neo4jDurability {
   }
 
   async close(): Promise<void> {
+    if (this.probe !== undefined) clearInterval(this.probe);
+    this.probe = undefined;
     if (this.retryTimer !== undefined) clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
     if (this.running) await this.running;
-    if (this.queue.length > 0) {
+    if (this.queue.length > 0 && this.broken === undefined) {
       try {
         await this.durable(5000);
       } catch {

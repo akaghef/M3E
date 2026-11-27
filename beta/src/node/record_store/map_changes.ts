@@ -12,7 +12,7 @@ export interface MapRecordChange {
 
 /** Bounded per-map change chains. Neither append nor lookup walks unrelated records/commits. */
 export class MapRecordChanges {
-  private readonly generation = randomUUID();
+  private generation = randomUUID();
   private readonly maps = new Map<string, {
     revision: string; seq: number; savedAt: string;
     events: Map<string, MapRecordChange>; keys: number;
@@ -72,6 +72,13 @@ export class MapRecordChanges {
       revision = event.revision;
     }
     return { ...cursor, recordKeys: [...keys] };
+  }
+
+  /** Forgets every chain: after the store is read again from Neo4j, every client reads its map in full. */
+  reset(): void {
+    this.generation = randomUUID();
+    this.maps.clear();
+    this.tails.clear();
   }
 
   subscribe(listener: (event: MapRecordChange) => void): () => void {
