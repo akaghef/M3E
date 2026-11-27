@@ -14,6 +14,7 @@
 // Launch interface for the synthetic run (plumbing, not a criterion; see participantEnv()):
 //   every participant: M3E_DATA_DIR=<temp>/<name>, M3E_WORKSPACE_ID=ws_judge, M3E_FORBID_LIVE_DATA=1,
 //   M3E_NEO4J_BOLT / M3E_NEO4J_USER / M3E_NEO4J_PASSWORD / M3E_NEO4J_DATABASE of its own disposable Neo4j;
+//   the remote additionally M3E_RECORD_STORE=ws_judge (its store, absent in the empty Neo4j at first start);
 //   a local additionally M3E_SYNC_REMOTE=<remote base>. No M3E_STORE_DIR is given.
 //   Disposable Neo4j: `neo4j` / `neo4j-admin` from PATH (override with M3E_JUDGE_NEO4J_BIN / M3E_JUDGE_NEO4J_ADMIN).
 import { spawn, spawnSync } from "node:child_process";
@@ -269,7 +270,7 @@ function participantEnv(root, name, neo, remoteBase) {
     M3E_NEO4J_BOLT: neo.bolt, M3E_NEO4J_USER: "neo4j", M3E_NEO4J_PASSWORD: NEO4J_PASSWORD, M3E_NEO4J_DATABASE: "neo4j",
   };
   if (remoteBase) env.M3E_SYNC_REMOTE = remoteBase;
-  else Object.assign(env, controlEnv);
+  else Object.assign(env, { M3E_RECORD_STORE: WS }, controlEnv); // the remote's store is named by its workspaceId
   return env;
 }
 async function startServer(BETA, name, env, port, { waitReady = true } = {}) {
