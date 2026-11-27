@@ -13,6 +13,13 @@ if [[ -z "${M3E_HOME:-}" ]]; then
     export M3E_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/M3E"
   fi
 fi
+# The record store's Neo4j on this device (loopback only). The password stays in a 0600 file;
+# only its path is passed, so no secret appears in the environment or a process listing.
+export M3E_NEO4J_BOLT="${M3E_NEO4J_BOLT:-bolt://127.0.0.1:7687}"
+export M3E_NEO4J_USER="${M3E_NEO4J_USER:-neo4j}"
+if [[ -z "${M3E_NEO4J_PASSWORD_FILE:-}" && -z "${M3E_NEO4J_PASSWORD:-}" && -f "$M3E_HOME/secrets/neo4j-password" ]]; then
+  export M3E_NEO4J_PASSWORD_FILE="$M3E_HOME/secrets/neo4j-password"
+fi
 export M3E_SEED_DB_PATH="${M3E_SEED_DB_PATH:-$M3E_HOME/seeds/core-seed.sqlite}"
 export M3E_CHANNEL="${M3E_CHANNEL:-beta}"
 export M3E_WORKSPACE_ID="${M3E_WORKSPACE_ID:-ws_REMH1Z5TFA7S93R3HA0XK58JNR}"

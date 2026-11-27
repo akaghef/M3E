@@ -2,6 +2,48 @@
 
 Mac mini が Beta workspace の record store を保持する。ブラウザーと MCP は Tailscale Serve の HTTPS URL に接続する。各端末のデータ用 clone はこの段階では作らない。MacBook のバックアップは復旧用の JSONL ファイルとして保管する。
 
+## 各端末の Neo4j
+
+record store の Neo4j は、端末ごとに利用者権限だけで `scripts/neo4j/install.sh`（macOS）と `scripts/neo4j/install.ps1`（Windows）が導入する。何度実行してもよい。導入済みの状態で実行すると何も変えず、最後に `no changes` と出す。版は `scripts/neo4j/versions.env` の 1 か所で固定する（Neo4j と Eclipse Temurin の JRE）。CI の Neo4j service image（`neo4j:<版>-community`）がこの版と違えば installer-lint が失敗する。
+
+```sh
+scripts/neo4j/install.sh                    # MacBook: main と test
+scripts/neo4j/install.sh --instances main   # Mac mini: main だけ（mini からは push しないので test は置かない）
+```
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\neo4j\install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\beta\install-logon-start.ps1
+```
+
+導入先は M3E home（macOS は `~/Library/Application Support/M3E`、Windows は `%LOCALAPPDATA%\M3E`、`M3E_HOME` か `--home`／`-M3eHome` で変えられる）の `neo4j` の下。
+
+| 置き場所 | 中身 |
+|---|---|
+| `neo4j/downloads/` | checksum を照合した Neo4j の tarball（Windows は zip）と Temurin JRE |
+| `neo4j/dist/` | 展開した Neo4j と JRE。編集しない |
+| `neo4j/instances/main/` | 実データ。bolt `127.0.0.1:7687`、認証あり、HTTP `127.0.0.1:7474` |
+| `neo4j/instances/test/` | 試験用の使い捨てデータ。bolt `127.0.0.1:7688`、認証なし、HTTP なし |
+| `secrets/neo4j-password` | main の `neo4j` 利用者のパスワード。初回に生成し、以後は置き換えない。macOS は 0600、Windows は本人だけの ACL |
+
+各 instance の `conf/neo4j.conf` は script が生成し、heap を初期 1 GB・上限 2 GB にする（1 つの Command は最大 32 MB の文字列を運び、transaction はそれを何重かに持つ。512 MB では transaction の上限を超えた。`--heap-initial`・`--heap-max`／`-HeapInitial`・`-HeapMax` で変えられる）。また loopback だけで待ち受け、利用データの送信（`dbms.usage_report`）と LAN への discovery の broadcast（`server.fleet_discovery`）を止める。手で直さず、script を直して流し直す。conf が変われば script がその instance を起動し直す。main の初回は、既定の `neo4j`／`neo4j` で接続してパスワードを file の値に変える。パスワードはコマンド引数にも出力にも出さない（macOS は標準入力、Windows は本人だけが読める一時 file を `cypher-shell -f` で渡す）。
+
+常駐のさせ方:
+
+- macOS: LaunchAgent `com.m3e.neo4j` と `com.m3e.neo4j-test`（RunAtLoad・KeepAlive・ThrottleInterval 10 秒）。plist が変わったときは、古い job が消えるのを待ってから入れ直す。
+- Windows: instance ごとの `start.cmd` が見張り役になる。待ち受けがあれば 30 秒ごとに見直し、無ければ Neo4j を起動し、終了すれば 10 秒後に起動し直す。ログオン時は Startup の `M3E-neo4j.vbs`・`M3E-neo4j-test.vbs` が窓なしで起動する。導入時に見張り役が動いていなければ、ssh の session が終わっても残る process として起動する。
+- Windows の通常 Beta: `scripts\beta\install-logon-start.ps1` が `%LOCALAPPDATA%\M3E\autostart\beta-logon.cmd` と Startup の `M3E-beta.vbs` を置く。beta-logon.cmd は 7687 番が待ち受けるまで最大 3 分待ち、その checkout の `scripts\beta\launch.bat` を実行して出力を `%TEMP%\m3e-beta-launch.log` に書く。Startup はログオンで動くので、自動ログオンの無い Windows では再起動後に akaghef がログオンするまで何も起動しない。
+
+Beta サーバーには `M3E_NEO4J_BOLT`・`M3E_NEO4J_USER`・`M3E_NEO4J_PASSWORD_FILE` を渡し、パスワードの値そのものは環境変数にも launcher にも書かない。`scripts/beta/launch.sh`・`launch.bat` は、パスワード file があればその path を渡す。単体試験と preflight は実データの 7687 番ではなく `M3E_TEST_NEO4J_BOLT=bolt://127.0.0.1:7688` を使う。
+
+確認は次のとおり（`JAVA_HOME` は導入した JRE）。
+
+```sh
+h="$HOME/Library/Application Support/M3E/neo4j"
+NEO4J_PASSWORD="$(cat "$h/../secrets/neo4j-password")" JAVA_HOME="$h/dist/temurin-jre-21.0.13.1_2/Contents/Home" \
+  "$h/dist/neo4j-community-2026.10.2/bin/cypher-shell" -a bolt://127.0.0.1:7687 -u neo4j 'RETURN 1'
+```
+
 ## Mac mini の初回導入
 
 `swingby` でログインし、統合・検証済みの `dev-beta` がある `/Users/swingby/dev/M3E` を使う。Node.js 22 以降と npm を用意する。対象 workspace は移行済みで、`swingby` が読み書きできる `store/snapshot.jsonl` があることを確認する。同じ store を開く別のプロセスが停止している状態で実行する。
@@ -32,6 +74,7 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
   plutil -replace EnvironmentVariables.M3E_DATA_DIR -string "$data_dir" "$job"
   plutil -replace EnvironmentVariables.M3E_STORE_DIR -string "$data_dir/store" "$job"
   plutil -replace EnvironmentVariables.M3E_TAILSCALE_USERS -string "$users" "$job"
+  plutil -replace EnvironmentVariables.M3E_NEO4J_PASSWORD_FILE -string "$HOME/Library/Application Support/M3E/secrets/neo4j-password" "$job"
   plutil -replace StandardOutPath -string "$log_dir/remote-beta.log" "$job"
   plutil -replace StandardErrorPath -string "$log_dir/remote-beta.err.log" "$job"
   plutil -lint "$job"

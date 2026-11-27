@@ -4,7 +4,7 @@
 
 | 対象 | 意味 | ソース・更新 | データ |
 |---|---|---|---|
-| Beta | 本人が日常利用する検証済み最新版、4173 | dev-beta に統合・pushした beta/。担当 AI が稼働確認まで届ける | 既存 personal workspace を保持 |
+| Beta | 本人が日常利用する検証済み最新版、4173 | dev-beta に統合・pushした beta/。担当 AI が稼働確認まで届ける | 既存 personal workspace を保持。当面は試験と本人のデータを分けない（下記「当面のデータ運用」） |
 | Preview | 未統合変更の試験 | 独立作業ツリー、独立ポート | 一時 workspace のみ |
 | Final | 明示選定して固定した安定版、38482 | main 到達・Version Registry 記載の公開済みタグ | 起動設定に指定された既存 workspace を保持 |
 
@@ -44,8 +44,19 @@ Final の復旧は保持済みリリースの launch を同じ設定で実行す
 
 端末ごとにチャネル、source commit / release tag、起動先、workspace、配信 hash、確認した操作を記録する。Mac の検証を Windows や別端末の完了として報告しない。
 
+## 当面のデータ運用
+
+2026-11-24 akaghef 決定。更新が多い間は、試験用のデータと本人のデータを分けると確認の手間が二重になるため、分けずに運用する。
+
+- 通常 Beta の workspace は、akaghef 自身のデータと、実機での確認の書き込みを同じ所に置く。AI agent は実機の確認（多端末の同期など）を、別の試験用 workspace を作らずに通常 Beta の workspace で行ってよい。
+- 自動の試験（unit・acceptance）は、これまでどおり `M3E_FORBID_LIVE_DATA=1` と一時ディレクトリで動かし、通常 Beta の workspace に書かない。
+- データを壊しうる操作（移行、削除、store の作り直し）は、これまでどおり backup を取り、検証の結果に応じてだけ行う。
+- Final の workspace は試験に使わない。
+
+方針が固まったら Beta と Final で分ける。Beta は試験用のデータ、Final は akaghef の実際のデータにする。切り替えの時期と移し方は akaghef が決める。
+
 ## 自動検査
 
-`node --test scripts/ops/channel-runtime.test.mjs` が拒否条件、固定版選定、失敗時の保持を検査する。OS 固有ラッパーの実機確認は別に必要。規則変更だけで Final を昇格したり、既存個人データを試験に使ったりしない。
+`node --test scripts/ops/channel-runtime.test.mjs` が拒否条件、固定版選定、失敗時の保持を検査する。OS 固有ラッパーの実機確認は別に必要。規則変更だけで Final を昇格したり、Final の個人データを試験に使ったりしない。
 
 起動前 build と更新の共通処理は Git common directory の `m3e-channel.lock` で排他する。担当 AI が統合から再起動確認まで行う場合も同じローカル排他を用いる。処理途中で強制終了された lock は自動削除しない。owner.json のホストと PID の終了を確認してから復旧する。

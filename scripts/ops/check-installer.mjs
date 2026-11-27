@@ -31,6 +31,15 @@ for (const file of ['install/setup.bat','scripts/final/migrate-from-beta.bat']) 
 const batVersion = read('install/setup.bat').match(/NODE_VERSION=([0-9]+\.[0-9]+\.[0-9]+)/)?.[1];
 const shVersion = fs.existsSync('install/setup.sh') ? read('install/setup.sh').match(/NODE_VERSION="([0-9]+\.[0-9]+\.[0-9]+)"/)?.[1] : undefined;
 check(Boolean(batVersion) && (!shVersion || batVersion === shVersion), 'Installer Node version missing or inconsistent');
+// One pinned Neo4j version (scripts/neo4j/versions.env) for the device installers and every CI Neo4j service image.
+const neo4jVersion = read('scripts/neo4j/versions.env').match(/^NEO4J_VERSION=(\S+)$/m)?.[1];
+check(Boolean(neo4jVersion), 'scripts/neo4j/versions.env: NEO4J_VERSION missing');
+const workflows = execFileSync('git', ['ls-files', '-z', '.github/workflows'], {encoding:'utf8'}).split('\0').filter(f => /\.ya?ml$/.test(f) && fs.existsSync(f));
+for (const file of workflows) {
+  for (const [, image] of read(file).matchAll(/image:\s*["']?(neo4j:[^\s"']+)/g)) {
+    check(image === `neo4j:${neo4jVersion}-community`, `${file}: Neo4j image ${image} differs from scripts/neo4j/versions.env (neo4j:${neo4jVersion}-community)`);
+  }
+}
 for (const failure of failures) console.error('FAIL installer-lint: '+failure);
-if (!failures.length) console.log('PASS installer-lint: line endings, pause, PATH, references, directory stack, error exits, Node version');
+if (!failures.length) console.log('PASS installer-lint: line endings, pause, PATH, references, directory stack, error exits, Node version, Neo4j version');
 process.exitCode = failures.length ? 1 : 0;
