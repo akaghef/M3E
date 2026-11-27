@@ -1,12 +1,8 @@
-// Record store: ids shared between maps, saved-at time and row columns, the map list, backups.
-// Synthetic data only.
+// Record store: ids shared between maps, saved-at time and row columns, the map list.
+// Synthetic data only. The store is Neo4j.
 
-import fs from "fs";
-import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createBackup, pruneOldBackups } from "../../src/node/backup";
-import { JOURNAL_FILE, RecordWorkspaceStore, SNAPSHOT_FILE, COMMIT_INDEX_FILE, type CommitResult } from "../../src/node/record_store";
-import { activeRecordStore, closeActiveRecordStore } from "../../src/node/record_store/active";
+import { RecordWorkspaceStore, type CommitResult, type OpenOptions } from "../../src/node/record_store";
 import { aliasId } from "../../src/node/record_store/id_alias";
 import { storeDuplicateMap, storeListMaps } from "../../src/node/record_store/legacy_api";
 import { acceptEdgeOrders, diffState } from "../../src/shared/map_changes";
@@ -15,19 +11,12 @@ import { checkInvariants } from "../../src/shared/record_model/invariants";
 import { serializeSnapshot } from "../../src/shared/record_model/jsonl";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
 import type { AppState } from "../../src/shared/types";
-import { ISSUER, WS, withOrderKeys, bigState, clone, command, node, richState, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
+import { ISSUER, WS, withOrderKeys, bigState, clone, command, node, richState, snapshotOf, type Loose } from "./record_store_helpers";
+import { createTestStore, dropTestStores, type TestStore } from "./neo4j_test_store";
 
-const open: RecordWorkspaceStore[] = [];
+const handles: TestStore[] = [];
 
-afterEach(async () => {
-  for (const store of open.splice(0)) await store.close();
-});
-
-function newDir(name: string, rows: Array<{ id: string; state: Loose } & Loose> = []): string {
-  const dir = path.join(tempDir(name), "store");
-  RecordWorkspaceStore.create(dir, snapshotOf(rows));
-  return dir;
-}
+afterEach(dropTestStores);
 
 let clock = 0;
 function tick(): string {
@@ -35,10 +24,16 @@ function tick(): string {
   return new Date(Date.UTC(2026, 10, 17, 1, 0, clock)).toISOString();
 }
 
-function openStore(dir: string, options: Parameters<typeof RecordWorkspaceStore.open>[1] = {}): RecordWorkspaceStore {
-  const store = RecordWorkspaceStore.open(dir, { now: tick, ...options });
-  open.push(store);
-  return store;
+async function openStore(rows: Array<{ id: string; state: Loose } & Loose> = [], options: OpenOptions = {}): Promise<RecordWorkspaceStore> {
+  const handle = await createTestStore(snapshotOf(rows), { now: tick, ...options });
+  handles.push(handle);
+  return handle.store;
+}
+
+function reopenOf(store: RecordWorkspaceStore): Promise<RecordWorkspaceStore> {
+  const handle = handles.find((item) => item.store === store);
+  if (!handle) throw new Error("no test store for reopen");
+  return handle.reopen();
 }
 
 function stateOf(store: RecordWorkspaceStore, mapId: string): Loose {
@@ -96,8 +91,8 @@ function feelState(): Loose {
 }
 
 describe("record store: a map whose ids another map already uses", () => {
-  it("creates the second map, renumbers only the colliding ids as the migration does, and answers with the ids the client sent", () => {
-    const store = openStore(newDir("alias-create"));
+  it("creates the second map, renumbers only the colliding ids as the migration does, and answers with the ids the client sent", async () => {
+    const store = await openStore();
     save(store, "first", feelState());
     const second = feelState();
     nodesOf(second).only_here = node("only_here", "root", [], { text: "Only here" });
@@ -124,20 +119,19 @@ describe("record store: a map whose ids another map already uses", () => {
     expect(checkInvariants(store.records())).toEqual([]);
   });
 
-  it("is deterministic: the same saves give the same records in another store", () => {
-    const build = (name: string): string => {
-      const store = RecordWorkspaceStore.open(newDir(name), { now: () => "2026-11-17T02:00:00.000Z" });
-      open.push(store);
+  it("is deterministic: the same saves give the same records in another store", async () => {
+    const build = async (): Promise<string> => {
+      const store = await openStore([], { now: () => "2026-11-17T02:00:00.000Z" });
       save(store, "first", richState());
       save(store, "second", richState());
       // The history id of a store is random; everything else must be the same.
       return text(store.records()).replace(/"commandId":"save:[^"]*"/g, "").replace(/"historyId":"[^"]*"/, "");
     };
-    expect(build("alias-det-1")).toBe(build("alias-det-2"));
+    expect(await build()).toBe(await build());
   });
 
-  it("remaps every reference inside the state: tree, alias target, GraphLink ends, scopes, surfaces, node views, linear text, annotations", () => {
-    const store = openStore(newDir("alias-rich"));
+  it("remaps every reference inside the state: tree, alias target, GraphLink ends, scopes, surfaces, node views, linear text, annotations", async () => {
+    const store = await openStore();
     save(store, "first", richState());
     const sent = richState();
     save(store, "second", sent);
@@ -163,8 +157,8 @@ describe("record store: a map whose ids another map already uses", () => {
     expect(checkInvariants(store.records())).toEqual([]);
   });
 
-  it("keeps taking whole-map saves and Commands that use the original ids, and reports conflicts in them", () => {
-    const store = openStore(newDir("alias-later"));
+  it("keeps taking whole-map saves and Commands that use the original ids, and reports conflicts in them", async () => {
+    const store = await openStore();
     save(store, "first", richState());
     save(store, "second", richState());
     const seqAfterCreate = store.seq();
@@ -219,8 +213,8 @@ describe("record store: a map whose ids another map already uses", () => {
     expect(!refused.ok && refused.current?.state).toEqual(now);
   });
 
-  it("gives a stored id to an id a later Command or save brings in, when another map holds it", () => {
-    const store = openStore(newDir("alias-command"));
+  it("gives a stored id to an id a later Command or save brings in, when another map holds it", async () => {
+    const store = await openStore();
     save(store, "first", feelState());
     const other = { rootId: "o_root", nodes: { o_root: node("o_root", null, [], { text: "Other" }) } };
     save(store, "other", other);
@@ -247,8 +241,8 @@ describe("record store: a map whose ids another map already uses", () => {
     expect(checkInvariants(store.records())).toEqual([]);
   });
 
-  it("answers a repeated Command as the first time and gives the committed Command back with the ids it was sent with", () => {
-    const store = openStore(newDir("alias-replay"));
+  it("answers a repeated Command as the first time and gives the committed Command back with the ids it was sent with", async () => {
+    const store = await openStore();
     save(store, "first", feelState());
     save(store, "second", feelState());
     const before = stateOf(store, "second");
@@ -257,32 +251,28 @@ describe("record store: a map whose ids another map already uses", () => {
     const sent = command(diffState(before, after), "edit-text", "alias-replay-1");
     const first = ok(store.commitMapCommand("second", sent, ISSUER));
     expect(store.commitMapCommand("second", sent, ISSUER)).toEqual({ ...first, replayed: true });
-    expect(store.committedCommand("second", "alias-replay-1")?.changes).toEqual(sent.changes);
+    expect((await store.readCommittedCommand("second", "alias-replay-1"))?.changes).toEqual(sent.changes);
     const other = clone(after);
     nodesOf(other).B.text = "something else";
     expect(store.commitMapCommand("second", { ...sent, changes: diffState(before, other) }, ISSUER)).toMatchObject({ ok: false, code: "SAME_ID_DIFFERENT_CONTENT" });
   });
 
-  it("keeps the ids after the store is opened again, after a compaction, and after the map id changes", async () => {
-    const dir = newDir("alias-reopen");
-    const store = openStore(dir);
+  it("keeps the ids after the store is opened again and after the map id changes", async () => {
+    const store = await openStore();
     save(store, "first", richState());
     save(store, "second", richState());
     edit(store, "second", (state) => { nodesOf(state).leaf.text = "before reopen"; });
     const expected = stateOf(store, "second");
-    await store.close();
 
-    const again = openStore(dir);
+    const again = await reopenOf(store);
     expect(stateOf(again, "second")).toEqual(expected);
     edit(again, "second", (state) => { nodesOf(state).leaf.text = "after reopen"; });
-    again.compact();
     again.renameMapId("second", "third", ISSUER);
     const renamed = stateOf(again, "third");
-    await again.close();
 
-    const third = openStore(dir);
+    const third = await reopenOf(again);
     expect(stateOf(third, "third")).toEqual(renamed);
-    edit(third, "third", (state) => { nodesOf(state).inner.text = "after compaction and rename"; });
+    edit(third, "third", (state) => { nodesOf(state).inner.text = "after reopen and rename"; });
     expect(stateOf(third, "first")).toEqual(richState());
     // A new map under the old map id: its ids would get the stored ids the renamed map holds.
     save(third, "second", richState());
@@ -292,8 +282,8 @@ describe("record store: a map whose ids another map already uses", () => {
     expect(third.records().filter((record) => record.kind === "idMap" && record.mapId === "third")).toEqual([]);
   });
 
-  it("a copy of a map has the ids of its source for the client, and ids of its own in the store", () => {
-    const store = openStore(newDir("alias-duplicate"));
+  it("a copy of a map has the ids of its source for the client, and ids of its own in the store", async () => {
+    const store = await openStore();
     save(store, "source", richState());
     store.setMapColumns("source", { tags: '["t"]', pinned: 1 }, ISSUER);
     storeDuplicateMap(store, "source", "copy");
@@ -309,8 +299,7 @@ describe("record store: a map whose ids another map already uses", () => {
   });
 
   it("leaves a map without colliding ids exactly as before: no idMap record, the changes in the journal as they were sent", async () => {
-    const dir = newDir("alias-none");
-    const store = openStore(dir);
+    const store = await openStore();
     save(store, "first", richState());
     save(store, "second", richState("s_"));
     expect(store.records().filter((record) => record.kind === "idMap")).toEqual([]);
@@ -319,9 +308,9 @@ describe("record store: a map whose ids another map already uses", () => {
 });
 
 describe("record store: ids the migration renumbered", () => {
-  it("are not treated as aliases: the client keeps seeing the stored ids, and the migration's idMap records stay", () => {
+  it("are not treated as aliases: the client keeps seeing the stored ids, and the migration's idMap records stay", async () => {
     // Two rows with the same ids: the migration renumbers the ids of the second map.
-    const store = openStore(newDir("alias-migrated", [{ id: "m1", state: feelState() }, { id: "m2", state: feelState() }]));
+    const store = await openStore([{ id: "m1", state: feelState() }, { id: "m2", state: feelState() }]);
     const migrated = store.records().filter((record) => record.kind === "idMap");
     expect(migrated.length).toBe(6);
     expect(migrated.every((record) => record.kind === "idMap" && record.alias === undefined && record.mapId === "m2")).toBe(true);
@@ -352,8 +341,7 @@ describe("record store: ids the migration renumbered", () => {
 
 describe("record store: row columns and the saved-at time", () => {
   it("a column change gets a commit of its own but leaves the saved-at time and the revision of the map", async () => {
-    const dir = newDir("columns");
-    const store = openStore(dir);
+    const store = await openStore();
     const created = save(store, "m", feelState());
     const savedAt = store.getMapRow("m").savedAt;
     const revision = store.revisionOf("m");
@@ -365,7 +353,7 @@ describe("record store: row columns and the saved-at time", () => {
     store.setMapColumns("m", { source: '{"kind":"obsidian","path":"/x"}' }, ISSUER);
     // Four commits, four journal lines.
     expect(store.seq()).toBe(created.seq + 4);
-    const lines = fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8").trim().split("\n").map((line) => JSON.parse(line) as Loose);
+    const lines = (await store.readJournalAfter(0)) ?? [];
     expect(lines.slice(-4).map((line) => [line.seq, line.intent, line.mapOp])).toEqual([2, 3, 4, 5].map((seq) => [seq, "set-map-columns", "columns"]));
     expect(store.getMapRow("m")).toMatchObject({ tags: '["a"]', archived: 1, pinned: 1 });
     // The content did not change: same saved-at time, same revision.
@@ -381,38 +369,20 @@ describe("record store: row columns and the saved-at time", () => {
     expect(store.revisionOf("m")).not.toBe(revision);
     const contentSavedAt = committed.savedAt;
     store.setMapColumns("m", { pinned: 0 }, ISSUER);
-    await store.close();
 
-    // The same after the journal is read again, and after a compaction.
-    const again = openStore(dir);
+    // The same after the journal is read again.
+    const again = await reopenOf(store);
     expect(again.getMapRow("m").savedAt).toBe(contentSavedAt);
     again.setMapColumns("m", { archived: 0 }, ISSUER);
-    again.compact();
-    await again.close();
-    const third = openStore(dir);
+    const third = await reopenOf(again);
     expect(third.getMapRow("m").savedAt).toBe(contentSavedAt);
     expect(third.getMapRow("m")).toMatchObject({ archived: 0, pinned: 0 });
-  });
-
-  it("reads a journal written before column commits were marked the same way", async () => {
-    const dir = newDir("columns-old");
-    const store = openStore(dir);
-    save(store, "m", feelState());
-    const savedAt = store.getMapRow("m").savedAt;
-    store.setMapColumns("m", { pinned: 1 }, ISSUER);
-    await store.close();
-    const journal = path.join(dir, JOURNAL_FILE);
-    const old = fs.readFileSync(journal, "utf8").replace(/"mapOp":"columns",/g, "");
-    expect(old).not.toContain("mapOp");
-    fs.writeFileSync(journal, old);
-    const again = openStore(dir);
-    expect(again.getMapRow("m")).toMatchObject({ pinned: 1, savedAt });
   });
 });
 
 describe("record store: the map list", () => {
-  it("lists label, node count and character count without copying a map state", () => {
-    const store = openStore(newDir("list"));
+  it("lists label, node count and character count without copying a map state", async () => {
+    const store = await openStore();
     const rich = richState();
     save(store, "rich", rich);
     save(store, "feel", feelState());
@@ -455,8 +425,8 @@ describe("record store: the map list", () => {
     expect(feel?.nodeCount).toBe(7);
   });
 
-  it("does not grow with the size of the maps (20,000 nodes and 40 small maps)", () => {
-    const store = openStore(newDir("list-large"));
+  it("does not grow with the size of the maps (20,000 nodes and 40 small maps)", { timeout: 180000 }, async () => {
+    const store = await openStore();
     save(store, "large", bigState(200, 99, "L"));
     for (let i = 0; i < 40; i += 1) save(store, `small-${i}`, bigState(2, 3, `s${i}_`));
     const time = (run: () => void): number => {
@@ -471,71 +441,5 @@ describe("record store: the map list", () => {
     console.log(`map list, 1 map of 20,001 nodes + 40 small maps: ${copying.toFixed(2)} ms with a copy of every state, ${counting.toFixed(3)} ms now`);
     expect(storeListMaps(store, true).find((item) => item.id === "large")?.nodeCount).toBe(20001);
     expect(counting).toBeLessThan(copying / 10);
-  });
-});
-
-describe("record store: backup", () => {
-  it("copies snapshot, journal and index as one consistent pair that opens to the same records", async () => {
-    const dir = newDir("backup");
-    const store = openStore(dir);
-    save(store, "first", richState());
-    save(store, "second", richState());
-    store.compact();
-    edit(store, "second", (state) => { nodesOf(state).leaf.text = "after the compaction"; });
-    store.setMapColumns("first", { pinned: 1 }, ISSUER);
-
-    const target = path.join(tempDir("backup-target"), "copy");
-    expect(store.backupTo(target).sort()).toEqual([COMMIT_INDEX_FILE, JOURNAL_FILE, SNAPSHOT_FILE].sort());
-    // Nothing was compacted: the store's own files are as they were, and the copy is byte for byte the same.
-    for (const name of [COMMIT_INDEX_FILE, JOURNAL_FILE, SNAPSHOT_FILE]) {
-      expect(fs.readFileSync(path.join(target, name), "utf8")).toBe(fs.readFileSync(path.join(dir, name), "utf8"));
-    }
-    expect(fs.statSync(path.join(target, JOURNAL_FILE)).size).toBeGreaterThan(0);
-    const atBackup = text(store.records());
-    const seqAtBackup = store.seq();
-
-    // The store goes on; the copy does not move.
-    edit(store, "second", (state) => { nodesOf(state).leaf.text = "after the backup"; });
-    const copy = openStore(target);
-    expect(copy.seq()).toBe(seqAtBackup);
-    expect(text(copy.records())).toBe(atBackup);
-    expect(stateOf(copy, "second")).toEqual({ ...stateOf(store, "second"), nodes: { ...nodesOf(stateOf(store, "second")), leaf: { ...nodesOf(stateOf(store, "second")).leaf, text: "after the compaction" } } });
-    expect(copy.getMapRow("first").savedAt).toBe(store.getMapRow("first").savedAt);
-    // The copy is a store of its own.
-    edit(copy, "second", (state) => { nodesOf(state).leaf.text = "in the copy"; });
-
-    expect(() => store.backupTo(target)).toThrow(/not empty/);
-    expect(() => store.backupTo(dir)).toThrow(/store directory itself/);
-  });
-
-  it("createBackup backs up the record store when the server runs on it, and old backups are pruned", async () => {
-    const saved = process.env.M3E_STORE_DIR;
-    const dir = newDir("backup-server");
-    const backups = path.join(tempDir("backup-server-target"), "backups");
-    try {
-      process.env.M3E_STORE_DIR = dir;
-      const store = activeRecordStore()!;
-      save(store, "first", richState());
-      const made: string[] = [];
-      for (let i = 0; i < 3; i += 1) {
-        save(store, "first", { ...stateOf(store, "first"), linearPanelWidth: 400 + i });
-        made.push(await createBackup("unused.sqlite", backups));
-      }
-      expect(made.every((item) => fs.statSync(item).isDirectory() && /M3E_records_\d{8}_\d{6}(_\d+)?$/.test(item))).toBe(true);
-      expect(new Set(made).size).toBe(3);
-      const copy = openStore(made[2]);
-      expect(text(copy.records())).toBe(text(store.records()));
-      expect(fs.existsSync("unused.sqlite")).toBe(false);
-
-      // A directory with a file that is not part of a backup is never removed.
-      fs.writeFileSync(path.join(made[0], "note.txt"), "keep");
-      pruneOldBackups(backups, 1);
-      expect(fs.existsSync(made[0])).toBe(true);
-      expect(fs.existsSync(made[1])).toBe(false);
-      expect(fs.existsSync(made[2])).toBe(true);
-    } finally {
-      await closeActiveRecordStore();
-      if (saved === undefined) delete process.env.M3E_STORE_DIR; else process.env.M3E_STORE_DIR = saved;
-    }
   });
 });

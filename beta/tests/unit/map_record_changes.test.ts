@@ -1,30 +1,25 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { afterEach, expect, test, vi } from "vitest";
-import { RecordWorkspaceStore } from "../../src/node/record_store/store";
+import type { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import { MapRecordChanges } from "../../src/node/record_store/map_changes";
 import { handleMapRecordsHttp, mapRecordChangeFrame } from "../../src/node/record_store/map_changes_http";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import { command, node } from "./record_store_helpers";
+import { createTestStore, dropTestStores, type TestStore } from "./neo4j_test_store";
 
-const dirs: string[] = [], stores: RecordWorkspaceStore[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const store of stores.splice(0)) await store.close();
-  for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  await dropTestStores();
 });
-function fixture(count = 50) {
+
+async function fixture(count = 50): Promise<TestStore> {
   const nodes: any = { root: node("root", null) };
   for (let i = 0; i < count; i++) { nodes[`n${i}`] = node(`n${i}`, "root"); nodes.root.children.push(`n${i}`); }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "map-record-changes-")); dirs.push(dir);
-  RecordWorkspaceStore.create(dir, toSnapshot("workspace", [{ id: "m", state: { rootId: "root", nodes } },
+  const handle = await createTestStore(toSnapshot("workspace", [{ id: "m", state: { rootId: "root", nodes } },
     { id: "other", state: { rootId: "other-root", nodes: { "other-root": node("other-root", null) } } }]));
-  const store = RecordWorkspaceStore.open(dir); stores.push(store);
   // Indexes are built at load, not at notification/read time.
-  store.getMapRow("m");
-  return { store, dir };
+  handle.store.getMapRow("m");
+  return handle;
 }
 function edit(store: RecordWorkspaceStore, before = "text of n1", after = "changed") {
   const cmd = command([{ kind: "node", key: ["n1"], op: "update", before: { text: before }, after: { text: after } }]);
@@ -41,7 +36,7 @@ function httpRead(store: RecordWorkspaceStore | null, route: string, method = "G
 test("50 and 20000 nodes: notification and HTTP delta read visit only changed records", async () => {
   const counts: number[] = [], lookupCounts: number[] = [];
   for (const count of [50, 20000]) {
-    const { store } = fixture(count);
+    const { store } = await fixture(count);
     const baseline = httpRead(store, "/api/maps/m/records");
     expect(baseline.status).toBe(200);
     const events: any[] = [];
@@ -92,10 +87,10 @@ test("50 and 20000 nodes: notification and HTTP delta read visit only changed re
   expect(counts[1]).toBe(counts[0]);
   expect(lookupCounts[1]).toBe(lookupCounts[0]);
   process.stdout.write(`map record delta reads, 50 / 20000 nodes: ${counts.join(" / ")}; total commit/notify/read lookups: ${lookupCounts.join(" / ")}\n`);
-});
+}, 120000);
 
-test("interleaved maps and multiple commits coalesce by key; unchanged reads fetch no records", () => {
-  const { store } = fixture();
+test("interleaved maps and multiple commits coalesce by key; unchanged reads fetch no records", async () => {
+  const { store } = await fixture();
   const cursor = store.mapChanges.cursor("m", store.seq()).revision;
   edit(store);
   expect(store.commitMapCommand("other", command([{ kind: "node", key: ["other-root"], op: "update", before: { text: "text of other-root" }, after: { text: "elsewhere" } }]), "human").ok).toBe(true);
@@ -118,11 +113,10 @@ test("unknown, evicted and reopened cursors require a full read, without record 
   feed.append("m", 3, "later", new Set(["c"]));
   expect(feed.since("m", first, 3)).toBeNull();
   expect(feed.since("m", next, 3)?.recordKeys).toEqual(["c"]);
-  const { store, dir } = fixture();
-  const cursor = store.readMapRecords("m")!.revision;
-  edit(store);
-  await store.close(); stores.splice(stores.indexOf(store), 1);
-  const reopened = RecordWorkspaceStore.open(dir); stores.push(reopened);
+  const handle = await fixture();
+  const cursor = handle.store.readMapRecords("m")!.revision;
+  edit(handle.store);
+  const reopened = await handle.reopen();
   const read = vi.spyOn(reopened, "record");
   expect(httpRead(reopened, `/api/maps/m/records?since=${cursor}`)).toMatchObject({ status: 409, body: { fullReadRequired: true } });
   expect(read).not.toHaveBeenCalled();
@@ -135,7 +129,7 @@ test("unknown, evicted and reopened cursors require a full read, without record 
 });
 
 test("local rebase and deleted records are observable; a rejected commit publishes nothing", async () => {
-  const { store } = fixture();
+  const { store } = await fixture();
   const initial = store.record("node|n1")!;
   edit(store);
   const baseline = store.readMapRecords("m")!;
@@ -155,19 +149,8 @@ test("local rebase and deleted records are observable; a rejected commit publish
   expect(deleted.records.find(item => item.rk === "node|n1")).toEqual({ rk: "node|n1", record: null });
 });
 
-test("failed fsync leaves the cursor and notification unchanged", async () => {
-  const { store } = fixture();
-  const baseline = store.readMapRecords("m")!;
-  const events: any[] = []; store.mapChanges.subscribe(event => events.push(event));
-  const fsync = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => { throw new Error("synthetic fsync failure"); });
-  expect(() => edit(store)).toThrow("synthetic fsync failure"); fsync.mockRestore();
-  await Promise.resolve();
-  expect(events).toEqual([]);
-  expect(store.readMapRecords("m", baseline.revision)).toMatchObject({ revision: baseline.revision, records: [] });
-});
-
-test("map columns and rename change cursors and do not expose another map's moved records", () => {
-  const { store } = fixture();
+test("map columns and rename change cursors and do not expose another map's moved records", async () => {
+  const { store } = await fixture();
   const before = store.readMapRecords("m")!;
   store.setMapColumns("m", { pinned: true }, "human");
   const columns = store.readMapRecords("m", before.revision)!;

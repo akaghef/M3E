@@ -1,28 +1,16 @@
-// Format 2 of the record store: one migration, format 2 commits, invariants 3, 9 and 10.
-// Synthetic data in temporary directories only.
+// Format 2 commits, invariants 3, 9 and 10. The store is Neo4j. Synthetic records only.
 
-import fs from "fs";
-import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  ARCHIVE_DIR,
-  JOURNAL_FILE,
-  RecordWorkspaceStore,
-  SNAPSHOT_FILE,
-  type CommitResult,
-} from "../../src/node/record_store";
+import { RecordWorkspaceStore, type CommitResult } from "../../src/node/record_store";
 import { diffState } from "../../src/shared/map_changes";
 import { checkInvariants } from "../../src/shared/record_model/invariants";
-import { parseSnapshot, sortRecords } from "../../src/shared/record_model/jsonl";
+import { parseSnapshot, serializeSnapshot, sortRecords } from "../../src/shared/record_model/jsonl";
 import { recordRk } from "../../src/shared/record_model/steady";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
-import { ISSUER, WS, clone, command, node, richState, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
+import { ISSUER, WS, clone, command, node, richState, snapshotOf, type Loose } from "./record_store_helpers";
+import { createTestStore, dropTestStores, type TestStore } from "./neo4j_test_store";
 
-const open: RecordWorkspaceStore[] = [];
-
-afterEach(async () => {
-  for (const store of open.splice(0)) await store.close();
-});
+afterEach(dropTestStores);
 
 let clock = 0;
 function tick(): string {
@@ -34,16 +22,8 @@ function seedRows() {
   return [{ id: "map_a", state: richState() }, { id: "map_b", state: richState("b_") }];
 }
 
-function newDir(name: string, records: SnapshotRecord[] = snapshotOf(seedRows())): string {
-  const dir = path.join(tempDir(name), "store");
-  RecordWorkspaceStore.create(dir, records);
-  return dir;
-}
-
-function openStore(dir: string): RecordWorkspaceStore {
-  const store = RecordWorkspaceStore.open(dir, { now: tick, compactAfterLines: 0 });
-  open.push(store);
-  return store;
+async function openStore(records: SnapshotRecord[] = snapshotOf(seedRows())): Promise<TestStore> {
+  return createTestStore(records, { now: tick, compactAfterLines: 0 });
 }
 
 function stateOf(store: RecordWorkspaceStore, mapId = "map_a"): Loose {
@@ -150,81 +130,10 @@ function replay(snapshotText: string, journalText: string): SnapshotRecord[] {
   return sortRecords([{ ...header, format: 3, seq }, ...all.values()]);
 }
 
-describe("format 2 migration", () => {
-  it("migrates a format 1 store once and keeps the records", async () => {
-    const born = snapshotOf(seedRows());
-    const header = born[0];
-    if (header.kind !== "snapshot") throw new Error("missing header");
-    header.format = 1;
-    const dir = newDir("migrate-empty", born);
-    const format1 = fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8");
-    const store = openStore(dir);
-    const archive = path.join(dir, ARCHIVE_DIR);
-    expect(store.records()[0]).toEqual({ kind: "snapshot", format: 3, workspaceId: WS, historyId: expect.any(String), epoch: 1, seq: 0 });
-    expect(store.records().slice(1)).toEqual(sortRecords(born).slice(1));
-    expect(fs.readFileSync(path.join(archive, "snapshot.0.f1.jsonl"), "utf8")).toBe(format1);
-    expect(fs.readdirSync(archive).filter((name) => name.startsWith("journal."))).toEqual([]);
-    expect(fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8")).toBe("");
-    const after = fs.readdirSync(archive).sort();
-    await store.close();
-    const again = openStore(dir);
-    expect(again.records()[0]).toMatchObject({ format: 3, seq: 0 });
-    expect(fs.readdirSync(archive).sort()).toEqual(after);
-  });
-
-  it("archives the format 1 snapshot and journal, then appends format 2 commits", async () => {
-    const dir = newDir("migrate-journal");
-    const store = openStore(dir);
-    commit(store, (state) => { nodesOf(state).leaf.text = "moved"; });
-    const before = store.records();
-    await store.close();
-    const snapshotPath = path.join(dir, SNAPSHOT_FILE);
-    const journalPath = path.join(dir, JOURNAL_FILE);
-    const journal = fs.readFileSync(journalPath, "utf8");
-    const lines = fs.readFileSync(snapshotPath, "utf8").split("\n");
-    const fileHeader = JSON.parse(lines[0]) as { format: number };
-    fileHeader.format = 1;
-    lines[0] = JSON.stringify(fileHeader);
-    const format1 = lines.join("\n");
-    fs.writeFileSync(snapshotPath, format1);
-    const migrated = openStore(dir);
-    expect(migrated.records()).toEqual(before);
-    const archive = path.join(dir, ARCHIVE_DIR);
-    expect(fs.readFileSync(path.join(archive, "snapshot.0.f1.jsonl"), "utf8")).toBe(format1);
-    expect(fs.readFileSync(path.join(archive, "journal.1-1.f1.jsonl"), "utf8")).toBe(journal);
-    expect(fs.readFileSync(journalPath, "utf8")).toBe("");
-    const base = fs.readFileSync(snapshotPath, "utf8");
-    expect(JSON.parse(base.split("\n")[0])).toMatchObject({ kind: "snapshot", format: 3, seq: 1 });
-    const archived = fs.readdirSync(archive).sort();
-    await migrated.close();
-    const reopened = openStore(dir);
-    expect(reopened.records()).toEqual(before);
-    expect(fs.readdirSync(archive).sort()).toEqual(archived);
-    commit(reopened, (state) => { nodesOf(state).leaf.text = "after"; });
-    expect(fs.readFileSync(snapshotPath, "utf8")).toBe(base);
-    expect(fs.readFileSync(journalPath, "utf8")).toMatch(/"seq":2/);
-  });
-
-  it("refuses a snapshot format above 3 and does not migrate a format 3 store", () => {
-    const format2 = newDir("born-3");
-    const store = openStore(format2);
-    expect(store.records()[0]).toMatchObject({ format: 3, seq: 0 });
-    expect(fs.existsSync(path.join(format2, ARCHIVE_DIR))).toBe(false);
-    const format3 = newDir("format-4");
-    const snapshotPath = path.join(format3, SNAPSHOT_FILE);
-    const lines = fs.readFileSync(snapshotPath, "utf8").split("\n");
-    const fileHeader = JSON.parse(lines[0]) as { format: number };
-    fileHeader.format = 4;
-    lines[0] = JSON.stringify(fileHeader);
-    fs.writeFileSync(snapshotPath, lines.join("\n"));
-    expect(() => RecordWorkspaceStore.open(format3, { now: tick })).toThrow(/Unsupported snapshot format: 4/);
-  });
-});
-
 describe("format 2 replay", () => {
-  it("rebuilds the live records from the base snapshot and the journal suffix", () => {
-    const dir = newDir("replay");
-    const store = openStore(dir);
+  it("rebuilds the live records from the base snapshot and the journal suffix", async () => {
+    const store = (await openStore()).store;
+    const base = serializeSnapshot(store.records());
     commit(store, (state) => { nodesOf(state).leaf.text = "one"; });
     commit(store, (state) => {
       const nodes = nodesOf(state);
@@ -250,15 +159,16 @@ describe("format 2 replay", () => {
       delete nodes.added;
       nodes.f1.children = (nodes.f1.children as string[]).filter((id) => id !== "added");
     });
-    const rebuilt = replay(fs.readFileSync(path.join(dir, SNAPSHOT_FILE), "utf8"), fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8"));
+    const lines = await store.readJournalAfter(0);
+    const rebuilt = replay(base, (lines ?? []).map((line) => JSON.stringify(line)).join("\n"));
     expect(rebuilt).toEqual(store.records());
     expect((rebuilt[0] as { seq: number }).seq).toBe(store.seq());
   });
 });
 
 describe("format 2 invariants at commit", () => {
-  it("accepts an alias with a child and rejects an alias whose target is an alias", () => {
-    const store = openStore(newDir("alias"));
+  it("accepts an alias with a child and rejects an alias whose target is an alias", async () => {
+    const store = (await openStore()).store;
     const accepted = commit(store, (state) => {
       const nodes = nodesOf(state);
       nodes.kid = node("kid", "al", [], { text: "under alias" });
@@ -296,8 +206,8 @@ describe("format 2 invariants at commit", () => {
     expect(checkInvariants(shared)).toEqual([]);
   });
 
-  it("checks extension fields whose definition exists and keeps an unknown extension", () => {
-    const store = openStore(newDir("ext"));
+  it("checks extension fields whose definition exists and keeps an unknown extension", async () => {
+    const store = (await openStore()).store;
     const defined = commit(store, (state) => { state.extensionDefs = [taskDef()]; });
     const storedDef = store.records().find((record) => record.kind === "extensionDef");
     expect(storedDef).toMatchObject({ ...taskDef(), rev: defined.seq });
@@ -373,8 +283,8 @@ describe("format 2 invariants at commit", () => {
     });
   });
 
-  it("rejects the same extensionDef key with different content, including misc:", () => {
-    const store = openStore(newDir("def-conflict"));
+  it("rejects the same extensionDef key with different content, including misc:", async () => {
+    const store = (await openStore()).store;
     commit(store, (state) => { state.extensionDefs = [taskDef()]; });
     refused(attempt(store, (state) => {
       state.extensionDefs = [taskDef({ description: "changed" })];
@@ -405,8 +315,8 @@ describe("format 2 invariants at commit", () => {
 
 describe("format 2 AppState round trip", () => {
   it("keeps extensions, parent-edge fields, extensionDef records and unknown fields", async () => {
-    const dir = newDir("round");
-    const store = openStore(dir);
+    const handle = await openStore();
+    const store = handle.store;
     const defined = commit(store, (state) => { state.extensionDefs = [taskDef()]; });
     commit(store, (state) => {
       const nodes = nodesOf(state);
@@ -438,7 +348,6 @@ describe("format 2 AppState round trip", () => {
       attributes: { "m3e:weight": 2, "m3e:note": "x" },
       extensions: ["misc:parentEdge:mark@1"],
     });
-    await store.close();
-    expectState(stateOf(openStore(dir)));
+    expectState(stateOf(await handle.reopen()));
   });
 });
