@@ -573,7 +573,7 @@ function saveViewKey(): string {
 function trackSavedState(): void {
   if (!map) return;
   lastServerBaseState = cloneStateForSave(map.state);
-  saveStateTracker = new SaveStateTracker(lastServerBaseState!, map.state);
+  saveStateTracker = new SaveStateTracker(lastServerBaseState!, map.state, { indexedEdges: true });
   preparedSaveState = null;
 }
 
@@ -12464,7 +12464,7 @@ function finishGrab(commit: boolean): void {
     undoStack.push(grab.before);
     if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
     redoStack = [];
-    touchDocument();
+    touchDocument(true, { nodes: [grab.sourceId], edges: [grab.sourceId] });
   } else if (grab.pendingSave) scheduleAutosave();
   setStatus("Navigate · Grab finished.");
 }
@@ -15345,8 +15345,10 @@ function applyMoveByParentAndIndex(
   sourceNode.parentId = targetParentId;
   placeEdgeOnOpenScope(sourceNode);
   viewState.reparentSourceIds.delete(sourceId);
+  // Save bookkeeping uses the position already known by the write site.
+  saveStateTracker?.markParentEdge(sourceId, boundedIndex);
   if (withTouch) {
-    touchDocument();
+    touchDocument(true, { nodes: [sourceId, targetParentId], edges: [sourceId] });
   }
   if (withStatus) {
     if (oldParent.id === newParent.id) {

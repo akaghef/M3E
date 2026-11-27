@@ -218,7 +218,7 @@ function diffAttributes(changes: RecordChange[], ownerKind: "node" | "graph-link
   }
 }
 
-/** Optional entry keys observed by a mutable-state caller; omitted means a full diff. */
+/** Optional write set; `$edges` names all changed incoming edges with explicit `edgeOrder`. Omission means a full diff. */
 export type DiffEntries = ReadonlyMap<string, ReadonlySet<string>>;
 
 function diffIds(left: Bag, right: Bag, field: string, entries?: DiffEntries): string[] {
@@ -229,17 +229,31 @@ function diffNodes(before: Bag, after: Bag, changes: RecordChange[], entries?: D
   const left = dict(before, "nodes");
   const right = dict(after, "nodes");
   const ids = new Set(diffIds(left, right, "nodes", entries));
-  // Array-only callers use the previous assignment; explicit order keys survive wire/restart.
-  const topologyChanged = !entries || [...ids].some(id => {
-    const from = bagOf(left[id]), to = bagOf(right[id]);
-    return from?.parentId !== to?.parentId || from?.edgeOrder !== to?.edgeOrder || !sameValue(from?.children, to?.children);
-  });
-  const leftEdges = topologyChanged ? edgesOf(before) : new Map<string, EdgeAssign>();
-  const rightEdges = topologyChanged ? edgesOf(after, leftEdges) : leftEdges;
-  if (topologyChanged) edgeOrders.set(after, rightEdges);
-  if (entries) for (const [id, edge] of rightEdges) {
-    const old = leftEdges.get(id);
-    if (!old || old.parentId !== edge.parentId || old.ord !== edge.ord) ids.add(id);
+  let leftEdges: Map<string, EdgeAssign>, rightEdges: Map<string, EdgeAssign>;
+  if (entries?.has("$edges")) {
+    // Write sites provide the edited incoming edges, with their neighbour-derived keys.
+    // Parent children arrays are a read model, never a second set of changes to scan.
+    const edgeIds = entries.get("$edges")!;
+    leftEdges = new Map(); rightEdges = new Map();
+    for (const id of edgeIds) {
+      ids.add(id);
+      const from = bagOf(left[id]), to = bagOf(right[id]);
+      if (typeof from?.parentId === "string") leftEdges.set(id, { parentId: from.parentId, index: 0, ord: from.edgeOrder as string });
+      if (typeof to?.parentId === "string") rightEdges.set(id, { parentId: to.parentId, index: 0, ord: to.edgeOrder as string });
+    }
+  } else {
+    // Array-only callers use the previous assignment; explicit order keys survive wire/restart.
+    const topologyChanged = !entries || [...ids].some(id => {
+      const from = bagOf(left[id]), to = bagOf(right[id]);
+      return from?.parentId !== to?.parentId || from?.edgeOrder !== to?.edgeOrder || !sameValue(from?.children, to?.children);
+    });
+    leftEdges = topologyChanged ? edgesOf(before) : new Map<string, EdgeAssign>();
+    rightEdges = topologyChanged ? edgesOf(after, leftEdges) : leftEdges;
+    if (topologyChanged) edgeOrders.set(after, rightEdges);
+    if (entries) for (const [id, edge] of rightEdges) {
+      const old = leftEdges.get(id);
+      if (!old || old.parentId !== edge.parentId || old.ord !== edge.ord) ids.add(id);
+    }
   }
   for (const id of [...ids].sort()) {
     const from = bagOf(left[id]);

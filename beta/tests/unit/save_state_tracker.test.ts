@@ -131,3 +131,56 @@ test("array annotations use the whole diff and preserve shape and deletion", () 
   sent.accept();
   expect(base).toEqual(live);
 });
+
+const keyedFixture = () => {
+  const value = fixture();
+  for (const [i, id] of value.nodes.root.children.entries()) value.nodes[id].edgeOrder = `a${i}`;
+  return value;
+};
+
+test("write-site neighbour keys survive a later move while a save is in flight", async () => {
+  const base = keyedFixture(), live = copy(base), tracker = new SaveStateTracker(base, live, { indexedEdges: true });
+  live.nodes.root.children = ["b", "a", "c"]; tracker.markParentEdge("a", 1);
+  const first = tracker.capture(), submitted = copy(live);
+  const fetch = vi.fn(async () => {
+    live.nodes.root.children = ["b", "c", "a"]; tracker.markParentEdge("a", 2);
+    return new Response("{}", { status: 200 });
+  });
+  vi.stubGlobal("fetch", fetch);
+  await postSaveCommand("/api/maps/m", "tab", base, live, "t0", () => "whole", first.changes);
+  const latestKey = live.nodes.a.edgeOrder;
+  first.accept();
+  expect(live.nodes.a.edgeOrder).toBe(latestKey);
+  expect(base).toEqual(submitted);
+  const second = tracker.capture();
+  expect(second.changes).toEqual(diffState(submitted, live));
+  expect(second.materialize()).toEqual(live);
+  second.accept(); expect(base).toEqual(live);
+});
+
+test("new neighbours get keys locally and unhinted topology in the same save is retained", () => {
+  const base = keyedFixture(), live = copy(base), tracker = new SaveStateTracker(base, live, { indexedEdges: true });
+  live.nodes.new = node("new", "root");
+  live.nodes.root.children = ["b", "new", "a", "c"]; tracker.markParentEdge("a", 2);
+  expect(live.nodes.new.edgeOrder).toBeTruthy();
+  const first = tracker.capture(); first.accept(); expect(base).toEqual(live);
+  live.nodes.c.parentId = "b"; live.nodes.b.children = ["c"];
+  live.nodes.root.children = ["new", "a", "b"];
+  tracker.mark({ nodes: ["c", "b", "root"] });
+  tracker.markParentEdge("b", 2);
+  const second = tracker.capture();
+  expect(second.changes).toEqual(diffState(base, live));
+  second.accept(); expect(base).toEqual(live);
+});
+
+
+test("a full capture cannot overwrite keys assigned by the next move", () => {
+  const base = keyedFixture(), live = copy(base), tracker = new SaveStateTracker(base, live, { indexedEdges: true });
+  live.nodes.root.children = ["b", "a", "c"]; tracker.markParentEdge("a", 1); tracker.mark();
+  const first = tracker.capture(), submitted = copy(live);
+  live.nodes.root.children = ["b", "c", "a"]; tracker.markParentEdge("a", 2);
+  const latest = copy(live);
+  first.accept(); expect(live).toEqual(latest); expect(base).toEqual(submitted);
+  const second = tracker.capture(); expect(second.changes).toEqual(diffState(submitted, latest));
+  second.accept(); expect(base).toEqual(latest);
+});

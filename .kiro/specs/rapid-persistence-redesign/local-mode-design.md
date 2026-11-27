@@ -33,6 +33,8 @@ local のデータディレクトリ（`M3E_DATA_DIR`）：
   - 内容の変更：`MapCommand`（`commandId`・`actor`・`intent`・`changes: RecordChange[]`、各 change は `before`/`after` を持つ）。`saveWholeMap` の差分（`diffState`）もこの形にする。
   - map 単位の操作：`{mapOp: "create" | "delete" | "rename" | "columns", ...}`。作成は初期内容を `changes` で運ぶ。
 - parent edge の変更は、子の ID と `{parentId, ord}` の `before` / `after` を持つ。兄弟の index をずらす変更は作らない。working store と remote は同じ子の親と順序キーを compare-and-set で照合する。`index` 形式の既存 entry は読み取れ、受理した変更は順序キー形式で journal / outbox に書く。どちらの形で再送しても同じ Command と判定する。
+- viewer の移動は、書込み位置で移動した node と前後の兄弟の順序キーを記録し、その parent edge だけを差分にする。新しい隣接 node にキーがなければ、その連続した範囲だけにキーを割り当てる。保存要求の作成・応答反映では、map の node 辞書と親の子配列を複製しない。応答待ちの間に行った次の移動は、先の応答で上書きしない。書込み範囲が不明な変更と全体置換は、完全な差分を使う。
+- key 形式の構造変更は、変更した node と parent edge、scopen／unscopen に伴う scope とその参照先だけを射影する。scope をまたぐ部分木移動では、所属が変わる子孫の parent edge も更新するため、その部分木に比例する。入れ子の scope の内側で所属が変わらない parent edge は辿らない。surface・linear text・annotation の変換と、拒否・書込み失敗時の rollback は全体射影と同じ結果にする。近傍と保存の guard の索引は読み込み時に構成し、確定ごとに差分更新する。
 - store が省く既定値・導出値は、viewer の値との比較時に同じ正規形で扱う。node、relation edge、scope、Surface View、parent edge の欄を production の field table と型定義から列挙し、viewer の前回の値を `before` にした create → update → delete を working store と remote で検証する。
 - `before` と `after` が同じ update は `diffState` と Command builder で除く。変更が 0 件なら viewer / MCP は送信・確定を行わず、store に届いても journal と outbox に記録しない。
 - entry は `baseSeq`（そのときの `confirmedSeq`）を持つ。

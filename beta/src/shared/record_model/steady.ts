@@ -316,6 +316,14 @@ export class MapProjector {
   private gen = 0;
   private lastRecords: ReadonlyMap<string, SnapshotRecord> | undefined;
   // What the last result (or, on a fresh start, `previous`) holds, by the slot the projection gives it.
+  private needsFullRescan = false;
+  private recordsByScope = new Map<string, Set<string>>();
+  private orphanRecordsByRoot = new Map<string, Set<string>>();
+  private collectionSizes = new Map<string, number>();
+  private surfaceRecordKeys = new Map<string, Set<string>>();
+  private scopesBySurface = new Map<string, Set<string>>();
+  private viewsByNode = new Map<string, Set<string>>();
+  private outsideChildren = new Map<string, Set<string>>();
   private edgeByTarget = new Map<string, EdgeConnectionRecord>();
   private edgesByParent = new Map<string, Map<string, EdgeConnectionRecord>>();
 
@@ -402,7 +410,7 @@ export class MapProjector {
           details: details?.body ?? "", note: details?.note ?? "", link: details?.link ?? "" };
         const oldNode = state.nodes[id];
         originalNodes.set(id, oldNode);
-        state.nodes[id] = restored as unknown as AppState["nodes"][string];
+        state.nodes[id] = this.deferChildren(restored as unknown as AppState["nodes"][string]);
         const memo = this.nodeMemo.get(oldNode);
         if (memo) this.nodeMemo.set(restored, { ...memo, node: projected, details, selfNormal: true });
         const parent = this.parentMemo.get(oldNode);
@@ -573,6 +581,393 @@ export class MapProjector {
     } catch (error) { revert(); throw error; }
   }
 
+  /** A keyed structural Command on a valid warm map. Legacy index input uses the full reader. */
+  prepareStructure(state: AppState, changes: readonly import("../map_changes").RecordChange[]): { input: AppState; nodeIds: Set<string>; scopeRoots: Set<string> } | undefined {
+    const nodeIds = new Set<string>(), scopeRoots = new Set<string>();
+    const created = new Set(changes.filter(change => change.kind === "node" && change.op === "create").map(change => change.key[0]));
+    const removedSurfaces = new Set<string>(), viewIds = new Map<string, Set<string>>();
+    for (const change of changes) {
+      if (change.kind === "surface" && change.op === "delete") removedSurfaces.add(change.key[0]);
+      if (change.kind === "surface-node-view") { let ids = viewIds.get(change.key[0]); if (!ids) viewIds.set(change.key[0], ids = new Set()); ids.add(change.key[1]); }
+    }
+    let structural = false;
+    const selected: Record<string, Set<string>> = {};
+    const take = (field: string, id: string) => (selected[field] ??= new Set()).add(id);
+    for (const change of changes) {
+      const id = change.key[0];
+      if (change.kind === "node") {
+        if (id === state.rootId && change.op !== "update") return;
+        if ((this.scopeKeysByRoot.get(id)?.length ?? 0) > 1) return;
+        if (change.op !== "create" && !state.nodes[id]) return;
+        const fields = new Set([...Object.keys(change.before ?? {}), ...Object.keys(change.after ?? {})]);
+        if (state.nodes[id]?.nodeType === "alias" && (change.op !== "update" || fields.has("nodeType"))) return;
+        if (["parentId", "children", "targetNodeId", "access", "aliasOf", "isBroken", "targetSnapshotLabel"].some(field => fields.has(field))) return;
+        if (change.op === "update" && fields.has("id") || change.op === "create" && change.after?.id !== id) return;
+        if (change.after?.nodeType === "alias") return;
+        if (change.op !== "update" || fields.has("nodeType") || fields.has("edgeOutsideScope")) { structural = true; scopeRoots.add(id); }
+        nodeIds.add(id);
+      } else if (change.kind === "edge") {
+        if (!state.nodes[id] && !created.has(id) || change.op !== "delete" && !isOrderKey(change.after?.ord)) return;
+        if ([...Object.keys(change.before ?? {}), ...Object.keys(change.after ?? {})].some(field => !(PARENT_EDGE_FIELDS as readonly string[]).includes(field))) return;
+        nodeIds.add(id); structural = true;
+      } else if (change.kind === "attribute" && change.key[0] === "node") {
+        if (!state.nodes[change.key[1]] && !created.has(change.key[1])) return;
+        nodeIds.add(change.key[1]);
+      } else if (change.kind === "scope-setting") {
+        const root = id.startsWith(SCOPE_PREFIX) ? id.slice(SCOPE_PREFIX.length) : "";
+        if (!root || !state.nodes[root] && !created.has(root) || (change.after?.projection as Dict | undefined)?.mode === "observe") return;
+        take("scopes", id); scopeRoots.add(root);
+      } else if (change.kind === "surface" || change.kind === "surface-node-view") take("surfaces", id);
+      else if (change.kind === "linear-text") take("linearNotesByScope", id);
+      else if (change.kind === "annotation") take("annotations", id);
+      else if (change.kind === "map-field" && ["scopes", "surfaces", "linearNotesByScope"].includes(id) && [...Object.keys(change.before ?? {}), ...Object.keys(change.after ?? {})].every(key => key === "present")) selected[id] ??= new Set();
+      else return;
+    }
+    if (!structural) return;
+    for (const change of changes) if (change.kind === "map-field" && change.op === "delete") {
+      const kind = { scopes: "scope-setting", surfaces: "surface", linearNotesByScope: "linear-text" }[change.key[0]];
+      const deleted = new Set(changes.filter(item => item.kind === kind && item.op === "delete").map(item => item.key[0]));
+      // Sparse CAS must not hide entries a collection deletion failed to name.
+      if (deleted.size !== this.collectionSizes.get(change.key[0])) return;
+    }
+    const input = { ...state, nodes: {} } as AppState;
+    for (const id of nodeIds) {
+      const raw = state.nodes[id], node: Dict = {};
+      if (!raw) continue;
+      for (const key of Object.keys(raw)) if (key !== "children") node[key] = (raw as unknown as Dict)[key];
+      node.children = []; // Incoming edges are authoritative; child arrays are materialized only on read.
+      input.nodes[id] = node as unknown as TreeNode;
+    }
+    for (const [field, ids] of Object.entries(selected)) {
+      if (!hasOwn(state, field)) { delete (input as unknown as Dict)[field]; continue; }
+      const source = dictOf((state as unknown as Dict)[field]), subset: Dict = {};
+      for (const id of ids) if (hasOwn(source, id)) {
+        const entry = source[id];
+        if (field === "surfaces" && isDict(entry) && !removedSurfaces.has(id)) {
+          const surface: Dict = {};
+          for (const key of Object.keys(entry)) if (key !== "nodeViews") surface[key] = entry[key];
+          if (entry.nodeViews) {
+            const views: Dict = {};
+            for (const nodeId of viewIds.get(id) ?? []) if (hasOwn(dictOf(entry.nodeViews), nodeId)) views[nodeId] = dictOf(entry.nodeViews)[nodeId];
+            surface.nodeViews = views;
+          }
+          subset[id] = surface;
+        } else subset[id] = entry;
+      }
+      (input as unknown as Dict)[field] = subset;
+    }
+    return { input, nodeIds, scopeRoots };
+  }
+
+  /** Composite parent/scope edits reuse the canonical node projection and update only their boundary. */
+  projectStructure(mapId: string, state: AppState, applied: AppState, changes: readonly import("../map_changes").RecordChange[], plan: { nodeIds: Set<string>; scopeRoots: Set<string> }, records: Map<string, SnapshotRecord>): ProjectionResult {
+    const delta = new Map<string, SnapshotRecord | null>(), replaced = new Map<string, SnapshotRecord>();
+    const undos: Array<() => void> = [];
+    const priorRescan = this.needsFullRescan;
+    const update = <T extends SnapshotRecord>(rk: string, record: T | undefined): T | undefined => {
+      const before = records.get(rk);
+      if (record === undefined ? before === undefined : before !== undefined && sameRecordContent(before, record)) return before as T | undefined;
+      if (!delta.has(rk) && before) replaced.set(rk, before);
+      delta.set(rk, record ?? null);
+      if (record) records.set(rk, record); else records.delete(rk);
+      return record;
+    };
+    const put = <T extends SnapshotRecord>(record: T): T => update(recordRk(record), record)!;
+    const remove = (rk: string): void => { update(rk, undefined); };
+    const assign = (bag: Dict, key: string, value: unknown): void => {
+      const descriptor = Object.getOwnPropertyDescriptor(bag, key);
+      for (const field of ["scopes", "surfaces", "linearNotesByScope", "annotations"] as const) if (bag === (state as unknown as Dict)[field]) {
+        const count = this.collectionSizes.get(field) ?? 0;
+        undos.push(() => { this.collectionSizes.set(field, count); });
+        this.collectionSizes.set(field, count + (value === undefined ? 0 : 1) - (descriptor ? 1 : 0));
+      }
+      undos.push(() => { if (descriptor) Object.defineProperty(bag, key, descriptor); else delete bag[key]; });
+      if (value === undefined) delete bag[key]; else bag[key] = value;
+    };
+    const setScope = (root: string, scope: ScopeRecord | undefined): void => {
+      const old = this.scopeByRoot.get(root);
+      undos.push(() => { if (old) this.scopeByRoot.set(root, old); else this.scopeByRoot.delete(root); });
+      if (scope) this.scopeByRoot.set(root, scope); else this.scopeByRoot.delete(root);
+    };
+    const setEdge = (id: string, edge: EdgeConnectionRecord | undefined): void => {
+      const old = this.edgeByTarget.get(id);
+      undos.push(() => this.setIncoming(id, old)); this.setIncoming(id, edge);
+    };
+    const revert = (): void => {
+      for (let i = undos.length - 1; i >= 0; i--) undos[i]();
+      for (const rk of delta.keys()) { const old = replaced.get(rk); if (old) records.set(rk, old); else records.delete(rk); }
+      this.needsFullRescan = priorRescan;
+    };
+    const nextNode = (id: string): TreeNode | undefined => plan.nodeIds.has(id) ? applied.nodes[id] : state.nodes[id];
+    const changedScopes = new Set<string>(), changedParents = new Set<string>(), restoredIds = new Set(plan.nodeIds);
+    const scopeRoots = new Set(plan.scopeRoots);
+    const surfaceIds = new Set<string>(), noteKeys = new Set<string>(), annotationIds = new Set<string>();
+    const oldNodes = new Map([...plan.nodeIds].map(id => [id, state.nodes[id]]));
+    const oldScopes = new Map<string, ScopeRecord | undefined>();
+    const scopes = dictOf(state.scopes), surfaces = dictOf(state.surfaces), notes = dictOf(state.linearNotesByScope), annotations = dictOf(state.annotations);
+    const collection = (field: string, existing: Dict): Dict => {
+      if (!(state as unknown as Dict)[field]) assign(state as unknown as Dict, field, existing);
+      return existing;
+    };
+    const explicit = new Map<string, Set<string>>(), viewIds = new Map<string, Set<string>>();
+    for (const change of changes) {
+      let ids = explicit.get(change.kind); if (!ids) explicit.set(change.kind, ids = new Set()); ids.add(change.key[0]);
+      if (change.kind === "surface-node-view") { let views = viewIds.get(change.key[0]); if (!views) viewIds.set(change.key[0], views = new Set()); views.add(change.key[1]); }
+      if (change.kind === "surface") for (const root of this.scopesBySurface.get(change.key[0]) ?? []) scopeRoots.add(root);
+    }
+    try {
+      for (const change of changes) {
+        if (change.kind === "surface" || change.kind === "surface-node-view") surfaceIds.add(change.key[0]);
+        if (change.kind === "linear-text") noteKeys.add(change.key[0]);
+        if (change.kind === "annotation") annotationIds.add(change.key[0]);
+      }
+      for (const id of plan.nodeIds) {
+        const node = applied.nodes[id];
+        if (!node) {
+          remove(`node|${id}`); remove(`details|${id}`); scopeRoots.add(id);
+          for (const surface of this.viewsByNode.get(id) ?? []) {
+            surfaceIds.add(surface);
+            let ids = viewIds.get(surface); if (!ids) viewIds.set(surface, ids = new Set()); ids.add(id);
+          }
+          for (const rk of this.orphanRecordsByRoot.get(id) ?? []) {
+            const record = records.get(rk);
+            if (record?.kind === "linearText" && record.orphanKey) noteKeys.add(record.orphanKey);
+          }
+          continue;
+        }
+        if (!oldNodes.get(id)) { noteKeys.add(id); noteKeys.add(SCOPE_PREFIX + id); }
+        if ((node.nodeType === "folder") !== this.scopeByRoot.has(id) && id !== state.rootId) scopeRoots.add(id);
+        projectNode(mapId, id, node as unknown as Dict, this.gen, put, remove);
+      }
+      for (const root of scopeRoots) {
+        const before = this.scopeByRoot.get(root); oldScopes.set(root, before);
+        const node = nextNode(root);
+        const enabled = node && (root === state.rootId || node.nodeType === "folder");
+        const key = SCOPE_PREFIX + root;
+        const setting = explicit.get("scope-setting")?.has(key) ? dictOf(applied.scopes?.[key]) : dictOf(scopes[key]);
+        if (enabled) {
+          const record: Dict = { kind: "scope", id: before?.id ?? generatedId(this.hash, this.workspaceId, "s_", mapId, "scope", root), mapId, rootNodeId: root, rev: undefined };
+          if (typeof setting.primarySurfaceId === "string") {
+            const surface = explicit.get("surface")?.has(setting.primarySurfaceId) ? applied.surfaces?.[setting.primarySurfaceId] : surfaces[setting.primarySurfaceId];
+            const anchor = dictOf(surface).scopeId;
+            const target = typeof anchor === "string" ? nextNode(anchor.replace(/^scope:/, "")) : undefined;
+            if (target && (target.id === state.rootId || target.nodeType === "folder")) record.primarySurfaceId = setting.primarySurfaceId;
+          }
+          copyScopeFields(record, setting);
+          const scope = put(record as unknown as ScopeRecord); setScope(root, scope);
+          assign(collection("scopes", scopes), key, { id: key, label: node.text ?? "", rootNodeIds: [root], relationIds: [], ...(scope.primarySurfaceId ? { primarySurfaceId: scope.primarySurfaceId } : {}), ...scopeFieldsOf(scope) });
+        } else {
+          if (before) remove(recordRk(before)); setScope(root, undefined); assign(scopes, key, undefined);
+        }
+        if (Boolean(before) !== Boolean(enabled)) {
+          changedScopes.add(root); noteKeys.add(root); noteKeys.add(key);
+          if (before) for (const rk of this.recordsByScope.get(before.id) ?? []) {
+            const record = records.get(rk);
+            if (record?.kind === "surface") surfaceIds.add(record.id);
+            if (record?.kind === "annotation") annotationIds.add(record.id);
+          }
+          for (const rk of this.orphanRecordsByRoot.get(root) ?? []) {
+            const record = records.get(rk);
+            if (record?.kind === "annotation") annotationIds.add(record.id);
+            if (record?.kind === "linearText" && record.orphanKey) noteKeys.add(record.orphanKey);
+          }
+        }
+        const oldKeys = this.scopeKeysByRoot.get(root);
+        undos.push(() => { if (oldKeys) this.scopeKeysByRoot.set(root, oldKeys); else this.scopeKeysByRoot.delete(root); });
+        const nextKeys = (oldKeys ?? []).filter(item => item !== key);
+        if (enabled) nextKeys.push(key);
+        if (nextKeys.length) this.scopeKeysByRoot.set(root, nextKeys); else this.scopeKeysByRoot.delete(root);
+      }
+      const scopeMemo = new Map<string, string>(), visiting = new Set<string>();
+      const incomingScope = (id: string): string => {
+        if (scopeMemo.has(id)) return scopeMemo.get(id)!;
+        if (visiting.has(id)) throw new Error("Parent edges contain a cycle.");
+        visiting.add(id);
+        const node = nextNode(id);
+        if (!node) throw new Error(`Missing node ${id}.`);
+        let result: string;
+        if (id === state.rootId) result = this.scopeByRoot.get(id)!.id;
+        else {
+          const parent = node.parentId && nextNode(node.parentId);
+          if (!parent) throw new Error(`Missing parent of ${id}.`);
+          const own = this.scopeByRoot.get(parent.id);
+          if (node.edgeOutsideScope !== undefined && (node.edgeOutsideScope !== true || !own || parent.id === state.rootId)) throw new Error(`Invalid edgeOutsideScope on ${id}.`);
+          result = own && node.edgeOutsideScope !== true ? own.id : incomingScope(parent.id);
+        }
+        visiting.delete(id); scopeMemo.set(id, result); return result;
+      };
+      const queue = [...plan.nodeIds], queued = new Set(queue);
+      const enqueue = (id: string) => { if (!queued.has(id)) { queued.add(id); queue.push(id); } };
+      for (const root of changedScopes) { for (const id of this.edgesByParent.get(root)?.keys() ?? []) enqueue(id); }
+      for (let i = 0; i < queue.length; i++) {
+        const id = queue[i], node = nextNode(id), old = this.edgeByTarget.get(id);
+        if (!node) {
+          if (old) { remove(recordRk(old)); changedParents.add(old.source); setEdge(id, undefined); }
+          continue;
+        }
+        if (id === state.rootId) continue;
+        if (!node.parentId) throw new Error(`Missing parent of ${id}.`);
+        const scopeId = incomingScope(id);
+        const raw = node as unknown as Dict;
+        const record: Dict = { kind: "connection", id: old?.id ?? generatedId(this.hash, this.workspaceId, "c_", mapId, "edge", id), mapId, type: "edge", source: node.parentId, target: id, ord: node.edgeOrder ?? old?.ord, scopeId, rev: undefined };
+        const label = dictOf(node.attributes)[EDGE_LABEL_ATTRIBUTE];
+        if (present(label) && label !== "") record.label = label;
+        if (typeof raw.edgeRelationType === "string" && raw.edgeRelationType !== "") record.relationType = raw.edgeRelationType;
+        const attributes = cleanAttributes(raw.edgeAttributes), extensions = writtenExtensions(raw.edgeExtensions);
+        if (attributes) record.attributes = attributes;
+        if (extensions) record.extensions = extensions;
+        const edge = put(record as unknown as EdgeConnectionRecord);
+        if (edge !== old) {
+          setEdge(id, edge); restoredIds.add(id);
+          if (old?.source !== edge.source || old?.ord !== edge.ord) { if (old) changedParents.add(old.source); changedParents.add(edge.source); }
+        }
+        if (old?.scopeId !== scopeId) {
+          if (this.scopeByRoot.has(id)) for (const child of this.outsideChildren.get(id) ?? []) enqueue(child);
+          else for (const child of this.edgesByParent.get(id)?.keys() ?? []) enqueue(child);
+        }
+      }
+      for (const id of surfaceIds) {
+        const touched = explicit.get("surface")?.has(id) || explicit.get("surface-node-view")?.has(id);
+        const raw = touched ? applied.surfaces?.[id] : surfaces[id];
+        const surface = dictOf(raw), ref = surface.scopeId;
+        const root = typeof ref === "string" ? ref.replace(/^scope:/, "") : "";
+        const scope = this.scopeByRoot.get(root), keys = this.surfaceRecordKeys.get(id);
+        if (!raw || !scope) {
+          for (const rk of keys ?? []) remove(rk);
+          assign(surfaces, id, undefined);
+          continue;
+        }
+        const record: Dict = { kind: "surface", id, mapId, scopeId: scope.id, rev: undefined };
+        if (present(surface.kind)) record.surfaceKind = surface.kind;
+        copyPresent(record, surface, ["layout", "surfaceView"]);
+        let stored = put(record as unknown as SnapshotRecord);
+        const previousViews = dictOf(dictOf(surfaces[id]).nodeViews), views = previousViews;
+        let viewCount = keys ? keys.size - 1 : 0, viewChanged = false;
+        for (const nodeId of viewIds.get(id) ?? []) {
+          const view = dictOf(dictOf(surface.nodeViews)[nodeId]);
+          const projected: Dict = { kind: "nodeView", surfaceId: id, nodeId, mapId };
+          copyPresent(projected, view, NODE_VIEW_FIELDS);
+          const rk = recordRk(projected as unknown as SnapshotRecord), before = records.get(rk);
+          const present = nextNode(nodeId) && NODE_VIEW_FIELDS.some(field => field in projected);
+          const next = present ? put(projected as unknown as SnapshotRecord) : undefined;
+          if (!next) remove(rk);
+          viewCount += Number(Boolean(next)) - Number(Boolean(before));
+          viewChanged ||= next !== before;
+          const restored = next ? fromSnapshot([records.get(`map|${mapId}`)!, scope, stored, next]).rows[0].state.surfaces?.[id]?.nodeViews?.[nodeId] : undefined;
+          assign(views, nodeId, restored);
+        }
+        if (viewChanged) {
+          stored = { ...stored, rev: undefined } as unknown as SnapshotRecord;
+          const rk = recordRk(stored);
+          if (!delta.has(rk)) replaced.set(rk, records.get(rk)!);
+          records.set(rk, stored); delta.set(rk, stored);
+        }
+        const restored = fromSnapshot([records.get(`map|${mapId}`)!, scope, stored]).rows[0].state.surfaces![id];
+        if (viewCount) restored.nodeViews = views as typeof restored.nodeViews;
+        assign(collection("surfaces", surfaces), id, restored);
+      }
+      // Remove affected old text records first. Both spellings may coexist; use the
+      // full projector's lexical precedence when choosing the scoped text.
+      const texts = new Map<string, unknown>();
+      for (const key of noteKeys) {
+        texts.set(key, explicit.get("linear-text")?.has(key) ? applied.linearNotesByScope?.[key] : notes[key]);
+        const root = key.replace(/^scope:/, ""), oldScope = oldScopes.get(root) ?? this.scopeByRoot.get(root);
+        if (oldScope) remove(recordRk({ kind: "linearText", mapId, scopeId: oldScope.id } as SnapshotRecord));
+        remove(recordRk({ kind: "linearText", mapId, orphanKey: key } as SnapshotRecord));
+        assign(notes, key, undefined);
+      }
+      const scopesWithText = new Set<string>();
+      for (const key of [...noteKeys].sort(compareStrings)) {
+        const text = texts.get(key), root = key.replace(/^scope:/, ""), scope = this.scopeByRoot.get(root);
+        if (!present(text) || text === "") continue;
+        const record: Dict = { kind: "linearText", mapId, text, rev: undefined };
+        const scoped = scope && !scopesWithText.has(root);
+        if (scoped) { record.scopeId = scope.id; scopesWithText.add(root); }
+        else { record.orphanKey = key; if (!scope && nextNode(root)) record.anchorNodeId = root; }
+        put(record as unknown as SnapshotRecord);
+        assign(collection("linearNotesByScope", notes), scoped ? root : key, text);
+      }
+      for (const id of annotationIds) {
+        const raw = explicit.get("annotation")?.has(id) ? applied.annotations?.[id] : annotations[id];
+        if (!raw) { remove(`annotation|${id}`); assign(annotations, id, undefined); continue; }
+        const annotation = dictOf(raw), record: Dict = { kind: "annotation", id, mapId };
+        const extra: Dict = collectExtra(annotation, ANNOTATION_FIELDS) ?? {};
+        const root = typeof annotation.scopeId === "string" ? annotation.scopeId.replace(/^scope:/, "") : "";
+        const scope = this.scopeByRoot.get(root);
+        if (present(annotation.scopeId)) {
+          if (scope) record.scopeId = scope.id; else extra.scopeId = annotation.scopeId;
+        }
+        if (present(annotation.kind)) record.annotationKind = annotation.kind;
+        copyPresent(record, annotation, ANNOTATION_COPIED_FIELDS);
+        if (Object.keys(extra).length) record.extra = extra;
+        record.rev = undefined;
+        const stored = put(record as unknown as SnapshotRecord);
+        const row = fromSnapshot([records.get(`map|${mapId}`)!, ...(scope ? [scope] : []), stored]).rows[0];
+        assign(collection("annotations", annotations), id, row.state.annotations?.[id]);
+      }
+      for (const id of restoredIds) {
+        const nodeRecord = records.get(`node|${id}`);
+        if (!nodeRecord) { assign(state.nodes as unknown as Dict, id, undefined); continue; }
+        const details = records.get(`details|${id}`), edge = this.edgeByTarget.get(id);
+        const context = [records.get(`map|${mapId}`)!, nodeRecord];
+        if (details) context.push(details);
+        if (edge) { context.push(edge); const parentScope = this.scopeByRoot.get(edge.source); if (parentScope) context.push(parentScope); }
+        const own = this.scopeByRoot.get(id); if (own) context.push(own);
+        const restored = fromSnapshot(context).rows[0].state.nodes[id];
+        const next = this.deferChildren(restored);
+        assign(state.nodes as unknown as Dict, id, next);
+        for (const key of this.scopeKeysByRoot.get(id) ?? []) if (isDict(scopes[key]) && (scopes[key] as Dict).label !== next.text) assign(scopes, key, { ...scopes[key] as Dict, label: next.text });
+      }
+      for (const id of changedParents) if (state.nodes[id] && !restoredIds.has(id)) assign(state.nodes as unknown as Dict, id, this.deferChildren(state.nodes[id]));
+      for (const field of ["surfaces", "linearNotesByScope", "annotations"] as const) {
+        if (this.collectionSizes.get(field) === 0) assign(state as unknown as Dict, field, undefined);
+      }
+      for (const id of plan.nodeIds) {
+        const old = oldNodes.get(id);
+        // Membership is tracked independently of child-array materialization.
+        for (const parent of new Set([old?.parentId, applied.nodes[id]?.parentId])) if (parent) {
+          const group = this.outsideChildren.get(parent) ?? new Set<string>(), had = group.has(id);
+          if (!this.outsideChildren.has(parent)) this.outsideChildren.set(parent, group);
+          undos.push(() => { if (had) group.add(id); else group.delete(id); });
+          if (state.nodes[id]?.parentId === parent && state.nodes[id]?.edgeOutsideScope === true) group.add(id); else group.delete(id);
+        }
+      }
+      this.needsFullRescan = true;
+      return { records, delta, replaced, state, revert };
+    } catch (error) { revert(); throw error; }
+  }
+
+  /** Keep boundary indexes current after every projection path, with the same rollback. */
+  indexChanges(result: ProjectionResult): void {
+    const undos: Array<() => void> = [];
+    for (const [rk, next] of result.delta) this.indexScopedRecord(rk, result.replaced.get(rk), next ?? undefined, undos);
+    const revert = result.revert;
+    result.revert = () => { for (let i = undos.length - 1; i >= 0; i--) undos[i](); revert?.(); };
+  }
+
+  private indexScopedRecord(rk: string, before: SnapshotRecord | undefined, after: SnapshotRecord | undefined, undos: Array<() => void>): void {
+    for (const [record, add] of [[before, false], [after, true]] as const) {
+      if (!record) continue;
+      const scopeId = "scopeId" in record ? record.scopeId : undefined;
+      const orphanRoot = record.kind === "annotation" ? record.extra?.scopeId
+        : record.kind === "linearText" ? record.anchorNodeId : undefined;
+      for (const [index, key, value] of [
+        [this.recordsByScope, scopeId, rk],
+        [this.orphanRecordsByRoot, typeof orphanRoot === "string" ? orphanRoot.replace(/^scope:/, "") : undefined, rk],
+        [this.surfaceRecordKeys, record.kind === "surface" ? record.id : record.kind === "nodeView" ? record.surfaceId : undefined, rk],
+        [this.scopesBySurface, record.kind === "scope" ? record.primarySurfaceId : undefined, record.kind === "scope" ? record.rootNodeId : rk],
+        [this.viewsByNode, record.kind === "nodeView" ? record.nodeId : undefined, record.kind === "nodeView" ? record.surfaceId : rk],
+      ] as const) {
+        if (typeof key !== "string") continue;
+        let group = index.get(key);
+        if (!group) index.set(key, group = new Set());
+        const had = group.has(value), bucket = group;
+        undos.push(() => { if (had) bucket.add(value); else bucket.delete(value); });
+        if (add) group.add(value); else group.delete(value);
+      }
+    }
+  }
+
   /** Only parent assignments within the same scope: no descendant scope rewrite is needed. */
   canProjectParentEdges(state: AppState, changes: readonly import("../map_changes").RecordChange[]): boolean {
     if (!changes.length) return false;
@@ -619,7 +1014,7 @@ export class MapProjector {
         this.setIncoming(id, edge);
         parents.add(old.source); parents.add(edge.source);
         oldNodes.set(id, state.nodes[id]);
-        state.nodes[id] = node;
+        state.nodes[id] = this.deferChildren(node);
         this.nodeMemo.delete(node);
       }
       for (const id of parents) {
@@ -676,7 +1071,8 @@ export class MapProjector {
     }
     const mapId = row.id;
     const state = dictOf(row.state);
-    const warm = previous === this.lastRecords;
+    const warm = previous === this.lastRecords && !this.needsFullRescan;
+    this.needsFullRescan = false;
     this.lastRecords = undefined; // stays unset when this call throws
     /** Keys of `previous` that no slot below accounts for; removed unless produced again. */
     const stray: string[] = [];
@@ -1359,6 +1755,20 @@ export class MapProjector {
       let group = this.edgesByParent.get(edge.source);
       if (!group) this.edgesByParent.set(edge.source, group = new Map());
       group.set(edge.target, edge);
+    }
+    this.recordsByScope.clear();
+    this.orphanRecordsByRoot.clear();
+    this.surfaceRecordKeys.clear(); this.scopesBySurface.clear(); this.viewsByNode.clear();
+    for (const field of ["scopes", "surfaces", "linearNotesByScope", "annotations"]) this.collectionSizes.set(field, Object.keys(dictOf(nextState[field])).length);
+    for (const [rk, record] of out) this.indexScopedRecord(rk, undefined, record, []);
+    this.outsideChildren.clear();
+    for (const [id, node] of Object.entries(stateNodes)) {
+      const value = node as Dict;
+      if (value.edgeOutsideScope === true && typeof value.parentId === "string") {
+        let group = this.outsideChildren.get(value.parentId);
+        if (!group) this.outsideChildren.set(value.parentId, group = new Set());
+        group.add(id);
+      }
     }
     this.gen = gen;
     this.lastRecords = out;

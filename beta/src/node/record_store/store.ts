@@ -1849,6 +1849,7 @@ export class RecordWorkspaceStore {
   private warm(entry: MapEntry): NonNullable<MapEntry["warm"]> {
     if (entry.warm) return entry.warm;
     this.attachExtensionDefs(entry);
+    this.guardIndex(entry.id); // Build with the loaded map, before any in-place commit projection.
     const records = [...entry.records.values()];
     const restored = fromSnapshot(records).rows[0]?.state ?? ({ nodes: {} } as unknown as AppState);
     const projector = new MapProjector(this.workspaceId);
@@ -1924,6 +1925,9 @@ export class RecordWorkspaceStore {
       && warm.projector.canProjectContent(entry!.records);
     const parentEdgesOnly = warm !== undefined && warm.validationErrors === 0 && warm.problems.size === 0
       && warm.projector.canProjectContent(entry!.records) && warm.projector.canProjectParentEdges(warm.state, changes);
+    let structurePlan = !parentEdgesOnly && !contentOnly && warm && warm.validationErrors === 0 && warm.problems.size === 0
+      && warm.projector.canProjectContent(entry!.records) ? warm.projector.prepareStructure(warm.state, changes) : undefined;
+    if (structurePlan && changes.some(change => change.kind === "node" && change.op === "create" && entry?.graph?.hasAliasesTo(change.key[0]))) structurePlan = undefined;
     let appendPlan: ReturnType<typeof appendedLeaves>;
     // 2. Compare-and-set on the `before` values.
     let applied: ReturnType<typeof applyChanges>;
@@ -1931,17 +1935,21 @@ export class RecordWorkspaceStore {
       appendPlan = warm && warm.validationErrors === 0 && warm.problems.size === 0
         && warm.projector.canProjectContent(entry!.records) ? appendedLeaves(warm.state, changes) : undefined;
       if (appendPlan && [...appendPlan.parents.values()].some((ids) => ids.some((id) => entry?.graph?.hasAliasesTo(id)))) appendPlan = undefined;
-      let input: object = warm ? warm.state : {};
+      let input: object = structurePlan?.input ?? (warm ? warm.state : {});
       if (contentOnly || parentEdgesOnly) {
         const nodes: Dict = {};
         for (const change of changes) {
           const id = change.key[0];
-          if (hasOwn(warm!.state.nodes, id)) nodes[id] = warm!.state.nodes[id];
+          if (hasOwn(warm!.state.nodes, id)) {
+            const source = warm!.state.nodes[id] as unknown as Dict, node: Dict = { children: [] };
+            for (const key of Object.keys(source)) if (key !== "children") node[key] = source[key];
+            nodes[id] = node;
+          }
         }
         input = { ...warm!.state, nodes };
       }
       applied = appendPlan ? { ok: true, state: { ...input, nodes: appendPlan.nodes } }
-        : parentEdgesOnly ? applyChanges(input, changes, meta.syncHash !== undefined)
+        : parentEdgesOnly || structurePlan ? applyChanges(input, changes, meta.syncHash !== undefined)
         : applyChangesReduced(input, changes, meta.syncHash !== undefined);
     } catch (error) {
       return this.failure("INVALID_COMMAND", current(), (error as Error).message);
@@ -1951,7 +1959,7 @@ export class RecordWorkspaceStore {
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
     // A Command that only edits node content cannot change what validation reports.
-    const validationErrors = warm && (parentEdgesOnly || appendPlan !== undefined || validationUnaffected(changes))
+    const validationErrors = warm && (parentEdgesOnly || structurePlan !== undefined || appendPlan !== undefined || validationUnaffected(changes))
       ? warm.validationErrors
       : commitValidationErrorCount(applied.state);
     const allowedErrors = warm ? warm.validationErrors : 0;
@@ -1967,16 +1975,19 @@ export class RecordWorkspaceStore {
     try {
       // An existing map is projected in place: its record table becomes the new one, and
       // `revert` puts it back when the commit is refused further down.
-      result = parentEdgesOnly
-        ? projector.projectParentEdges(warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
-        : appendPlan
+      result = appendPlan
         ? projector.projectAppendedLeaves(mapId, warm!.state, appendPlan.nodes, appendPlan.parents, entry!.records)
+        : structurePlan
+        ? projector.projectStructure(mapId, warm!.state, applied.state as AppState, changes, structurePlan, entry!.records)
+        : parentEdgesOnly
+        ? projector.projectParentEdges(warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
         : contentOnly
         ? projector.projectContent(mapId, warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
         : projector.project(row, previous, { inPlace: entry !== undefined });
     } catch (error) {
       return this.failure("INVALID_STATE", current(), (error as Error).message);
     }
+    if (structurePlan || parentEdgesOnly || appendPlan || contentOnly) projector.indexChanges(result);
     let undoGraph: (() => void) | undefined;
     let postGraph: NeighbourhoodIndex | undefined;
     const refuse = (message: string): CommitFailure => {
@@ -2412,7 +2423,7 @@ export class RecordWorkspaceStore {
   private guardIndex(mapId: string): CommitGuardIndex {
     let index = this.guardIndexes.get(mapId);
     if (!index) {
-      index = new CommitGuardIndex(this.all.values(), mapId);
+      index = new CommitGuardIndex(this.maps.get(mapId)?.records.values() ?? [], mapId);
       this.guardIndexes.set(mapId, index);
     }
     return index;

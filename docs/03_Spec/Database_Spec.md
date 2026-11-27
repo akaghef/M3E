@@ -180,6 +180,7 @@ workspace > map > scope > node
   - 同じ node への同時の move は、`seq` の順で後に確定した有効なものを採る（LWW。5.2 規則 9）。cycle を作る move は拒否する。基準にした兄弟が消えていたら、右隣の直前 → 左隣の直後 → 末尾の順で位置を決める。
 - 【実装済み】Command の parent edge は、子の ID を `key` に持ち、`before` / `after` に `{parentId, ord}` を持つ。作成は `after`、削除は `before` だけを持つ。移動・挿入・並べ替えの対象の parent edge だけを送る。兄弟の配列位置の変化は、兄弟自身の変更ではない。
   - viewer / MCP の `diffState` は、読み出した `edgeOrder`（入ってくる parent edge の `ord`）と前後の兄弟の key から `fractional-indexing` で候補を作る。確定側は key の妥当性と不変条件を検査して保存する。viewer は保存の応答を受けたとき、確定した Command の key を次の保存の基点にも反映する。
+  - viewer が書込み位置を渡す場合は、移動した node とその隣接 node のキーだけから差分を作り、全 node と全兄弟を列挙しない。scopen／unscopen と scope をまたぐ部分木移動の確定は、所属が変わる parent edge と関連 record だけを射影する。子孫の所属も変わる場合の手間は、その部分木に比例する。
   - compare-and-set は同じ子の `{parentId, ord}` を照合する。無関係な兄弟の移動は前提を変えず、同じ子への相反する移動は競合になる。5.2 の LWW の決定と、この compare-and-set の実装との差は実装ログで管理する。
   - `index` を持つ既存の journal / outbox / Command も読み取れる。同じ Command 内の index は同時に適用する。新しく書く journal / outbox は `ord` を持ち、受信した形の hash と書き込む形の hash を保持して、再起動・compaction 後も同じ Command の再送を判定する。
 - 【決定】（同期の要件 R3.4、暫定）relation edge を可視化し配送するのは、両端が同じ scope にあるときだけである。履歴を格納する先は、source 側の scope である。
