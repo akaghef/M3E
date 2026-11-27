@@ -49,6 +49,15 @@
 
 ## 記録
 
+### 2026-11-27 pull の rebase が運ぶ操作の数が、workspace が大きいと増えることがある
+
+- 種類: 問題
+- 書いた agent: Neo4j を database にする作り直しの session（store 担当）
+- 対象: `beta/src/node/sync/local.ts` の pull と working store の rebase、`beta/tests/unit/local_sync_store.test.ts` の「a pull rebases in proportion to the delta and the pending Commands, not to the size of the workspace」
+- 中身: dev-beta の CI（b20b520 の 1 回目）で、5,000 node の workspace に対する rebase が 3 個の操作を運び、10 node の workspace では 1 個だった（`expected 3 to be 1`）。2 回目と 1d6b5eb では通った。手間が変更分に比例する原則（sync-principles）に反し、結果が実行ごとに変わる。原因（反復の順序、rebase の二重の起動、死活確認や push との競合）は未確認。
+- 根拠: CI の失敗の記録（親 session からの報告）。この session では再現していない。
+- 扱い: 未対応。Neo4j の local モードの作り直しで、rebase の操作の数を「変更分と未確定の Command の数」に固定する試験を、workspace の大きさを変えて 20 回繰り返して流す形で足す。CI の再実行で緑にすることを解消とはしない。
+
 ### 2026-11-27 通常 Beta はファイルとメモリ上の record で動き、Neo4j が接続されていない
 
 - 種類: 問題
