@@ -56,7 +56,7 @@
 - 対象: `beta/src/node/sync/local.ts` の `push()`、sync-requirements R8.1
 - 中身: outbox の Command は、記録した順にそのまま remote へ送られる。push の前に node を作って消すと、作成と削除の 2 件がそれぞれ remote で確定し、journal に載る。続けて行った更新も 1 件ずつ確定する。打ち消されるのは、remote の journal が snapshot に畳み込まれるときだけになる。消した node の本文は一度 remote の journal に載り、畳み込み後も archive に 90 日残る。まとめ方の案は次のとおり。まだ一度も送っていない同じ issuer の連続した Command について、record ごとに作成と削除の組は両方とも落とし、連続する更新は最初の `before` と最後の `after` の 1 件にまとめる。まとめた Command には新しい `commandId` を振る（送信済みの ID で中身を変えると `SAME_ID_DIFFERENT_CONTENT` で拒否されるため）。map の作成・削除・改名をまたいではまとめない。
 - 根拠: `push()` と `rebuild()` を読んだ。push と journal のどちらにも、まとめる処理はない。
-- 扱い: akaghef の判断待ち（remote の journal に何を記録するかが変わるため）
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。push の前に、まだ送っていない同じ issuer の連続した Command を、中身の項に書いた形でまとめる。未実装
 
 ### 2026-11-25 何も変えない Command が outbox に入り、remote へも送られる
 
@@ -152,7 +152,7 @@
 - 対象: `beta/src/node/remote_access.ts` の `allowedLogin`、`scripts/remote/README.md` のアクセス境界
 - 中身: Mac mini の M3E は 127.0.0.1 だけで待ち受け、`tailscale serve` を通った要求の `Tailscale-User-Login` を許可リストと照合する。tailnet の外から来る偽の header は serve が本物の login で上書きする。一方、mini 上で動く process（Swingby の docker 群など）は 127.0.0.1:4173 に直接つなぎ、この header を自分で付けられる。そうすると workspace 全体を読み書きできる。
 - 根拠: リハーサルで、header の無い loopback 接続が 403、serve 経由の偽 header が本物の login に置き換わることを確かめた。header を付けた loopback 接続は確かめていないが、照合が header だけを見ることはコードから分かる。
-- 扱い: akaghef の判断待ち（mini 上の process を信頼するか、unix socket や共有の秘密で serve との間を閉じるか）
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。serve と M3E の間を unix socket で閉じる。tailscale serve が unix socket へ転送できない場合は、mini 上の process を信頼するとして、その旨をこの項に書く。未実装
 
 ### 2026-11-23 remote の journal の issuer に、接続した人の login が入らない
 
@@ -161,7 +161,7 @@
 - 対象: `beta/src/node/sync/http.ts` の `connectionFromRequest`、`beta/src/node/sync/issuer.ts`
 - 中身: remote では、照合を通った login（`Tailscale-User-Login`）が分かっているが、viewer からの確定の issuer は接続の種類（viewer）の account のままで、誰が書いたかが journal に残らない。login を issuer に渡す接続点は `connectionFromRequest` である。
 - 根拠: コードを読んだ。
-- 扱い: 未対応
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。照合を通った login を issuer に入れる。未実装
 
 ### 2026-11-23 remote の map の読み込みを圧縮しない
 
@@ -574,7 +574,7 @@
 - 対象: DB 仕様書 5.3 節、`beta/src/node/record_store/store.ts:616`（再送の判定）、`store.ts:1231`（確定した Command だけを登録）
 - 中身: 再送で「最初の結果」を返すのは、確定した Command だけである。拒否した Command は ID を覚えないので、拒否の後に状態が変わってから同じ ID を再送すると、今度は確定する。依頼した側から見ると、一度は拒否と返った依頼が、応答を受け取れなかった再送で黙って通る。確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）も最初の結果として持ち、同じ ID には同じ拒否を返すことを提案する。一時的な拒否（`ENGINE_BEHIND`）は除く。
 - 根拠: `store.ts:612-627` と、`this.commands.set` の 3 か所（`store.ts:438`、`1223`、`1231`）を読んだ。登録は確定の経路と読み込みの経路だけで、拒否の経路には無い。実行はしていない。
-- 扱い: 未対応
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。確定的な拒否（`CONFLICT`、`INVALID_STATE`、`INVALID_COMMAND`）も最初の結果として持ち、同じ ID には同じ拒否を返す。`ENGINE_BEHIND` は除く。未実装
 
 ### 2026-11-19 再送の判定は map ごとで、通し番号は workspace で一本
 
@@ -583,7 +583,7 @@
 - 対象: DB 仕様書 5.2 節・5.3 節、`beta/src/node/record_store/store.ts:272`（`commandKey(mapId, commandId)`）
 - 中身: Command の ID は map ごとに一意とみなされる。一方、通し番号は workspace で一本で、node を別の map へ移すことも想定している。複数の map に触る Command がどの map の ID として登録されるか、同じ ID が別の map で使われたときに別の Command とみなしてよいか、が決まっていない。再送の判定のキーを workspace 単位にし、触った map は Command の中に集合として持つことを提案する。
 - 根拠: `store.ts:272`、`617` を読んだ。仕様書 5.3 節は単位を書いていない。
-- 扱い: 未対応
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。再送の判定のキーを workspace 単位にし、触った map は Command の中に集合として持つ。未実装
 
 ### 2026-11-19 兄弟順キーが同じ値の兄弟の間には、node を入れられない
 
@@ -704,7 +704,7 @@
 - 対象: DB 仕様書 6 節・8.3 節、`beta/src/node/neo4j_store/apply.ts:192`（`appliedSeq` の書き込み）
 - 中身: 復旧の正本が snapshot と journal なら、グラフの中身だけでなく、権限、未解決の conflict、Command の結果（重複排除の記録）、世代、端末の失効も、そこから戻せなければならない。Neo4j にだけ置いた状態は、指定された復旧の経路で失われる。また、journal に fsync した後、Neo4j に適用する前に止まった確定は、適用の失敗を理由に未確定へ戻せない。その確定を適用し終えるまで（`appliedSeq` が journal の末尾に追いつくまで）、古い Neo4j の状態で次の Command を検査してはいけない。どちらも今の DB 仕様書には書かれていない。
 - 根拠: GPT-6 Pro の回答（第 1 往復）の指摘を、DB 仕様書 8.3 節の「反映した位置は `appliedSeq` に持つ」と照らした。確定の処理が、検査の前に `appliedSeq` の遅れを解消しているかどうかは確かめていない（未確認）。
-- 扱い: 未対応
+- 扱い: akaghef が 2026-11-27 に、提案のとおりに決めた（「全部推奨で」）。戻すべき状態と適用待ちの確定の扱いを、まず DB 仕様書に【提案】として書き、akaghef の確認の後に実装する。未対応
 
 ### 2026-11-19 journal の畳み込みがどこからも呼ばれていない
 
