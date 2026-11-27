@@ -1,23 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { SaveStateTracker } from "../../src/browser/save_command";
 import { afterEach, expect, test, vi } from "vitest";
 
 // Execute the viewer's actual functions and event listeners without booting its UI.
 const source = ts.createSourceFile("viewer.ts", fs.readFileSync(path.join(__dirname, "../../src/browser/viewer.ts"), "utf8"), ts.ScriptTarget.Latest, true);
-const names = ["setStatus", "updateLinearSaveStatus", "showLocalSaveFailure", "markLocalSaveSucceeded", "currentDocSnapshot", "cloneStateForSave", "saveDocToLocalDb", "scheduleAutosave"];
+const names = ["setStatus", "updateLinearSaveStatus", "showLocalSaveFailure", "markLocalSaveSucceeded", "currentDocSnapshot", "cloneStateForSave", "saveDocToLocalDb", "saveDocToLocalDbOnce", "markSaveChanges", "scheduleAutosave"];
 const functions = source.statements.filter(s => ts.isFunctionDeclaration(s) && names.includes(s.name?.text ?? ""));
 const listeners = source.statements.filter(s => ts.isExpressionStatement(s) && /^linearTextEl\?\.addEventListener\("(input|keydown)"/.test(s.getText(source)));
 const code = ts.transpileModule([...functions, ...listeners].map(s => s.getText(source)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
 
 function setup(fetch: ReturnType<typeof vi.fn>, snapshotError = false) {
-  return new Function("fetch", "snapshotError", "showConflictPanel", `
+  return new Function("fetch", "snapshotError", "showConflictPanel", "SaveStateTracker", `
     const map = { version: 1, savedAt: "initial", state: { rootId: "root", nodes: { root: { text: "Root" } } } };
     const statusEl = { textContent: "", style: {} }, linearMetaEl = { textContent: "" };
     const handlers = {}, linearTextEl = { value: "memo", addEventListener: (name, fn) => handlers[name] = fn };
     const linearNotesByScope = {}, linearApplyBtn = {}, linearResetBtn = {};
     let linearDirty = false, linearDisplayedScopeId = "root", statusTimer = null, autosaveTimer = null;
     let localSaveFailure = null, localSaveRevision = 0, localSavedRevision = -1;
+    let saveStateTracker = null, saveInFlight = null, preparedSaveState = null, preparedSaveView = "";
     let lastServerSavedAt = "initial", lastServerBaseState = { original: true };
     const grabSession = null, collabEntityId = null, collabToken = null, cloudSyncEnabled = false;
     const LOCAL_MAP_ID = "test", TAB_ID = "test-tab", AUTOSAVE_DELAY_MS = 700;
@@ -35,7 +37,7 @@ function setup(fetch: ReturnType<typeof vi.fn>, snapshotError = false) {
       edit: (value) => { linearTextEl.value = value; handlers.input(); },
       enter: () => handlers.keydown({ key: "Enter", preventDefault() {} }),
       baseline: () => ({ lastServerSavedAt, lastServerBaseState }) };
-  `)(fetch, snapshotError, vi.fn());
+  `)(fetch, snapshotError, vi.fn(), SaveStateTracker);
 }
 
 function response(status: number, payload: object = {}) {

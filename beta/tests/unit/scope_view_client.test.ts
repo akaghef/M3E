@@ -1,6 +1,7 @@
 // The viewer side of scope view: a save is a Command or a failed save, never the whole map.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { scopeView, SAVE_BLOCKED_HEADER } from "../../src/browser/scope_view_client";
+import { SaveStateTracker } from "../../src/browser/save_command";
 import { extractScopeView } from "../../src/shared/scope_view";
 import type { AppState } from "../../src/shared/types";
 import { node } from "./scope_view_fixture";
@@ -160,4 +161,24 @@ test("another scope opens as its own page: scope view for a scope root, the whol
   expect(scopeView.hrefFor("E", here)).toBe("http://127.0.0.1:1/viewer.html?map=m&scope=E&partial=1");
   expect(scopeView.hrefFor("root", here)).toBe("http://127.0.0.1:1/viewer.html?map=m&scope=root&partial=1");
   expect(scopeView.hrefFor("mid", here)).toBe("http://127.0.0.1:1/viewer.html?map=m&scope=mid");
+});
+
+
+test("precomputed delta saves use the same scope mapping and keep whole-map fallback blocked", async () => {
+  expect(scopeView.adopt(payload)).toBe(true);
+  const base = clone(payload.state), state = clone(base);
+  const tracker = new SaveStateTracker(base, state);
+  state.nodes.a.text = "delta edit";
+  tracker.mark({ nodes: ["a"] });
+  const delta = tracker.capture();
+  const fetch = vi.fn(async () => new Response("{}", { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+  await scopeView.save("/api/maps/m", "tab", base, state, "t0");
+  await scopeView.save("/api/maps/m", "tab", base, state, "t0", delta.changes);
+  const calls = fetch.mock.calls as unknown as [string, RequestInit][];
+  expect(JSON.parse(String(calls[1][1].body)).changes).toEqual(JSON.parse(String(calls[0][1].body)).changes);
+  fetch.mockClear();
+  fetch.mockResolvedValue(new Response("{}", { status: 404 }));
+  expect((await scopeView.save("/api/maps/m", "tab", base, state, "t0", delta.changes)).status).toBe(422);
+  expect(fetch).toHaveBeenCalledTimes(1);
 });

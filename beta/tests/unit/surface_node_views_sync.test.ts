@@ -13,6 +13,8 @@ function run(state: Record<string, unknown>) {
     const map = { state };
     const viewState = { concretenessLevel: 0, surfaceViewMode: "tree", surfaceLayoutDirection: "right", surfaceSpace: "normal" };
     const sanitizeMapModelState = () => {};
+    // This harness checks node-view contents; save tracking is tested separately.
+    const markSaveChanges = () => {}, markSaveCollectionReplacement = () => {};
     const currentScopeRootId = () => "root";
     const inferredScopeId = (id) => "scope:" + id;
     const surfaceKindForViewMode = () => "tree";
