@@ -85,6 +85,8 @@ import {
   type RecordOp,
 } from "./engine";
 
+import { MapRecordChanges } from "./map_changes";
+
 import type { SyncCommand, SyncIdentity, SyncMapOperation } from "./sync_types";
 
 export const SNAPSHOT_FILE = "snapshot.jsonl";
@@ -481,6 +483,7 @@ export class RecordWorkspaceStore {
   private readonly epoch: number;
 
   private capture: ((command: SyncCommand, issuer: string, at: string, mapName: string) => void) | undefined;
+  readonly mapChanges = new MapRecordChanges();
   private committed: ((line: JournalLine) => void) | undefined;
   private readonly dir: string;
   private readonly now: () => string;
@@ -825,6 +828,29 @@ export class RecordWorkspaceStore {
   record(rk: string): SnapshotRecord | undefined {
     const record = this.all.get(rk);
     return record === undefined ? undefined : jsonClone(record);
+  }
+
+  /** Canonical record baseline/delta for map-watch clients. Null means the cursor has a gap. */
+  readMapRecords(mapId: string, since?: string) {
+    this.assertOpen();
+    const cursor = this.mapChanges.cursor(mapId, this.currentSeq);
+    const delta = since === undefined ? undefined : this.mapChanges.since(mapId, since, this.currentSeq);
+    if (delta === null) return null;
+    const entry = this.maps.get(mapId);
+    if (since === undefined && !entry) return undefined;
+    const keys = delta?.recordKeys ?? [...new Set([
+      ...entry!.records.keys(), ...entry!.idMaps.keys(), ...(this.decayByMap.get(mapId) ?? []),
+    ])];
+    const records = keys.map(rk => {
+      const record = this.record(rk);
+      // A rename moves keys to another map. Those keys are deletions for the old map.
+      const belongs = record && (record.kind === "extensionDef"
+        || (record.kind === "map" ? record.id === mapId : "mapId" in record && record.mapId === mapId));
+      return { rk, record: belongs ? record : null };
+    });
+    return { mapId, ...cursor, seq: this.currentSeq, full: since === undefined,
+      ...(since === undefined ? { header: this.header() } : { previousRevision: since }),
+      deleted: !entry, records };
   }
 
   /** Journal lines after `seq`, from the journal and the archive; null when they no longer reach back that far. */
@@ -1919,6 +1945,25 @@ export class RecordWorkspaceStore {
     // label must not be refused for it.
     changes = withCurrentDerivedScopeFields(changes, warm ? warm.state : {});
 
+    // Ordinary position changes are LWW in confirmation order. Only the position's
+    // expected values are refreshed; content remains CAS and projection write-back
+    // retains its original position base. Missing edges still fail CAS.
+    if (warm && meta.intent !== "write-back") {
+      changes = changes.map(change => {
+        if (change.kind !== "edge" || change.op !== "update") return change;
+        const node = warm.state.nodes[change.key[0]];
+        if (!node || typeof node.parentId !== "string") return change;
+        const before = { ...change.before };
+        for (const field of Object.keys(before)) {
+          if (field === "parentId") before.parentId = node.parentId;
+          else if (field === "ord") before.ord = node.edgeOrder;
+          // Compatibility reader only. New Commands carry stable order keys.
+          else if (field === "index") before.index = warm.state.nodes[node.parentId]?.children.indexOf(change.key[0]);
+        }
+        return { ...change, before };
+      });
+    }
+
     // Content updates reach only named nodes. Keep the full table out of copy-on-write
     // and projection; the projector installs those nodes with a rollback after validation.
     const contentOnly = warm !== undefined && validationUnaffected(changes)
@@ -2305,7 +2350,26 @@ export class RecordWorkspaceStore {
     this.journalPositions.set(line.seq, { offset: this.journalSize, length: buffer.length });
     this.journalSize += buffer.length;
     this.journalLines += 1;
+    const changed = new Map<string, Set<string>>();
+    const add = (mapId: string, rk: string): void => {
+      let keys = changed.get(mapId);
+      if (!keys) changed.set(mapId, keys = new Set());
+      keys.add(rk);
+    };
+    for (const op of line.ops) {
+      for (const record of [this.all.get(op.rk), op.op === "put" ? op.record : undefined]) {
+        if (!record) continue;
+        if (record.kind === "extensionDef") {
+          // A shared definition changes every map that exposes it.
+          for (const mapId of this.maps.keys()) add(mapId, op.rk);
+        } else {
+          const mapId = record.kind === "map" ? record.id : (record as { mapId?: string }).mapId;
+          if (typeof mapId === "string") add(mapId, op.rk);
+        }
+      }
+    }
     this.applyLine(line);
+    for (const [mapId, keys] of changed) this.mapChanges.append(mapId, line.seq, line.committedAt, keys);
     this.committed?.(line);
     this.engine?.enqueue(this.engineCommit(line));
     // The commit has happened; compaction must not turn it into a failure.

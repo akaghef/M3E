@@ -437,3 +437,28 @@ test("every viewer field also survives the local working store and outbox path",
   await device.push(() => {});
   expect((await device.status()).conflicts).toBe(0);
 });
+
+test("offline moves of the same node use remote confirmation order and converge after rebase", async () => {
+  const { diffState } = await import("../../src/shared/map_changes");
+  const { command, node } = await import("./record_store_helpers");
+  const initial = appState();
+  for (const id of ["a", "b", "child"]) { initial.nodes[id] = node(id, "root"); initial.nodes.root.children.push(id); }
+  expect(remote().saveWholeMap("map", initial, "human").ok).toBe(true);
+  const a = await client("a"), b = await client("b");
+  for (const [device, parent] of [[a, "a"], [b, "b"]] as const) {
+    const before = device.store().getMapRow("map").state;
+    const after = JSON.parse(JSON.stringify(before));
+    after.nodes.root.children = after.nodes.root.children.filter((id: string) => id !== "child");
+    after.nodes.child.parentId = parent; after.nodes[parent].children.push("child");
+    expect(device.store().commitMapCommand("map", command(diffState(before, after)), "human").ok).toBe(true);
+  }
+  expect(await a.push(() => {})).toMatchObject({ conflicts: 0, committed: 1 });
+  const baseline = a.store().readMapRecords("map")!;
+  expect(await b.push(() => {})).toMatchObject({ conflicts: 0, committed: 1 });
+  await a.pull(() => {});
+  for (const store of [remote(), a.store(), b.store()]) expect(store.getMapRow("map").state.nodes.child.parentId).toBe("b");
+  const delta = a.store().readMapRecords("map", baseline.revision);
+  expect(delta).not.toBeNull();
+  expect(delta!.records.some(item => item.record?.kind === "connection")).toBe(true);
+  expect(entries("a")).toEqual([]); expect(entries("b")).toEqual([]);
+});

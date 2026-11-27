@@ -38,7 +38,7 @@ test("move, insert and reorder carry only the changed parent edge, independent o
     }
   }
 });
-test("another sibling moving does not conflict; another writer moving the same node does", () => {
+test("concurrent moves of the same node are LWW in confirmed seq order", () => {
   const { s } = store();
   const before = s.getMapRow("m").state;
   const a = clone(before), b = clone(before), stale = clone(before);
@@ -47,7 +47,12 @@ test("another sibling moving does not conflict; another writer moving the same n
   // Different nodes can choose different positions in the same destination.
   move(b, "n2", "root", 25);
   expect(s.commitMapCommand("m", command(diffState(before, b)), "human").ok).toBe(true);
-  expect(s.commitMapCommand("m", command(diffState(before, stale)), "human")).toMatchObject({ ok: false, code: "CONFLICT" });
+  const last = s.commitMapCommand("m", command(diffState(before, stale)), "human");
+  expect(last).toMatchObject({ ok: true });
+  const actual = s.getMapRow("m").state;
+  expect(actual.nodes.n1.parentId).toBe("root");
+  expect(actual.nodes.root.children.indexOf("n1")).toBeGreaterThan(actual.nodes.root.children.indexOf("n19"));
+  expect(actual.nodes.dest.children).not.toContain("n1");
 });
 test("legacy index Commands retain simultaneous index semantics across reopen", async () => {
   const { s, dir } = store(3);
@@ -92,4 +97,23 @@ test("legacy requests write keyed journals and outbox entries and retain retry i
   s.compact(); await s.close(); open.splice(open.indexOf(s), 1);
   const again = RecordWorkspaceStore.open(dir); open.push(again);
   for (const cmd of [legacy, captured[0].command]) expect(again.commitMapCommand("m", cmd, "human")).toMatchObject({ ok: true, replayed: true });
+});
+
+test("LWW keeps content CAS and rejects a stale move that would now make a cycle", () => {
+  const { s } = store();
+  const before = s.getMapRow("m").state;
+  const first = clone(before); move(first, "dest", "n1"); first.nodes.n1.text = "other writer";
+  expect(s.commitMapCommand("m", command(diffState(before, first)), "human").ok).toBe(true);
+  const cycle = clone(before); move(cycle, "n1", "dest");
+  expect(s.commitMapCommand("m", command(diffState(before, cycle)), "human")).toMatchObject({ ok: false, code: "INVALID_STATE" });
+  const content = clone(before); move(content, "n1", "root", 20); content.nodes.n1.text = "stale writer";
+  expect(s.commitMapCommand("m", command(diffState(before, content)), "human")).toMatchObject({ ok: false, code: "CONFLICT" });
+  expect(s.getMapRow("m").state.nodes.n1.text).toBe("other writer");
+});
+test("projection write-back retains position CAS", () => {
+  const { s } = store();
+  const before = s.getMapRow("m").state, a = clone(before), b = clone(before);
+  move(a, "n1", "dest"); move(b, "n1", "root", 20);
+  expect(s.commitMapCommand("m", command(diffState(before, a)), "human").ok).toBe(true);
+  expect(s.commitMapCommand("m", { ...command(diffState(before, b)), intent: "write-back" }, "human")).toMatchObject({ ok: false, code: "CONFLICT" });
 });
