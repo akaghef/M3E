@@ -15,9 +15,11 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 usage: install.sh [--home DIR] [--instances main,test] [--main-port N] [--main-http-port N]
-                  [--test-port N] [--label-suffix S]
+                  [--test-port N] [--heap-initial SIZE] [--heap-max SIZE] [--label-suffix S]
   --home            M3E home (default: $M3E_HOME or ~/Library/Application Support/M3E)
   --instances       which instances to install (default: main,test; the Mac mini uses main)
+  --heap-initial/--heap-max  JVM heap of each instance (default 1g / 2g: one Command may carry
+                    32 MB of text, which a transaction holds several times over)
   --label-suffix    appended to the LaunchAgent labels (com.m3e.neo4j<S>, com.m3e.neo4j-test<S>)
 EOF
 }
@@ -32,6 +34,8 @@ INSTANCES="main,test"
 MAIN_PORT=7687
 MAIN_HTTP_PORT=7474
 TEST_PORT=7688
+HEAP_INITIAL=1g
+HEAP_MAX=2g
 LABEL_SUFFIX=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -40,6 +44,8 @@ while [[ $# -gt 0 ]]; do
     --main-port) MAIN_PORT="$2"; shift 2 ;;
     --main-http-port) MAIN_HTTP_PORT="$2"; shift 2 ;;
     --test-port) TEST_PORT="$2"; shift 2 ;;
+    --heap-initial) HEAP_INITIAL="$2"; shift 2 ;;
+    --heap-max) HEAP_MAX="$2"; shift 2 ;;
     --label-suffix) LABEL_SUFFIX="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
@@ -172,7 +178,7 @@ if [[ ",$INSTANCES," == *",main,"* ]]; then
 fi
 
 setup_instance() {
-  local name="$1" port="$2" http_port="$3" auth="$4" heap="$5" pagecache="$6" label="$7"
+  local name="$1" port="$2" http_port="$3" auth="$4" pagecache="$5" label="$6"
   local dir="$ROOT/instances/$name" conf content plist restart=0 domain="gui/$(id -u)"
   install -d -m 700 "$dir" "$dir/conf" "$dir/data" "$dir/logs" "$dir/run" "$dir/import" "$dir/plugins"
   conf="$dir/conf"
@@ -195,8 +201,8 @@ server.https.enabled=false
 dbms.security.auth_enabled=$auth
 dbms.usage_report.enabled=false
 server.fleet_discovery.enabled=false
-server.memory.heap.initial_size=$heap
-server.memory.heap.max_size=$heap
+server.memory.heap.initial_size=$HEAP_INITIAL
+server.memory.heap.max_size=$HEAP_MAX
 server.memory.pagecache.size=$pagecache
 $(grep '^server.jvm.additional=' "$NEO4J_HOME/conf/neo4j.conf")"
   if write_if_changed "$conf/neo4j.conf" "$content" 600; then changed "$name: neo4j.conf"; restart=1; else unchanged "$name: neo4j.conf"; fi
@@ -302,8 +308,8 @@ $(grep '^server.jvm.additional=' "$NEO4J_HOME/conf/neo4j.conf")"
 IFS=',' read -r -a wanted <<< "$INSTANCES"
 for instance in "${wanted[@]}"; do
   case "$instance" in
-    main) setup_instance main "$MAIN_PORT" "$MAIN_HTTP_PORT" true 512m 256m "com.m3e.neo4j$LABEL_SUFFIX" ;;
-    test) setup_instance test "$TEST_PORT" "" false 512m 128m "com.m3e.neo4j-test$LABEL_SUFFIX" ;;
+    main) setup_instance main "$MAIN_PORT" "$MAIN_HTTP_PORT" true 256m "com.m3e.neo4j$LABEL_SUFFIX" ;;
+    test) setup_instance test "$TEST_PORT" "" false 128m "com.m3e.neo4j-test$LABEL_SUFFIX" ;;
     *) echo "unknown instance: $instance" >&2; exit 2 ;;
   esac
 done

@@ -22,11 +22,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\beta\install-logon-s
 |---|---|
 | `neo4j/downloads/` | checksum を照合した Neo4j の tarball（Windows は zip）と Temurin JRE |
 | `neo4j/dist/` | 展開した Neo4j と JRE。編集しない |
-| `neo4j/instances/main/` | 実データ。bolt `127.0.0.1:7687`、認証あり、HTTP `127.0.0.1:7474`、heap 512 MB |
-| `neo4j/instances/test/` | 試験用の使い捨てデータ。bolt `127.0.0.1:7688`、認証なし、HTTP なし、heap 512 MB |
+| `neo4j/instances/main/` | 実データ。bolt `127.0.0.1:7687`、認証あり、HTTP `127.0.0.1:7474` |
+| `neo4j/instances/test/` | 試験用の使い捨てデータ。bolt `127.0.0.1:7688`、認証なし、HTTP なし |
 | `secrets/neo4j-password` | main の `neo4j` 利用者のパスワード。初回に生成し、以後は置き換えない。macOS は 0600、Windows は本人だけの ACL |
 
-各 instance の `conf/neo4j.conf` は script が生成し、loopback だけで待ち受け、利用データの送信（`dbms.usage_report`）と LAN への discovery の broadcast（`server.fleet_discovery`）を止める。手で直さず、script を直して流し直す。conf が変われば script がその instance を起動し直す。main の初回は、既定の `neo4j`／`neo4j` で接続してパスワードを file の値に変える。パスワードはコマンド引数にも出力にも出さない（macOS は標準入力、Windows は本人だけが読める一時 file を `cypher-shell -f` で渡す）。
+各 instance の `conf/neo4j.conf` は script が生成し、heap を初期 1 GB・上限 2 GB にする（1 つの Command は最大 32 MB の文字列を運び、transaction はそれを何重かに持つ。512 MB では transaction の上限を超えた。`--heap-initial`・`--heap-max`／`-HeapInitial`・`-HeapMax` で変えられる）。また loopback だけで待ち受け、利用データの送信（`dbms.usage_report`）と LAN への discovery の broadcast（`server.fleet_discovery`）を止める。手で直さず、script を直して流し直す。conf が変われば script がその instance を起動し直す。main の初回は、既定の `neo4j`／`neo4j` で接続してパスワードを file の値に変える。パスワードはコマンド引数にも出力にも出さない（macOS は標準入力、Windows は本人だけが読める一時 file を `cypher-shell -f` で渡す）。
 
 常駐のさせ方:
 

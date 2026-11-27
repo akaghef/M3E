@@ -18,6 +18,9 @@ param(
   [int]$MainPort = 7687,
   [int]$MainHttpPort = 7474,
   [int]$TestPort = 7688,
+  # One Command may carry 32 MB of text, which a transaction holds several times over.
+  [string]$HeapInitial = '1g',
+  [string]$HeapMax = '2g',
   [string]$LabelSuffix = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -137,7 +140,7 @@ if ($Instances -contains 'main') {
   Set-UserOnlyAcl $passwordFile
 }
 
-function Setup-Instance($name, $port, $httpPort, $auth, $heap, $pagecache, $label) {
+function Setup-Instance($name, $port, $httpPort, $auth, $pagecache, $label) {
   $dir = Join-Path $root "instances\$name"
   foreach ($d in 'conf', 'data', 'logs', 'run', 'import', 'plugins') { New-Item -ItemType Directory -Force (Join-Path $dir $d) | Out-Null }
   $conf = Join-Path $dir 'conf'
@@ -159,8 +162,8 @@ server.https.enabled=false
 dbms.security.auth_enabled=$auth
 dbms.usage_report.enabled=false
 server.fleet_discovery.enabled=false
-server.memory.heap.initial_size=$heap
-server.memory.heap.max_size=$heap
+server.memory.heap.initial_size=$HeapInitial
+server.memory.heap.max_size=$HeapMax
 server.memory.pagecache.size=$pagecache
 $jvm
 "@
@@ -228,8 +231,8 @@ goto loop
 
 foreach ($instance in $Instances) {
   switch ($instance) {
-    'main' { Setup-Instance 'main' $MainPort $MainHttpPort 'true' '512m' '256m' "neo4j$LabelSuffix" }
-    'test' { Setup-Instance 'test' $TestPort $null 'false' '512m' '128m' "neo4j-test$LabelSuffix" }
+    'main' { Setup-Instance 'main' $MainPort $MainHttpPort 'true' '256m' "neo4j$LabelSuffix" }
+    'test' { Setup-Instance 'test' $TestPort $null 'false' '128m' "neo4j-test$LabelSuffix" }
     default { throw "unknown instance: $instance" }
   }
 }
