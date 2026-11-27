@@ -1,16 +1,15 @@
-// Round trip of a portable snapshot through the Neo4j store adapter.
-// The encoding tests always run. The database tests run only when M3E_TEST_NEO4J_BOLT points
-// at a throwaway Neo4j instance (for example bolt://127.0.0.1:37687); they delete every `Rec`
-// node of that instance.
+// Round trip of records through the Neo4j store adapter. The database tests use the disposable
+// test Neo4j (M3E_TEST_NEO4J_BOLT) and a store label of their own; they fail when it is unreachable.
 
 import neo4j, { type Driver } from "neo4j-driver";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { decodeRecord, encodeRecord } from "../../src/node/neo4j_store/encoding";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { decodeRecord, encodeRecord, storeLabel } from "../../src/node/neo4j_store/encoding";
+import { TEST_NEO4J } from "./neo4j_test_store";
+import { randomUUID } from "crypto";
 import { deleteAllRecords, dump, load } from "../../src/node/neo4j_store/store";
 import { parseSnapshot, serializeSnapshot } from "../../src/shared/record_model/jsonl";
 import type { SnapshotRecord } from "../../src/shared/record_model/types";
 
-const BOLT = process.env.M3E_TEST_NEO4J_BOLT;
 
 const ID64 = "n_" + "0123456789abcdef".repeat(4).slice(0, 62);
 const BIG_TEXT = "線形テキスト linear text 😀 \"quoted\" \\ back\tslash\n".repeat(15000);
@@ -167,17 +166,21 @@ describe("neo4j store encoding", () => {
   });
 });
 
-describe.skipIf(!BOLT)("neo4j store round trip (needs M3E_TEST_NEO4J_BOLT)", () => {
+describe("neo4j store round trip", () => {
   let driver: Driver;
+  let label = "";
 
   beforeAll(() => {
-    driver = neo4j.driver(BOLT as string);
+    const auth = TEST_NEO4J.user !== undefined ? neo4j.auth.basic(TEST_NEO4J.user, TEST_NEO4J.password ?? "") : undefined;
+    driver = neo4j.driver(TEST_NEO4J.uri, auth);
   });
-  beforeEach(async () => {
-    await deleteAllRecords(driver, { batchSize: 1000 });
+  beforeEach(() => {
+    label = storeLabel(`test-${randomUUID()}`);
+  });
+  afterEach(async () => {
+    await deleteAllRecords(driver, { batchSize: 1000, label });
   });
   afterAll(async () => {
-    await deleteAllRecords(driver, { batchSize: 1000 });
     await driver.close();
   });
 
@@ -194,23 +197,23 @@ describe.skipIf(!BOLT)("neo4j store round trip (needs M3E_TEST_NEO4J_BOLT)", () 
   it("dumps a loaded snapshot byte-identically", async () => {
     const records = syntheticSnapshot();
     const expected = serializeSnapshot(records);
-    const result = await load(driver, records);
+    const result = await load(driver, records, { label });
     expect(result.records).toBe(records.length);
     expect(Object.keys(result.recordCounts)).toEqual(ALL_KINDS);
 
-    const actual = serializeSnapshot(await dump(driver));
+    const actual = serializeSnapshot(await dump(driver, { label }));
     expect(actual === expected).toBe(true);
     expect(Buffer.from(actual, "utf8").equals(Buffer.from(expected, "utf8"))).toBe(true);
   }, 120000);
 
   it("round-trips with a batch size smaller than the snapshot", async () => {
     const records = syntheticSnapshot();
-    await load(driver, records, { batchSize: 3 });
-    expect(serializeSnapshot(await dump(driver)) === serializeSnapshot(records)).toBe(true);
+    await load(driver, records, { batchSize: 3, label });
+    expect(serializeSnapshot(await dump(driver, { label })) === serializeSnapshot(records)).toBe(true);
   }, 120000);
 
   it("creates relationships only to records that exist", async () => {
-    const result = await load(driver, syntheticSnapshot());
+    const result = await load(driver, syntheticSnapshot(), { label });
     expect(result.relationshipCounts).toEqual({
       ALIAS_OF: 1,
       IN: 1,
@@ -224,28 +227,28 @@ describe.skipIf(!BOLT)("neo4j store round trip (needs M3E_TEST_NEO4J_BOLT)", () 
     });
     // The graphlink between connections is attached to both connections.
     expect(await count(
-      "MATCH (:Connection {id: 'c_link_1'})-[:SOURCE]->(l:Connection {id: 'c_link_on_link'})-[:TARGET]->(:Connection {id: 'c_edge_1'}) RETURN count(l) AS n",
+      `MATCH (:${label}:Connection {id: 'c_link_1'})-[:SOURCE]->(l:${label}:Connection {id: 'c_link_on_link'})-[:TARGET]->(:${label}:Connection {id: 'c_edge_1'}) RETURN count(l) AS n`,
     )).toBe(1);
     // The broken alias and the edge without a source keep the id but have no relationship.
-    expect(await count("MATCH (:M3eNode {id: 'alias_broken'})-[x:ALIAS_OF]->() RETURN count(x) AS n")).toBe(0);
-    expect(await count("MATCH ()-[x:SOURCE]->(:Connection {id: 'c_edge_broken'}) RETURN count(x) AS n")).toBe(0);
-    expect(await count("MATCH (c:Connection {id: 'c_edge_broken', f_source: 'node_that_does_not_exist'}) RETURN count(c) AS n")).toBe(1);
+    expect(await count(`MATCH (:${label}:M3eNode {id: 'alias_broken'})-[x:ALIAS_OF]->() RETURN count(x) AS n`)).toBe(0);
+    expect(await count(`MATCH ()-[x:SOURCE]->(:${label}:Connection {id: 'c_edge_broken'}) RETURN count(x) AS n`)).toBe(0);
+    expect(await count(`MATCH (c:${label}:Connection {id: 'c_edge_broken', f_source: 'node_that_does_not_exist'}) RETURN count(c) AS n`)).toBe(1);
     // A node and a map with the same id stay separate records.
-    expect(await count("MATCH (r:Rec {id: 'root_a'}) RETURN count(r) AS n")).toBe(2);
-    expect(await count("MATCH (:M3eNode {id: 'root_a'})-[:IN_MAP]->(m:Map {id: 'map_a'}) RETURN count(m) AS n")).toBe(1);
+    expect(await count(`MATCH (r:${label} {id: 'root_a'}) RETURN count(r) AS n`)).toBe(2);
+    expect(await count(`MATCH (:${label}:M3eNode {id: 'root_a'})-[:IN_MAP]->(m:${label}:Map {id: 'map_a'}) RETURN count(m) AS n`)).toBe(1);
   }, 120000);
 
   it("refuses to load into a database that already holds records", async () => {
     const records = syntheticSnapshot();
-    await load(driver, records);
-    await expect(load(driver, records)).rejects.toThrow(/Refusing to load/);
-    expect(serializeSnapshot(await dump(driver)) === serializeSnapshot(records)).toBe(true);
+    await load(driver, records, { label });
+    await expect(load(driver, records, { label })).rejects.toThrow(/Refusing to load/);
+    expect(serializeSnapshot(await dump(driver, { label })) === serializeSnapshot(records)).toBe(true);
   }, 120000);
 
   it("refuses two records with the same key before writing anything", async () => {
     const records = syntheticSnapshot();
     records.push({ kind: "node", id: "child_1", mapId: "map_a", text: "duplicate", rev: 0 });
-    await expect(load(driver, records)).rejects.toThrow(/share the key/);
-    expect(await count("MATCH (r:Rec) RETURN count(r) AS n")).toBe(0);
+    await expect(load(driver, records, { label })).rejects.toThrow(/share the key/);
+    expect(await count(`MATCH (r:${label}) RETURN count(r) AS n`)).toBe(0);
   }, 120000);
 });

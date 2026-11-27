@@ -1,6 +1,6 @@
 // The record store with Neo4j as its database: the state, the journal and the resend results live
 // in Neo4j, no file is read or written, and a store opened again comes back from Neo4j alone.
-// Runs when M3E_TEST_NEO4J_BOLT points at a Neo4j instance. Each test uses a store of its own name.
+// Uses the disposable test Neo4j (M3E_TEST_NEO4J_BOLT) and fails when it is unreachable.
 
 import { randomUUID } from "crypto";
 import fs from "fs";
@@ -10,11 +10,11 @@ import { RecordWorkspaceStore } from "../../src/node/record_store";
 import { Neo4jDurability } from "../../src/node/record_store/neo4j_durability";
 import { diffState } from "../../src/shared/map_changes";
 import { ISSUER, clone, command, richState, snapshotOf, tempDir, type Loose } from "./record_store_helpers";
+import { TEST_NEO4J } from "./neo4j_test_store";
 
-const BOLT = process.env.M3E_TEST_NEO4J_BOLT;
-const connection = { uri: BOLT ?? "" };
+const connection = TEST_NEO4J;
 
-describe.skipIf(!BOLT)("record store on Neo4j", () => {
+describe("record store on Neo4j", () => {
   const names: string[] = [];
   const open: RecordWorkspaceStore[] = [];
 

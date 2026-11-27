@@ -36,7 +36,7 @@ jobs:
     # The record store's database. Unit tests make stores of their own names in it.
     services:
       neo4j:
-        image: neo4j:5-community
+        image: neo4j:2026.10.2-community
         env:
           NEO4J_AUTH: none
         ports:

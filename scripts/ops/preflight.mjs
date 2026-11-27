@@ -9,6 +9,35 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const ICON_PYTHON_CHECKS = new Set(['build', 'agent-icon-tests', 'agent-icons']);
 const args = process.argv.slice(2);
 // Git hooks export repository selectors; cwd alone cannot isolate child Git calls.
+// The record store tests run against a disposable Neo4j, never the instance with real data (port 7687).
+// M3E_TEST_NEO4J_BOLT names it (default bolt://127.0.0.1:7688). When it does not answer and
+// M3E_TEST_NEO4J_START is set, that command is run once to start it. Unreachable means FAIL: no test
+// that needs Neo4j is ever skipped.
+async function testNeo4jReady() {
+  const uri = process.env.M3E_TEST_NEO4J_BOLT || 'bolt://127.0.0.1:7688';
+  process.env.M3E_TEST_NEO4J_BOLT = uri;
+  const match = /^bolt:\/\/([^:/]+):(\d+)/.exec(uri);
+  if (!match) return `M3E_TEST_NEO4J_BOLT is not a bolt://host:port address: ${uri}`;
+  const [, host, port] = match;
+  if (port === '7687') return 'M3E_TEST_NEO4J_BOLT points at port 7687, the Neo4j that holds real data.';
+  const net = await import('node:net');
+  const reachable = () => new Promise((ok) => {
+    const socket = net.connect({host, port: Number(port), timeout: 2000});
+    socket.once('connect', () => { socket.destroy(); ok(true); });
+    socket.once('timeout', () => { socket.destroy(); ok(false); });
+    socket.once('error', () => ok(false));
+  });
+  if (await reachable()) return '';
+  if (process.env.M3E_TEST_NEO4J_START) {
+    command('bash', ['-c', process.env.M3E_TEST_NEO4J_START], {stdio: 'inherit'});
+    for (let i = 0; i < 60; i += 1) {
+      if (await reachable()) return '';
+      await new Promise((done) => setTimeout(done, 1000));
+    }
+  }
+  return `the test Neo4j at ${uri} does not answer. Start the disposable test instance (or set M3E_TEST_NEO4J_START); tests that need Neo4j are never skipped.`;
+}
+
 const childEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
 const command = (name, args, options = {}) => spawnSync(name, args, {
   encoding: 'utf8', ...options, env: childEnv(),
@@ -101,8 +130,11 @@ if (commitMode) {
       try { process.env.M3E_AGENT_ICON_PYTHON = (await import('./channel-runtime.mjs')).agentIconPython(); }
       catch { iconPythonError = 'No python3 with Pillow found on PATH; install Pillow or set M3E_AGENT_ICON_PYTHON to a Python that can import PIL.'; }
     }
+    const neo4jError = selected.includes('test') ? await testNeo4jReady() : '';
     if (selected.some(name => checks[name][0] === 'beta') && !fs.existsSync(resolve(root, 'beta/node_modules'))) {
       console.error('FAIL prerequisites: beta/node_modules is missing. Run npm ci in beta explicitly; preflight never installs dependencies.'); process.exitCode = 1;
+    } else if (neo4jError) {
+      console.error('FAIL prerequisites: ' + neo4jError); process.exitCode = 1;
     } else if (iconPythonError) {
       console.error('FAIL prerequisites: ' + iconPythonError); process.exitCode = 1;
     } else {
