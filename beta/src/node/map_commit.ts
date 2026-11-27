@@ -25,7 +25,7 @@ export interface CommitSuccess {
 
 export interface CommitFailure {
   ok: false;
-  /** ENGINE_BEHIND comes from the record store only (M3E_STORE_DIR): its storage engine stopped following. */
+  /** ENGINE_BEHIND: a read asked for a commit the store does not hold yet (minSeq). */
   code: "NOT_FOUND" | "CONFLICT" | "INVALID_STATE" | "INVALID_COMMAND" | "ENGINE_BEHIND";
   conflicts: FieldConflict[];
   current: { savedAt: string; state: object } | null;

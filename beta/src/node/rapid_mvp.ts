@@ -1655,9 +1655,9 @@ function assertNotLiveM3e(dbPath: string): void {
 export { RapidMvpModel };
 
 if (require.main === module) {
-  // The sample generator writes its own sample files; it never writes into the record store of a workspace.
-  // A migrated workspace is found through M3E_DATA_DIR as well (record_store/active.ts), so both are cleared.
-  delete process.env.M3E_STORE_DIR;
+  // The sample generator writes its own sample files; it never writes into the store of a workspace.
+  // A workspace in Neo4j is found through M3E_RECORD_STORE or M3E_DATA_DIR (record_store/active.ts), so both are cleared.
+  delete process.env.M3E_RECORD_STORE;
   delete process.env.M3E_DATA_DIR;
   const model = new RapidMvpModel("Research Root");
   const a = model.addNode(model.state.rootId, "Question");

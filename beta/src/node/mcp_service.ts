@@ -38,7 +38,7 @@ type Context = {
   events: Event[]; cursor: number; touched: number; listeners: Set<(event: Event) => void>;
   /**
    * Read set: the records (rk) this participation was shown, at the rev it saw, oldest first.
-   * Kept only on the record store (M3E_STORE_DIR); SQLite has no record keys.
+   * Kept only on a store in Neo4j; SQLite has no record keys.
    */
   readSet: Map<string, number>;
   /** Sequence numbers of this participation's own commits: a record it rewrote is still what it read. */

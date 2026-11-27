@@ -4113,13 +4113,13 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
   }
 }
 
-/** Where the maps of this server are kept: the record store when M3E_STORE_DIR is set, SQLite otherwise. */
+/** Where the maps of this server are kept: the store in Neo4j when the workspace lives there, SQLite otherwise. */
 function mapSourceOfTruth(): "records" | "sqlite" {
   return activeRecordStore() ? "records" : "sqlite";
 }
 
 function startServer(): void {
-  // Record store (M3E_STORE_DIR): open it before anything else, so a refusal stops the start.
+  // The store was opened from Neo4j before the server listens (openActiveRecordStore).
   if (activeRecordStore()) closeActiveRecordStoreOnSignal();
   if (!localModeStore()) {
     ensureMap(currentSqliteDbPath(), ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
