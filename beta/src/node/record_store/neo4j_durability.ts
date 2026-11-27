@@ -398,3 +398,20 @@ export class Neo4jDurability {
     await this.driver.close();
   }
 }
+
+/**
+ * The Neo4j the record store runs on, from the environment: M3E_NEO4J_BOLT (required),
+ * M3E_NEO4J_USER and M3E_NEO4J_PASSWORD (both omitted when the server has no authentication),
+ * M3E_NEO4J_DATABASE (the server's default database when omitted). Null when M3E_NEO4J_BOLT is unset.
+ */
+export function neo4jConnectionFromEnv(env: NodeJS.ProcessEnv = process.env): Neo4jConnection | null {
+  const uri = env.M3E_NEO4J_BOLT?.trim();
+  if (!uri) return null;
+  const connection: Neo4jConnection = { uri };
+  if (env.M3E_NEO4J_USER) {
+    connection.user = env.M3E_NEO4J_USER;
+    connection.password = env.M3E_NEO4J_PASSWORD ?? "";
+  }
+  if (env.M3E_NEO4J_DATABASE) connection.database = env.M3E_NEO4J_DATABASE;
+  return connection;
+}
