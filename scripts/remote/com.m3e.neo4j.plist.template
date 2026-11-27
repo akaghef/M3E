@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.m3e.neo4j</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/opt/neo4j/bin/neo4j</string>
+        <string>console</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/opt/homebrew/var/neo4j</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>@LOG_DIR@/neo4j.log</string>
+    <key>StandardErrorPath</key>
+    <string>@LOG_DIR@/neo4j.log</string>
+</dict>
+</plist>

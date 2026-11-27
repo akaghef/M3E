@@ -2,6 +2,51 @@
 
 Mac mini が Beta workspace の record store を保持する。ブラウザーと MCP は Tailscale Serve の HTTPS URL に接続する。各端末のデータ用 clone はこの段階では作らない。MacBook のバックアップは復旧用の JSONL ファイルとして保管する。
 
+## 各端末の Neo4j
+
+record store の Neo4j は各端末で 1 つ、loopback（127.0.0.1:7687）だけで待ち受け、ログイン時に起動して落ちれば再起動する。利用者は `neo4j`、パスワードは端末ごとに生成し、M3E home の `secrets/neo4j-password`（macOS は 0600、Windows は本人だけの ACL）に置く。Beta サーバーには `M3E_NEO4J_BOLT`・`M3E_NEO4J_USER`・`M3E_NEO4J_PASSWORD_FILE` を渡し、パスワードの値そのものは環境変数にも launcher にも書かない。`scripts/beta/launch.sh`・`launch.bat` は、この file があればその path を渡す。
+
+| 端末 | 導入 | 常駐 | 設定 file |
+|---|---|---|---|
+| Mac mini | Homebrew `neo4j`（`/opt/homebrew` は swingby の所有で sudo 不要） | LaunchAgent `com.m3e.neo4j`（`com.m3e.neo4j.plist.template`、RunAtLoad・KeepAlive） | `/opt/homebrew/opt/neo4j/libexec/conf/neo4j.conf` |
+| MacBook | Homebrew `neo4j` | `brew services`（`sh.brew.neo4j`、RunAtLoad） | 同上 |
+| Windows | Neo4j Community の zip と Temurin JDK 21 を `%LOCALAPPDATA%\Programs\neo4j`・`jdk-21` に展開 | Startup の `M3E-autostart.vbs` が `%LOCALAPPDATA%\M3E\autostart\neo4j-console.cmd`（終了すれば 10 秒後に再起動）を窓なしで起動 | `%LOCALAPPDATA%\Programs\neo4j\conf\neo4j.conf` |
+
+`neo4j.conf` で変えるのは次の 3 行だけ。`dbms.security.auth_enabled` は既定（有効）のままにする。
+
+```
+server.default_listen_address=127.0.0.1
+dbms.usage_report.enabled=false
+server.fleet_discovery.enabled=false
+```
+
+（`server.fleet_discovery.enabled` を切らないと、Neo4j は LAN に discovery の broadcast を送る。）Homebrew の `neo4j` を更新すると `libexec/conf/neo4j.conf` は新しい版の既定に戻るので、更新後に同じ行を入れ直す。
+
+初回のパスワードは、Neo4j を起動したあと既定の `neo4j`／`neo4j` で接続し、`ALTER CURRENT USER SET PASSWORD FROM 'neo4j' TO '<file の値>'` を標準入力（`cypher-shell -d system`）か HTTP API（Windows には cypher-shell がない）で送って設定する。コマンド引数には載せない。確認は次のとおり。
+
+```sh
+NEO4J_PASSWORD="$(cat "$HOME/Library/Application Support/M3E/secrets/neo4j-password")" \
+  cypher-shell -a bolt://127.0.0.1:7687 -u neo4j 'RETURN 1'
+```
+
+Mac mini の LaunchAgent の導入:
+
+```sh
+log_dir=$HOME/Library/Logs/M3E
+mkdir -p /opt/homebrew/var/neo4j /opt/homebrew/var/log/neo4j   # WorkingDirectory が無いと launchd は EX_CONFIG で起動しない
+sed "s#@LOG_DIR@#$log_dir#g" scripts/remote/com.m3e.neo4j.plist.template > "$HOME/Library/LaunchAgents/com.m3e.neo4j.plist"
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.m3e.neo4j.plist"
+```
+
+`brew services start neo4j` は同じ Neo4j を二重に起動するので使わない。
+
+Windows の Startup の `M3E-autostart.vbs` は、本番の Neo4j、試験用の Neo4j、通常 Beta の 3 つを窓なしで起動する。Beta 側の `%LOCALAPPDATA%\M3E\autostart\beta-logon.cmd` は 7687 番が待ち受けるまで最大 3 分待ち、`%USERPROFILE%\dev\M3E` の `scripts\beta\launch.bat` を実行して出力を `%TEMP%\m3e-beta-launch.log` に書く。Neo4j の 2 つの `.cmd` は、待ち受けがあれば 30 秒ごとに見直し、無ければ起動し、終了すれば 10 秒後に起動し直す。Startup はログオンで動くので、自動ログオンの無い Windows では再起動後に akaghef がログオンするまで何も起動しない。
+
+### 試験用の Neo4j
+
+単体試験と preflight は、実データを持つ 7687 番ではなく使い捨ての Neo4j（`M3E_TEST_NEO4J_BOLT`、既定 `bolt://127.0.0.1:7688`、認証なし）を使う。MacBook では同じ Homebrew の Neo4j を別の設定 directory（`~/Library/Application Support/M3E/neo4j-test/conf`、`NEO4J_CONF` で指定）で LaunchAgent `com.m3e.neo4j-test` として常駐させる。data・logs・run の directory も別にし（run を共有すると pid file が衝突して起動を拒む）、bolt を `127.0.0.1:7688`、HTTP を無効、heap を 512 MB に抑える。
+Windows では `%LOCALAPPDATA%\M3E\neo4j-test\conf` を `NEO4J_CONF` にして、Startup から `neo4j-test-console.cmd` で同じように常駐させる。Mac mini には試験用の Neo4j を置かない（mini からは push しない）。
+
 ## Mac mini の初回導入
 
 `swingby` でログインし、統合・検証済みの `dev-beta` がある `/Users/swingby/dev/M3E` を使う。Node.js 22 以降と npm を用意する。対象 workspace は移行済みで、`swingby` が読み書きできる `store/snapshot.jsonl` があることを確認する。同じ store を開く別のプロセスが停止している状態で実行する。
@@ -32,6 +77,7 @@ Mac mini が Beta workspace の record store を保持する。ブラウザー�
   plutil -replace EnvironmentVariables.M3E_DATA_DIR -string "$data_dir" "$job"
   plutil -replace EnvironmentVariables.M3E_STORE_DIR -string "$data_dir/store" "$job"
   plutil -replace EnvironmentVariables.M3E_TAILSCALE_USERS -string "$users" "$job"
+  plutil -replace EnvironmentVariables.M3E_NEO4J_PASSWORD_FILE -string "$HOME/Library/Application Support/M3E/secrets/neo4j-password" "$job"
   plutil -replace StandardOutPath -string "$log_dir/remote-beta.log" "$job"
   plutil -replace StandardErrorPath -string "$log_dir/remote-beta.err.log" "$job"
   plutil -lint "$job"

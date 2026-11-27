@@ -37,6 +37,12 @@
         <string>beta-dev</string>
         <key>M3E_DB_FILE</key>
         <string>data.sqlite</string>
+        <key>M3E_NEO4J_BOLT</key>
+        <string>bolt://127.0.0.1:7687</string>
+        <key>M3E_NEO4J_USER</key>
+        <string>neo4j</string>
+        <key>M3E_NEO4J_PASSWORD_FILE</key>
+        <string>@NEO4J_PASSWORD_FILE@</string>
         <key>M3E_TAILSCALE_USERS</key>
         <string>@TAILSCALE_USERS@</string>
         <key>M3E_OPEN_BROWSER</key>

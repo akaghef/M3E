@@ -15,6 +15,11 @@ if "%M3E_WORKSPACE_LABEL%"=="" set "M3E_WORKSPACE_LABEL=Akaghef-personal"
 if "%M3E_MAP_ID%"=="" set "M3E_MAP_ID=map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
 if "%M3E_MAP_LABEL%"=="" set "M3E_MAP_LABEL=開発"
 if "%M3E_MAP_SLUG%"=="" set "M3E_MAP_SLUG=beta-dev"
+REM The record store's Neo4j on this device (loopback only). Only the path of the user-only
+REM password file is passed, so no secret appears in the environment or a process listing.
+if "%M3E_NEO4J_BOLT%"=="" set "M3E_NEO4J_BOLT=bolt://127.0.0.1:7687"
+if "%M3E_NEO4J_USER%"=="" set "M3E_NEO4J_USER=neo4j"
+if "%M3E_NEO4J_PASSWORD_FILE%"=="" if "%M3E_NEO4J_PASSWORD%"=="" if exist "%M3E_HOME%\secrets\neo4j-password" set "M3E_NEO4J_PASSWORD_FILE=%M3E_HOME%\secrets\neo4j-password"
 if "%M3E_SEED_DB_PATH%"=="" set "M3E_SEED_DB_PATH=%M3E_HOME%\seeds\core-seed.sqlite"
 if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%M3E_HOME%\workspaces\%M3E_WORKSPACE_ID%"
 if "%M3E_DB_FILE%"=="" set "M3E_DB_FILE=data.sqlite"
