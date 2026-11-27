@@ -54,14 +54,18 @@ export class LocalSyncError extends Error {
 }
 
 /**
- * Names of one device's stores in Neo4j. The device suffix is a hash of the data directory so two
- * data directories of one workspace can share a Neo4j without writing each other's stores.
+ * Names of one device's stores in Neo4j: `<workspaceId>:confirmed`, `<workspaceId>:working`, and
+ * the outbox and conflicts of that device. A device has one data directory per workspace. Only
+ * tests share one Neo4j between data directories; they set M3E_LOCAL_STORE_SUFFIX=data-dir, and the
+ * names then end in a hash of the data directory.
  */
-export function deviceStoreNames(workspaceId: string, dataDir: string): {
+export function deviceStoreNames(workspaceId: string, dataDir: string, env: NodeJS.ProcessEnv = process.env): {
   confirmed: string; working: string; outbox: string; conflicts: string;
 } {
-  const device = createHash("sha256").update(path.resolve(dataDir)).digest("hex").slice(0, 12);
-  const name = (kind: string) => `${workspaceId}:${kind}:${device}`;
+  const suffix = env.M3E_LOCAL_STORE_SUFFIX === "data-dir"
+    ? `:${createHash("sha256").update(path.resolve(dataDir)).digest("hex").slice(0, 12)}`
+    : "";
+  const name = (kind: string) => `${workspaceId}:${kind}${suffix}`;
   return { confirmed: name("confirmed"), working: name("working"), outbox: name("outbox"), conflicts: name("conflicts") };
 }
 
