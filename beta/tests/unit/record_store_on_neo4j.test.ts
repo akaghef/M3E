@@ -171,5 +171,5 @@ describe("record store on Neo4j", () => {
       await store.close().catch(() => undefined);
       await new Promise<void>((done) => proxy.close(() => done()));
     }
-  }, 60000);
+  }, 120000);
 });

@@ -204,7 +204,7 @@ export class Neo4jDurability {
     try {
       await session.run("RETURN 1", {}, { timeout: timeoutMs });
     } finally {
-      await session.close();
+      void session.close().catch(() => undefined);
     }
   }
 
@@ -481,10 +481,10 @@ export class Neo4jDurability {
     await this.durable();
     const session = this.session(false);
     try {
-      const result = await session.run(
+      const result = await this.withTimeout(session.run(
         `MATCH (j:${JOURNAL} {store: $store}) WHERE j.seq > $after AND j.seq <= $through RETURN j.seq AS seq, j.line AS line ORDER BY j.seq`,
         { store: this.store, after: neo4j.int(afterSeq), through: neo4j.int(throughSeq) },
-      );
+      ));
       const lines = result.records.map((row) => ({ seq: toNumber(row.get("seq")), line: unpackLine(row.get("line")) }));
       for (let i = 0; i < lines.length; i += 1) {
         if (lines[i].seq !== afterSeq + 1 + i) throw Object.assign(new Error(`The journal in Neo4j lacks commit ${afterSeq + 1 + i}.`), { code: "JOURNAL_GAP" });
@@ -492,7 +492,8 @@ export class Neo4jDurability {
       if (lines.length !== Math.max(0, throughSeq - afterSeq)) throw Object.assign(new Error(`The journal in Neo4j ends before commit ${throughSeq}.`), { code: "JOURNAL_GAP" });
       return lines.map((item) => item.line);
     } finally {
-      await session.close();
+      // A read cut off by the timeout leaves a session Neo4j does not answer: close it in the background.
+      void session.close().catch(() => undefined);
     }
   }
 
@@ -510,7 +511,7 @@ export class Neo4jDurability {
       ));
       return result.records.map((row) => decodeRecord(row.get("p") as never));
     } finally {
-      await session.close();
+      void session.close().catch(() => undefined);
     }
   }
 
@@ -535,7 +536,7 @@ export class Neo4jDurability {
       ));
       return result.records.map((row) => decodeRecord(row.get("p") as never));
     } finally {
-      await session.close();
+      void session.close().catch(() => undefined);
     }
   }
 
