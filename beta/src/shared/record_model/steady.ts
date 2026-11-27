@@ -310,6 +310,74 @@ function shallowSameNode(left: Dict, right: Dict): boolean {
   return true;
 }
 
+/** Content fields share the same normalization in full and incremental projection. */
+function nodeContent(record: Dict, node: Dict): void {
+  record.text = present(node.text) ? node.text : "";
+  if (node.collapsed === true) record.collapsed = true;
+  else delete record.collapsed;
+}
+
+function nodeDetails(mapId: string, id: string, node: Dict): DetailsRecord | undefined {
+  const details: Dict = { kind: "details", nodeId: id, mapId, v: 1 };
+  if (present(node.details) && node.details !== "") details.body = node.details;
+  if (present(node.note) && node.note !== "") details.note = node.note;
+  if (present(node.link) && node.link !== "") details.link = node.link;
+  if (!("body" in details || "note" in details || "link" in details)) return undefined;
+  details.rev = undefined;
+  return details as unknown as DetailsRecord;
+}
+
+/** Shared node/details projection for whole-map and appended-leaf commits. */
+function projectNode(
+  mapId: string, id: string, node: Dict, gen: number,
+  put: <T extends SnapshotRecord>(record: T) => T,
+  remove: (rk: string) => void,
+): NodeMemo {
+  const record: Dict = { kind: "node", id, mapId };
+  const nodeType = node.nodeType;
+  if (present(nodeType) && nodeType !== "folder" && nodeType !== "leaf" && nodeType !== "text") {
+    record.nodeType = nodeType;
+  }
+  nodeContent(record, node);
+  const attributes = cleanAttributes(node.attributes, EDGE_LABEL_ATTRIBUTE);
+  if (attributes) record.attributes = attributes;
+  let label: unknown;
+  if (isDict(node.attributes) && present(node.attributes[EDGE_LABEL_ATTRIBUTE]) && node.attributes[EDGE_LABEL_ATTRIBUTE] !== "") {
+    label = node.attributes[EDGE_LABEL_ATTRIBUTE];
+  }
+  const alias: Dict = {};
+  if (typeof node.targetNodeId === "string") alias.target = node.targetNodeId;
+  if (present(node.aliasLabel)) alias.label = node.aliasLabel;
+  if (present(node.access)) alias.access = node.access;
+  if (present(node.targetSnapshotLabel)) alias.snapshotLabel = node.targetSnapshotLabel;
+  if (node.isBroken === true) alias.broken = true;
+  if (Object.keys(alias).length > 0) record.alias = alias;
+  const extensions = writtenExtensions(node.extensions);
+  if (extensions) record.extensions = extensions;
+  if (isDict(node.valid)) {
+    const valid: Dict = {};
+    if (typeof node.valid.from === "string" && node.valid.from !== "") valid.from = node.valid.from;
+    if (typeof node.valid.to === "string" && node.valid.to !== "") valid.to = node.valid.to;
+    if (Object.keys(valid).length > 0) record.valid = valid;
+  }
+  if (isDict(node.copyOf) && typeof node.copyOf.source === "string" && typeof node.copyOf.mode === "string" && typeof node.copyOf.seq === "number") {
+    const copyOf: Dict = { source: node.copyOf.source, seq: node.copyOf.seq, mode: node.copyOf.mode };
+    if (typeof node.copyOf.mapId === "string") copyOf.mapId = node.copyOf.mapId;
+    copyOf.ids = isDict(node.copyOf.ids) ? node.copyOf.ids : {};
+    record.copyOf = copyOf;
+  }
+  const extra = collectExtra(node, NODE_FIELDS);
+  if (extra) record.extra = extra;
+  record.rev = undefined;
+  const nodeRecord = put(record as unknown as NodeRecord);
+
+  const details = nodeDetails(mapId, id, node);
+  let detailsRecord: DetailsRecord | undefined;
+  if (details) detailsRecord = put(details);
+  else remove(`details|${id}`);
+  return { id, gen, node: nodeRecord, details: detailsRecord, label, selfNormal: false };
+}
+
 /**
  * Projects one map. An instance remembers its last result: when `previous` of the next call is
  * that result's `records`, nodes, sibling lists and surfaces whose state objects are unchanged
@@ -328,12 +396,179 @@ export class MapProjector {
   private surfaceRecords = new Map<string, SnapshotRecord[]>();
   private smallRecords: SnapshotRecord[] = [];
   private lastNodeIds: string[] = [];
+  private appendedNodeIds = new Set<string>();
+  private firstChildByParent = new Map<string, string>();
   private lastStateNodes: Dict = {};
   private nodeSetToken = 0;
   private lastRestInput: SnapshotRecord[] = [];
   private lastRest: Dict | undefined;
+  private scopeKeysByRoot = new Map<string, string[]>();
 
   constructor(private readonly workspaceId: string, private readonly hash: HashFn = sha256Hex) {}
+
+  /** Only a canonical, warm projection may skip unrelated records. */
+  canProjectContent(previous: ReadonlyMap<string, SnapshotRecord>): boolean {
+    return previous === this.lastRecords;
+  }
+
+  /**
+   * Existing nodes whose only edited fields are text, collapsed, details, note and link.
+   * The caller checks that boundary and compares before-values on a sparse state first.
+   * Store-owned tables are updated transactionally; no reader may retain them across commits.
+   */
+  projectContent(mapId: string, state: AppState, nodes: Dict, records: Map<string, SnapshotRecord>): ProjectionResult {
+    if (!this.canProjectContent(records)) throw new Error("Content projection requires a warm record table.");
+    const delta = new Map<string, SnapshotRecord | null>();
+    const replaced = new Map<string, SnapshotRecord>();
+    const originalNodes = new Map<string, AppState["nodes"][string]>();
+    const originalScopes = new Map<string, unknown>();
+    const scopes = dictOf(state.scopes);
+    const update = (rk: string, record: SnapshotRecord | undefined): SnapshotRecord | undefined => {
+      const before = records.get(rk);
+      if (record === undefined ? before === undefined : before !== undefined && sameRecordContent(before, record)) return before;
+      if (before !== undefined) replaced.set(rk, before);
+      delta.set(rk, record ?? null);
+      if (record === undefined) records.delete(rk);
+      else records.set(rk, record);
+      return record;
+    };
+    const revert = (): void => {
+      for (const rk of delta.keys()) {
+        const before = replaced.get(rk);
+        if (before === undefined) records.delete(rk);
+        else records.set(rk, before);
+      }
+      for (const [id, node] of originalNodes) state.nodes[id] = node;
+      for (const [key, scope] of originalScopes) scopes[key] = scope;
+    };
+    try {
+      // Full projection emits node records in id order, followed by deleted details records.
+      for (const id of sortedKeys(nodes)) {
+        const node = nodes[id] as Dict;
+        const before = records.get(`node|${id}`);
+        if (before?.kind !== "node") throw new Error(`Missing node ${id}.`);
+        const record = { ...before, rev: undefined } as unknown as Dict;
+        nodeContent(record, node);
+        const projected = update(`node|${id}`, record as unknown as NodeRecord) as NodeRecord;
+        const details = update(`details|${id}`, nodeDetails(mapId, id, node)) as DetailsRecord | undefined;
+        const restored = { ...node, text: projected.text, collapsed: projected.collapsed === true,
+          details: details?.body ?? "", note: details?.note ?? "", link: details?.link ?? "" };
+        const oldNode = state.nodes[id];
+        originalNodes.set(id, oldNode);
+        state.nodes[id] = restored as unknown as AppState["nodes"][string];
+        const memo = this.nodeMemo.get(oldNode);
+        if (memo) this.nodeMemo.set(restored, { ...memo, node: projected, details, selfNormal: true });
+        const parent = this.parentMemo.get(oldNode);
+        if (parent) this.parentMemo.set(restored, parent);
+        for (const key of this.scopeKeysByRoot.get(id) ?? []) {
+          const scope = scopes[key] as Dict;
+          if (scope.label === projected.text) continue;
+          originalScopes.set(key, scope);
+          scopes[key] = { ...scope, label: projected.text };
+        }
+      }
+      return { records, delta, replaced, state, revert };
+    } catch (error) {
+      revert();
+      throw error;
+    }
+  }
+
+  /**
+   * Append new leaves to existing parents. Existing order keys form the kept increasing
+   * subsequence, so only the suffix needs keysBetween. The caller validates the append shape.
+   * Public reads remain deep copies; these tables and arrays belong exclusively to the store.
+   */
+  projectAppendedLeaves(mapId: string, state: AppState, nodes: Dict, parents: ReadonlyMap<string, string[]>, records: Map<string, SnapshotRecord>): ProjectionResult {
+    if (!this.canProjectContent(records)) throw new Error("Append projection requires a warm record table.");
+    const delta = new Map<string, SnapshotRecord | null>();
+    const replaced = new Map<string, SnapshotRecord>();
+    const lengths = new Map<string, number>();
+    const parentMemos = new Map<string, ParentMemo | undefined>();
+    const firstChildren = new Map<string, string | undefined>();
+    const inserted: string[] = [];
+    const put = <T extends SnapshotRecord>(record: T): T => {
+      const rk = recordRk(record);
+      if (records.has(rk)) throw new Error(`Two records of map ${mapId} share the key ${JSON.stringify(rk)}.`);
+      records.set(rk, record);
+      delta.set(rk, record);
+      return record;
+    };
+    const revert = (): void => {
+      for (const rk of delta.keys()) records.delete(rk);
+      for (const id of inserted) {
+        delete state.nodes[id];
+        this.edgeByTarget.delete(id);
+        this.appendedNodeIds.delete(id);
+      }
+      for (const [id, length] of lengths) {
+        state.nodes[id].children.length = length;
+        const memo = parentMemos.get(id);
+        if (memo) this.parentMemo.set(state.nodes[id], memo);
+        const first = firstChildren.get(id);
+        if (first === undefined) this.firstChildByParent.delete(id);
+        else this.firstChildByParent.set(id, first);
+      }
+    };
+    try {
+      const memos = new Map<string, NodeMemo>();
+      // The full projection emits node/details in id order before any edges.
+      for (const id of sortedKeys(nodes)) {
+        memos.set(id, projectNode(mapId, id, nodes[id] as Dict, this.gen, put, () => {}));
+      }
+      // Full projection visits parents in the order of their first child by id.
+      const groups = [...parents].sort((a, b) => {
+        const first = (entry: [string, string[]]) => {
+          const old = this.firstChildByParent.get(entry[0]);
+          const added = [...entry[1]].sort(compareStrings)[0];
+          return old === undefined || added < old ? added : old;
+        };
+        return compareStrings(first(a), first(b));
+      });
+      for (const [parentId, ids] of groups) {
+        const parent = state.nodes[parentId];
+        const children = parent.children;
+        lengths.set(parentId, children.length);
+        parentMemos.set(parentId, this.parentMemo.get(parent));
+        const first = this.firstChildByParent.get(parentId);
+        firstChildren.set(parentId, first);
+        const firstAdded = [...ids].sort(compareStrings)[0];
+        this.firstChildByParent.set(parentId, first === undefined || firstAdded < first ? firstAdded : first);
+        const last = children.length ? this.edgeByTarget.get(children[children.length - 1])?.ord : undefined;
+        const keys = keysBetween(last, undefined, ids.length);
+        const root = this.scopeByRoot.has(parentId) ? parentId : edgeScopeRootOf(state.nodes, state.rootId, parentId);
+        const scopeId = this.scopeByRoot.get(root)?.id;
+        for (let i = 0; i < ids.length; i += 1) {
+          const id = ids[i];
+          const raw = nodes[id] as Dict;
+          const edge: Dict = { kind: "connection", id: generatedId(this.hash, this.workspaceId, "c_", mapId, "edge", id), mapId, type: "edge", source: parentId, target: id };
+          const memo = memos.get(id)!;
+          if (memo.label !== undefined) edge.label = memo.label;
+          if (typeof raw.edgeRelationType === "string" && raw.edgeRelationType !== "") edge.relationType = raw.edgeRelationType;
+          const attributes = cleanAttributes(raw.edgeAttributes);
+          if (attributes) edge.attributes = attributes;
+          const extensions = writtenExtensions(raw.edgeExtensions);
+          if (extensions) edge.extensions = extensions;
+          edge.ord = keys[i];
+          if (scopeId !== undefined) edge.scopeId = scopeId;
+          edge.rev = undefined;
+          const connection = put(edge as unknown as EdgeConnectionRecord);
+          const parts: SnapshotRecord[] = [records.get(`map|${mapId}`)!, memo.node, connection];
+          if (memo.details) parts.push(memo.details);
+          const restored = fromSnapshot(parts).rows[0].state.nodes[id];
+          inserted.push(id);
+          state.nodes[id] = restored;
+          this.nodeMemo.set(restored, { ...memo, selfNormal: true });
+          this.edgeByTarget.set(id, connection);
+          this.appendedNodeIds.add(id);
+          children.push(id);
+        }
+        // Rebuild this memo only if a later operation needs the whole sibling group.
+        this.parentMemo.delete(parent);
+      }
+      return { records, delta, replaced, state, revert };
+    } catch (error) { revert(); throw error; }
+  }
 
   /**
    * With `inPlace`, `previous` itself is changed into the result (no copy of the whole table);
@@ -372,6 +607,10 @@ export class MapProjector {
     out: Map<string, SnapshotRecord>,
     original: Map<string, SnapshotRecord | undefined> | undefined,
   ): ProjectionResult {
+    if (this.appendedNodeIds.size) {
+      this.lastNodeIds = [...this.lastNodeIds, ...this.appendedNodeIds].sort(compareStrings);
+      this.appendedNodeIds.clear();
+    }
     const mapId = row.id;
     const state = dictOf(row.state);
     const warm = previous === this.lastRecords;
@@ -507,57 +746,7 @@ export class MapProjector {
       if (memo !== undefined && (memo.gen === previousGen || memo.gen === gen) && memo.id === id) {
         memo.gen = gen;
       } else {
-        const record: Dict = { kind: "node", id, mapId };
-        const nodeType = node.nodeType;
-        if (present(nodeType) && nodeType !== "folder" && nodeType !== "leaf" && nodeType !== "text") {
-          record.nodeType = nodeType;
-        }
-        record.text = present(node.text) ? node.text : "";
-        if (node.collapsed === true) record.collapsed = true;
-        const attributes = cleanAttributes(node.attributes, EDGE_LABEL_ATTRIBUTE);
-        if (attributes) record.attributes = attributes;
-        let label: unknown;
-        if (isDict(node.attributes) && present(node.attributes[EDGE_LABEL_ATTRIBUTE]) && node.attributes[EDGE_LABEL_ATTRIBUTE] !== "") {
-          label = node.attributes[EDGE_LABEL_ATTRIBUTE];
-        }
-        const alias: Dict = {};
-        if (typeof node.targetNodeId === "string") alias.target = node.targetNodeId;
-        if (present(node.aliasLabel)) alias.label = node.aliasLabel;
-        if (present(node.access)) alias.access = node.access;
-        if (present(node.targetSnapshotLabel)) alias.snapshotLabel = node.targetSnapshotLabel;
-        if (node.isBroken === true) alias.broken = true;
-        if (Object.keys(alias).length > 0) record.alias = alias;
-        const extensions = writtenExtensions(node.extensions);
-        if (extensions) record.extensions = extensions;
-        if (isDict(node.valid)) {
-          const valid: Dict = {};
-          if (typeof node.valid.from === "string" && node.valid.from !== "") valid.from = node.valid.from;
-          if (typeof node.valid.to === "string" && node.valid.to !== "") valid.to = node.valid.to;
-          if (Object.keys(valid).length > 0) record.valid = valid;
-        }
-        if (isDict(node.copyOf) && typeof node.copyOf.source === "string" && typeof node.copyOf.mode === "string" && typeof node.copyOf.seq === "number") {
-          const copyOf: Dict = { source: node.copyOf.source, seq: node.copyOf.seq, mode: node.copyOf.mode };
-          if (typeof node.copyOf.mapId === "string") copyOf.mapId = node.copyOf.mapId;
-          copyOf.ids = isDict(node.copyOf.ids) ? node.copyOf.ids : {};
-          record.copyOf = copyOf;
-        }
-        const extra = collectExtra(node, NODE_FIELDS);
-        if (extra) record.extra = extra;
-        record.rev = undefined;
-        const nodeRecord = put(record as unknown as NodeRecord);
-
-        const details: Dict = { kind: "details", nodeId: id, mapId, v: 1 };
-        if (present(node.details) && node.details !== "") details.body = node.details;
-        if (present(node.note) && node.note !== "") details.note = node.note;
-        if (present(node.link) && node.link !== "") details.link = node.link;
-        let detailsRecord: DetailsRecord | undefined;
-        if ("body" in details || "note" in details || "link" in details) {
-          details.rev = undefined;
-          detailsRecord = put(details as unknown as DetailsRecord);
-        } else {
-          remove(`details|${id}`);
-        }
-        memo = { id, gen, node: nodeRecord, details: detailsRecord, label, selfNormal: false };
+        memo = projectNode(mapId, id, node, gen, put, remove);
         this.nodeMemo.set(node, memo);
       }
       nodeIds.push(id);
@@ -1090,6 +1279,17 @@ export class MapProjector {
       nextState.scopes = scopes;
     }
 
+    this.scopeKeysByRoot.clear();
+    for (const [key, scope] of Object.entries(dictOf(nextState.scopes))) {
+      const roots = dictOf(scope).rootNodeIds;
+      const root = Array.isArray(roots) ? roots[0] : undefined;
+      if (typeof root !== "string") continue;
+      const keys = this.scopeKeysByRoot.get(root) ?? [];
+      keys.push(key);
+      this.scopeKeysByRoot.set(root, keys);
+    }
+    this.firstChildByParent.clear();
+    for (const [parentId, members] of childrenByParent) this.firstChildByParent.set(parentId, nodeIds[members[0]]);
     this.gen = gen;
     this.lastRecords = out;
     this.scopeByRoot = nextScopeByRoot;

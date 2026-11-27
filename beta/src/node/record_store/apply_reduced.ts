@@ -74,3 +74,61 @@ export function applyChangesReduced(state: object, changes: readonly RecordChang
   }
   return { ok: true, state: { ...applied, nodes: merged } };
 }
+
+export interface AppendedLeaves {
+  nodes: Dict;
+  parents: Map<string, string[]>;
+}
+
+/**
+ * A monotone suffix insertion on a valid warm map cannot change existing validation facts.
+ * Anything that can alter scope, alias or existing topology semantics uses the general path.
+ * This only prepares new nodes: the projector owns transactional installation and rollback.
+ */
+export function appendedLeaves(state: object, changes: readonly RecordChange[]): AppendedLeaves | undefined {
+  const source = state as Dict;
+  const nodes = source.nodes;
+  if (!isDict(nodes) || changes.length === 0) return undefined;
+  const created = new Set<string>();
+  for (const change of changes) {
+    if (change.kind !== "node") continue;
+    const id = change.key[0];
+    if (change.op !== "create" || hasOwn(nodes, id) || created.has(id)) return undefined;
+    const notes = source.linearNotesByScope;
+    if (isDict(notes) && (hasOwn(notes, id) || hasOwn(notes, `scope:${id}`))) return undefined;
+    const body = change.after ?? {};
+    if (body.id !== id || ![undefined, "text", "leaf", "image", "agent"].includes(body.nodeType as string | undefined)) return undefined;
+    for (const field of ["parentId", "children", "scopeId", "edgeOutsideScope", "targetNodeId", "access", "isBroken", "aliasOf"]) {
+      if (hasOwn(body, field)) return undefined;
+    }
+    created.add(id);
+  }
+  if (created.size === 0) return undefined;
+  const positions = new Map<string, Array<{ id: string; index: number }>>();
+  const edged = new Set<string>();
+  for (const change of changes) {
+    if (change.kind === "node") continue;
+    if (change.kind === "attribute" && change.key[0] === "node" && created.has(change.key[1])) continue;
+    if (change.kind !== "edge" || change.op !== "create" || !created.has(change.key[0]) || edged.has(change.key[0])) return undefined;
+    const parentId = change.after?.parentId;
+    const index = change.after?.index;
+    if (typeof parentId !== "string" || typeof index !== "number" || !Number.isSafeInteger(index)) return undefined;
+    const parent = nodes[parentId];
+    if (!isDict(parent) || !Array.isArray(parent.children)) return undefined;
+    edged.add(change.key[0]);
+    let group = positions.get(parentId);
+    if (!group) positions.set(parentId, group = []);
+    group.push({ id: change.key[0], index });
+  }
+  if (edged.size !== created.size) return undefined;
+  const parents = new Map<string, string[]>();
+  for (const [id, group] of positions) {
+    group.sort((a, b) => a.index - b.index);
+    const length = ((nodes[id] as Dict).children as unknown[]).length;
+    if (group.some((entry, i) => entry.index !== length + i)) return undefined;
+    parents.set(id, group.map((entry) => entry.id));
+  }
+  const applied = applyChanges({ ...source, nodes: {} }, changes);
+  if (!applied.ok) return undefined;
+  return { nodes: (applied.state as Dict).nodes as Dict, parents };
+}

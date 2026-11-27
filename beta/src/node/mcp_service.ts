@@ -291,11 +291,17 @@ export class M3eMcpService {
   }
   /** Called by the server's real change broadcast, never by a polling timer. */
   notifyMapChanged(mapId: string): void {
+    const dbPath = this.options.dbPath();
     let doc: SavedMap | null = null;
-    try { doc = saved(this.options.dbPath(), mapId); } catch { /* map deletion */ }
+    let loaded = false;
     for (const context of this.contexts.values()) {
-      if (context.dbPath !== this.options.dbPath()) continue;
-      if (context.focus?.mapId === mapId || [...context.subscriptions.values()].some((ref) => ref.mapId === mapId)) this.reconcile(context, mapId, doc);
+      if (context.dbPath !== dbPath) continue;
+      if (context.focus?.mapId !== mapId && ![...context.subscriptions.values()].some((ref) => ref.mapId === mapId)) continue;
+      if (!loaded) {
+        loaded = true;
+        try { doc = saved(dbPath, mapId); } catch { /* map deletion */ }
+      }
+      this.reconcile(context, mapId, doc);
     }
   }
   events(contextId: string, after = 0): any {

@@ -400,3 +400,19 @@ test("a start resumes past a pending Command that left no commit because it was 
   expect(mapText(again.store())).toBe("After the no-op");
   expect(entries("noop").map((entry) => entry.commandId)).toContain("noop-1");
 });
+
+
+test("pull uses the store index without rereading the journal or snapshot", async () => {
+  const source = remote();
+  for (let i = 0; i < 10; i += 1) change(source, `edit ${i}`);
+  const read = vi.spyOn(fs, "readFileSync");
+  const after = source.seq() - 1;
+  const response = await serve(new URL(`/api/sync/pull?after=${after}&scope=any`, ORIGIN));
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.lines).toHaveLength(1);
+  expect(body.throughSeq).toBe(source.seq());
+  expect(read.mock.calls.filter(([file]) => String(file).endsWith(".jsonl"))).toHaveLength(0);
+  const future = await serve(new URL(`/api/sync/pull?after=${source.seq() + 1}`, ORIGIN));
+  expect(await future.json()).toMatchObject({ reclone: true, snapshotSeq: source.seq() });
+});

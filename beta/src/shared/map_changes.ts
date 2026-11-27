@@ -500,10 +500,29 @@ function attributeTarget(draft: Draft, ownerKind: string, ownerId: string): Bag 
   return link.attributes as Bag;
 }
 
+/** Application-only index. Unlike diff's reference walk, each sibling list is read once. */
+function applicationEdges(state: Bag): Map<string, EdgeAssign> {
+  const nodes = dict(state, "nodes");
+  const positions = new Map<string, Map<unknown, number>>();
+  const found = new Map<string, EdgeAssign>();
+  for (const [id, raw] of Object.entries(nodes)) {
+    if (!isBag(raw) || typeof raw.parentId !== "string") continue;
+    let indexes = positions.get(raw.parentId);
+    if (!indexes) {
+      positions.set(raw.parentId, indexes = new Map());
+      const parent = nodes[raw.parentId];
+      const children = isBag(parent) && Array.isArray(parent.children) ? parent.children : [];
+      for (let i = 0; i < children.length; i += 1) if (!indexes.has(children[i])) indexes.set(children[i], i);
+    }
+    found.set(id, { parentId: raw.parentId, index: indexes.get(id) ?? -1 });
+  }
+  return found;
+}
+
 function applyEdges(draft: Draft, changes: readonly RecordChange[]): void {
   const edges = changes.filter((change) => change.kind === "edge");
   if (!edges.length) return;
-  const assign = edgesOf(draft.state);
+  const assign = applicationEdges(draft.state);
   const affected = new Set<string>();
   for (const change of edges) {
     const id = change.key[0] ?? "";
@@ -531,9 +550,13 @@ function applyEdges(draft: Draft, changes: readonly RecordChange[]): void {
       .sort((left, right) => left[1].index - right[1].index || (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
       .map(([id]) => id);
   }
+  const changedIds = new Set(edges.map((change) => change.key[0]));
   for (const [id, edge] of assign) {
+    if (!affected.has(edge.parentId) && !changedIds.has(id)) continue;
+    const current = nodes[id];
+    if (isBag(current) && current.parentId === edge.parentId) continue;
     const node = draft.node(id);
-    if (node && (affected.has(edge.parentId) || edges.some((change) => change.key[0] === id))) node.parentId = edge.parentId;
+    if (node) node.parentId = edge.parentId;
   }
   for (const change of edges) {
     if (change.op !== "delete") continue;
@@ -569,10 +592,10 @@ function applyAnnotations(draft: Draft, changes: readonly RecordChange[]): void 
   } else draft.state.annotations = items;
 }
 
-function locate(state: Bag, change: RecordChange): Bag | null {
+function locate(state: Bag, change: RecordChange, edges?: Map<string, EdgeAssign>): Bag | null {
   if (change.kind === "node") return bagOf(dict(state, "nodes")[change.key[0] ?? ""]);
   if (change.kind === "edge") {
-    const edge = edgesOf(state).get(change.key[0] ?? "");
+    const edge = edges?.get(change.key[0] ?? "");
     return edge ? { parentId: edge.parentId, index: edge.index } : null;
   }
   if (change.kind === "attribute") {
@@ -643,8 +666,9 @@ export function applyChanges(state: object, changes: readonly RecordChange[], al
   const source = state as Bag;
   const conflicts: FieldConflict[] = [];
   const pending: RecordChange[] = [];
+  const edges = changes.some((change) => change.kind === "edge") ? applicationEdges(source) : undefined;
   for (const change of changes) {
-    const current = locate(source, change);
+    const current = locate(source, change, edges);
     if (change.kind === "map-field" && (change.before?.present === true || change.after?.present === true)) {
       if (allowAfter && alreadyApplied(change, current)) continue;
       conflicts.push(...presenceConflict(source, changes, change));

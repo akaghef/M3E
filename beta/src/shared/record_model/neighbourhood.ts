@@ -55,6 +55,7 @@ function isEdge(record: SnapshotRecord | undefined): record is EdgeConnectionRec
 export class NeighbourhoodIndex {
   private readonly incoming: Bucket = new Map();
   private readonly outgoing: Bucket = new Map();
+  private readonly byParentOrder: Bucket = new Map();
   private readonly byEndpoint: Bucket = new Map();
   private readonly edgesByScope: Bucket = new Map();
   private readonly aliasesByTarget: Bucket = new Map();
@@ -74,6 +75,11 @@ export class NeighbourhoodIndex {
     const index = new NeighbourhoodIndex();
     for (const record of records) index.add(record, []);
     return index;
+  }
+
+  /** Creating a formerly missing target can change existing broken-alias validation. */
+  hasAliasesTo(nodeId: string): boolean {
+    return (this.aliasesByTarget.get(nodeId)?.size ?? 0) > 0;
   }
 
   /** Scope ids the node lies on. An incoming parent edge wins; a root with none lies on the scopes it roots. */
@@ -135,7 +141,7 @@ export class NeighbourhoodIndex {
     const views = new Set<string>();
     const annotations = new Set<string>();
     const maps = new Set<string>();
-    const parents = new Set<string>();
+    const orderGroups = new Set<string>();
     const cycleStarts = new Set<string>();
     const edgeScope = new Set<string>();
     const carrierRks = new Set<string>();
@@ -149,7 +155,7 @@ export class NeighbourhoodIndex {
     const noteEdge = (edge: EdgeConnectionRecord, rk: string): void => {
       connections.add(rk);
       edgeScope.add(rk);
-      parents.add(edge.source);
+      orderGroups.add(JSON.stringify([edge.source, edge.ord]));
       cycleStarts.add(edge.target);
       nodes.add(edge.source);
       nodes.add(edge.target);
@@ -304,15 +310,15 @@ export class NeighbourhoodIndex {
       this.checkEdgeScope(edge, lookup, scopeRecord, add);
     }
 
-    for (const parentId of parents) {
-      const seenOrd = new Map<string, string>();
-      for (const rk of this.outgoing.get(parentId) ?? []) {
+    // An edge can only change duplicate-order errors in its old and new ord buckets.
+    for (const group of orderGroups) {
+      let first: string | undefined;
+      for (const rk of this.byParentOrder.get(group) ?? []) {
         const edge = lookup(rk);
         if (!isEdge(edge)) continue;
         mark(edge);
-        const first = seenOrd.get(edge.ord);
         if (first !== undefined) add(9, edge, `duplicate ord ${JSON.stringify(edge.ord)} under parent ${edge.source}`);
-        else seenOrd.set(edge.ord, rk);
+        else first = rk;
       }
     }
 
@@ -474,6 +480,7 @@ export class NeighbourhoodIndex {
         if (record.type === "edge") {
           put(this.incoming, record.target);
           put(this.outgoing, record.source);
+          put(this.byParentOrder, JSON.stringify([record.source, record.ord]));
           put(this.edgesByScope, record.scopeId);
         }
         for (const entry of record.extensions ?? []) if (typeof entry === "string") put(this.carriers, entry);
