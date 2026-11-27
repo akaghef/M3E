@@ -1016,10 +1016,11 @@ export class RecordWorkspaceStore {
     }
     let changes: RecordChange[];
     try {
-      changes = jsonClone(command.changes);
+      changes = jsonClone(command.changes).filter(change => change.op !== "update" || !sameJson(change.before ?? {}, change.after ?? {}));
     } catch {
       return this.failure("INVALID_COMMAND", entry ? this.currentOf(entry) : null, "changes cannot be written as JSON.");
     }
+    if (entry && changes.length === 0) return { ok: true, savedAt: this.savedAtOf(entry), seq: this.currentSeq, replayed: false, noOp: true };
     let provenance: Provenance | undefined;
     try {
       provenance = normalizeProvenance(command.provenance);
@@ -1920,6 +1921,8 @@ export class RecordWorkspaceStore {
     // and projection; the projector installs those nodes with a rollback after validation.
     const contentOnly = warm !== undefined && validationUnaffected(changes)
       && warm.projector.canProjectContent(entry!.records);
+    const parentEdgesOnly = warm !== undefined && warm.validationErrors === 0 && warm.problems.size === 0
+      && warm.projector.canProjectContent(entry!.records) && warm.projector.canProjectParentEdges(warm.state, changes);
     let appendPlan: ReturnType<typeof appendedLeaves>;
     // 2. Compare-and-set on the `before` values.
     let applied: ReturnType<typeof applyChanges>;
@@ -1928,7 +1931,7 @@ export class RecordWorkspaceStore {
         && warm.projector.canProjectContent(entry!.records) ? appendedLeaves(warm.state, changes) : undefined;
       if (appendPlan && [...appendPlan.parents.values()].some((ids) => ids.some((id) => entry?.graph?.hasAliasesTo(id)))) appendPlan = undefined;
       let input: object = warm ? warm.state : {};
-      if (contentOnly) {
+      if (contentOnly || parentEdgesOnly) {
         const nodes: Dict = {};
         for (const change of changes) {
           const id = change.key[0];
@@ -1937,16 +1940,17 @@ export class RecordWorkspaceStore {
         input = { ...warm!.state, nodes };
       }
       applied = appendPlan ? { ok: true, state: { ...input, nodes: appendPlan.nodes } }
+        : parentEdgesOnly ? applyChanges(input, changes, meta.syncHash !== undefined)
         : applyChangesReduced(input, changes, meta.syncHash !== undefined);
     } catch (error) {
       return this.failure("INVALID_COMMAND", current(), (error as Error).message);
     }
     if (!applied.ok) return this.failure("CONFLICT", current(), undefined, clientConflicts(applied.conflicts));
-    if (!contentOnly) this.fillExtensionDefaults(warm?.state, applied.state, changes);
+    if (!contentOnly && !parentEdgesOnly) this.fillExtensionDefaults(warm?.state, applied.state, changes);
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
     // A Command that only edits node content cannot change what validation reports.
-    const validationErrors = warm && (appendPlan !== undefined || validationUnaffected(changes))
+    const validationErrors = warm && (parentEdgesOnly || appendPlan !== undefined || validationUnaffected(changes))
       ? warm.validationErrors
       : commitValidationErrorCount(applied.state);
     const allowedErrors = warm ? warm.validationErrors : 0;
@@ -1962,7 +1966,9 @@ export class RecordWorkspaceStore {
     try {
       // An existing map is projected in place: its record table becomes the new one, and
       // `revert` puts it back when the commit is refused further down.
-      result = appendPlan
+      result = parentEdgesOnly
+        ? projector.projectParentEdges(warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
+        : appendPlan
         ? projector.projectAppendedLeaves(mapId, warm!.state, appendPlan.nodes, appendPlan.parents, entry!.records)
         : contentOnly
         ? projector.projectContent(mapId, warm!.state, (applied.state as unknown as Dict).nodes as Dict, entry!.records)
@@ -2062,8 +2068,20 @@ export class RecordWorkspaceStore {
     if (meta.reason !== undefined && meta.reason !== "") line.reason = meta.reason;
     // The journal keeps a Command's changes as the client sent them: a repeated command id is
     // compared with them, and a reader of the committed Command gets its own ids back.
-    line.changes = translated?.sent ?? changes;
-    line.changesHash = hashChanges(line.changes);
+    const sentChanges = translated?.sent ?? changes;
+    line.changes = sentChanges.map((sent, index) => {
+      if (sent.kind !== "edge" || !(hasOwn(sent.before ?? {}, "index") || hasOwn(sent.after ?? {}, "index"))) return sent;
+      const id = changes[index].key[0];
+      const beforeNode = warm?.state.nodes[id], afterNode = result.state.nodes[id];
+      const assignment = (node: AppState["nodes"][string] | undefined, wire: Record<string, unknown> | undefined) =>
+        node && typeof node.parentId === "string" ? { parentId: typeof wire?.parentId === "string" ? wire.parentId : node.parentId, ord: node.edgeOrder } : undefined;
+      return { ...sent,
+        ...(sent.op !== "create" ? { before: assignment(beforeNode, sent.before) } : {}),
+        ...(sent.op !== "delete" ? { after: assignment(afterNode, sent.after) } : {}),
+      };
+    });
+    // Repeated legacy requests still compare with the bytes accepted at the boundary.
+    line.changesHash = hashChanges(sentChanges);
     const aliasRecords = translated?.aliases ?? [];
     const userOps = aliasRecords.length === 0
       ? ops
@@ -2092,7 +2110,7 @@ export class RecordWorkspaceStore {
         const command: MapCommand = {
           commandId: meta.commandId, intent: meta.intent, actor: meta.actor,
           provenance: meta.provenance, reason: meta.reason, confirm: meta.confirm || undefined,
-          changes: meta.sent ?? line.changes,
+          changes: line.changes,
         };
         const payload: SyncCommand = { mapId, command, ...(entry ? {} : { mapOp: "create" }) };
         const state = result.state as AppState;

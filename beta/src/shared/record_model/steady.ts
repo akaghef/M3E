@@ -1,3 +1,5 @@
+import { PARENT_EDGE_FIELDS } from "../map_changes";
+import { NODE_FIELDS, LINK_FIELDS, NODE_VIEW_FIELDS } from "./field_tables";
 // Steady-state projection of ONE map: current `AppState` row -> records, used on every commit
 // after the migration. Same record shapes and field rules as ./to_snapshot.ts (contract sections
 // 3.2-3.4), with these differences:
@@ -16,7 +18,7 @@ import type { AppState } from "../types";
 import { fromSnapshot } from "./from_snapshot";
 import { sha256Hex, type HashFn } from "./hash";
 import { recordKeyString, sortRecords } from "./jsonl";
-import { initialKeys, isOrderKey, keysBetween } from "./order_key";
+import { assignOrderKeys, initialKeys, isOrderKey, keysBetween } from "./order_key";
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
 import { writtenExtensions } from "./extensions";
@@ -37,15 +39,6 @@ import {
 type Dict = Record<string, unknown>;
 
 const SCOPE_PREFIX = "scope:";
-const NODE_FIELDS = new Set([
-  "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
-  "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
-  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions", "valid", "copyOf",
-]);
-const LINK_FIELDS = new Set([
-  "id", "sourceNodeId", "targetNodeId", "relationType", "label", "direction", "style", "color",
-  "sourcePort", "targetPort", "attributes", "extensions",
-]);
 const ANNOTATION_COPIED_FIELDS = [
   "d", "points", "stroke", "strokeWidth", "opacity", "createdAt", "x", "y", "text", "fill",
   "fontSize", "fontWeight", "variant",
@@ -56,7 +49,7 @@ const STATE_FIELDS = new Set([
   "linearTextFontScale", "linearPanelWidth", "extensionDefs", "locks", "grants", "namedSnapshots",
 ]);
 const STATE_DROPPED_FIELDS = new Set(["selectedId", "scopeId", "savedAt"]);
-const NODE_VIEW_FIELDS = ["x", "y", "flowCol", "flowRow", "shape"] as const;
+
 const NO_CHILDREN: readonly string[] = [];
 
 function isDict(value: unknown): value is Dict {
@@ -173,67 +166,7 @@ export function generatedId(
   return prefix + hash(`${workspaceId}|${mapId}|${recordKind}|${seed}`).slice(0, 24);
 }
 
-function fillBetween(out: string[], lo: number, hi: number, a: string | undefined, b: string | undefined): void {
-  if (lo > hi) return;
-  const keys = keysBetween(a, b, hi - lo + 1);
-  for (let i = 0; i < keys.length; i += 1) out[lo + i] = keys[i];
-}
-
-/**
- * Order keys for siblings in their new order. `previous[i]` is the key the i-th sibling had, if any.
- * The keys kept are a longest strictly increasing subsequence of the previous keys; every other
- * sibling gets a key between its kept neighbours. With nothing to keep, the keys are `initialKeys`.
- */
-export function assignOrderKeys(previous: Array<string | undefined>): string[] {
-  const n = previous.length;
-  let valid = 0;
-  let increasing = true;
-  let last: string | undefined;
-  for (let i = 0; i < n; i += 1) {
-    const key = previous[i];
-    if (key === undefined || !isOrderKey(key)) {
-      increasing = false;
-      continue;
-    }
-    valid += 1;
-    if (last !== undefined && !(last < key)) increasing = false;
-    last = key;
-  }
-  if (valid === 0) return initialKeys(n);
-  if (increasing && valid === n) return previous as string[];
-
-  // Longest strictly increasing subsequence (patience sorting with predecessor links).
-  const tails: number[] = [];
-  const before = new Array<number>(n).fill(-1);
-  for (let i = 0; i < n; i += 1) {
-    const key = previous[i];
-    if (key === undefined || !isOrderKey(key)) continue;
-    let lo = 0;
-    let hi = tails.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if ((previous[tails[mid]] as string) < key) lo = mid + 1;
-      else hi = mid;
-    }
-    if (lo > 0) before[i] = tails[lo - 1];
-    tails[lo] = i;
-  }
-  const kept = new Array<boolean>(n).fill(false);
-  for (let i = tails[tails.length - 1]; i >= 0; i = before[i]) kept[i] = true;
-
-  const out = new Array<string>(n);
-  let lower: string | undefined;
-  let runStart = 0;
-  for (let i = 0; i <= n; i += 1) {
-    if (i < n && !kept[i]) continue;
-    const upper = i < n ? (previous[i] as string) : undefined;
-    fillBetween(out, runStart, i - 1, lower, upper);
-    if (i < n) out[i] = upper as string;
-    lower = upper;
-    runStart = i + 1;
-  }
-  return out;
-}
+export { assignOrderKeys } from "./order_key";
 
 interface NodeMemo {
   id: string;
@@ -392,6 +325,28 @@ export class MapProjector {
   private lastRecords: ReadonlyMap<string, SnapshotRecord> | undefined;
   // What the last result (or, on a fresh start, `previous`) holds, by the slot the projection gives it.
   private edgeByTarget = new Map<string, EdgeConnectionRecord>();
+  private edgesByParent = new Map<string, Map<string, EdgeConnectionRecord>>();
+
+  private setIncoming(id: string, edge: EdgeConnectionRecord | undefined): void {
+    const before = this.edgeByTarget.get(id);
+    if (before) this.edgesByParent.get(before.source)?.delete(id);
+    if (!edge) { this.edgeByTarget.delete(id); return; }
+    this.edgeByTarget.set(id, edge);
+    let group = this.edgesByParent.get(edge.source);
+    if (!group) this.edgesByParent.set(edge.source, group = new Map());
+    group.set(id, edge);
+  }
+
+  private deferChildren(node: AppState["nodes"][string]): AppState["nodes"][string] {
+    const next = Object.create(Object.getPrototypeOf(node), Object.getOwnPropertyDescriptors(node)) as typeof node;
+    Object.defineProperty(next, "children", { enumerable: true, configurable: true, get: () => {
+      const children = [...(this.edgesByParent.get(node.id)?.values() ?? [])]
+        .sort((a, b) => compareStrings(a.ord, b.ord) || compareStrings(a.id, b.id)).map(edge => edge.target);
+      Object.defineProperty(next, "children", { value: children, writable: true, enumerable: true, configurable: true });
+      return children;
+    } });
+    return next;
+  }
   private scopeByRoot = new Map<string, ScopeRecord>();
   private surfaceRecords = new Map<string, SnapshotRecord[]>();
   private smallRecords: SnapshotRecord[] = [];
@@ -481,6 +436,7 @@ export class MapProjector {
    */
   projectAppendedLeaves(mapId: string, state: AppState, nodes: Dict, parents: ReadonlyMap<string, string[]>, records: Map<string, SnapshotRecord>): ProjectionResult {
     if (!this.canProjectContent(records)) throw new Error("Append projection requires a warm record table.");
+    if (Object.values(nodes).every(raw => isDict(raw) && isOrderKey(raw.edgeOrder))) return this.projectInsertedLeaves(mapId, state, nodes, parents, records);
     const delta = new Map<string, SnapshotRecord | null>();
     const replaced = new Map<string, SnapshotRecord>();
     const lengths = new Map<string, number>();
@@ -498,7 +454,7 @@ export class MapProjector {
       for (const rk of delta.keys()) records.delete(rk);
       for (const id of inserted) {
         delete state.nodes[id];
-        this.edgeByTarget.delete(id);
+        this.setIncoming(id, undefined);
         this.appendedNodeIds.delete(id);
       }
       for (const [id, length] of lengths) {
@@ -534,8 +490,9 @@ export class MapProjector {
         firstChildren.set(parentId, first);
         const firstAdded = [...ids].sort(compareStrings)[0];
         this.firstChildByParent.set(parentId, first === undefined || firstAdded < first ? firstAdded : first);
-        const last = children.length ? this.edgeByTarget.get(children[children.length - 1])?.ord : undefined;
-        const keys = keysBetween(last, undefined, ids.length);
+        const supplied = ids.map(id => (nodes[id] as Dict).edgeOrder);
+        const keys = supplied.every(isOrderKey) ? supplied as string[]
+          : keysBetween(children.length ? this.edgeByTarget.get(children[children.length - 1])?.ord : undefined, undefined, ids.length);
         const root = this.scopeByRoot.has(parentId) ? parentId : edgeScopeRootOf(state.nodes, state.rootId, parentId);
         const scopeId = this.scopeByRoot.get(root)?.id;
         for (let i = 0; i < ids.length; i += 1) {
@@ -559,12 +516,126 @@ export class MapProjector {
           inserted.push(id);
           state.nodes[id] = restored;
           this.nodeMemo.set(restored, { ...memo, selfNormal: true });
-          this.edgeByTarget.set(id, connection);
+          this.setIncoming(id, connection);
           this.appendedNodeIds.add(id);
           children.push(id);
         }
         // Rebuild this memo only if a later operation needs the whole sibling group.
         this.parentMemo.delete(parent);
+      }
+      return { records, delta, replaced, state, revert };
+    } catch (error) { revert(); throw error; }
+  }
+
+  /** A batch of new leaves with explicit keys, at any position among existing siblings. */
+  projectInsertedLeaves(mapId: string, state: AppState, nodes: Dict, parents: ReadonlyMap<string, string[]>, records: Map<string, SnapshotRecord>): ProjectionResult {
+    const delta = new Map<string, SnapshotRecord | null>();
+    const replaced = new Map<string, SnapshotRecord>();
+    const originals = new Map<string, AppState["nodes"][string]>();
+    const inserted: string[] = [];
+    const firsts = new Map<string, string | undefined>();
+    const put = <T extends SnapshotRecord>(record: T): T => {
+      const rk = recordRk(record);
+      if (records.has(rk)) throw new Error(`Record already exists: ${rk}`);
+      records.set(rk, record); delta.set(rk, record); return record;
+    };
+    const revert = (): void => {
+      for (const rk of delta.keys()) records.delete(rk);
+      for (const id of inserted) { delete state.nodes[id]; this.setIncoming(id, undefined); this.appendedNodeIds.delete(id); }
+      for (const [id, parent] of originals) state.nodes[id] = parent;
+      for (const [id, first] of firsts) { if (first === undefined) this.firstChildByParent.delete(id); else this.firstChildByParent.set(id, first); }
+    };
+    try {
+      const memos = new Map<string, NodeMemo>();
+      for (const id of sortedKeys(nodes)) memos.set(id, projectNode(mapId, id, nodes[id] as Dict, this.gen, put, () => {}));
+      const firstOf = ([id, ids]: [string, string[]]): string => {
+        const old = this.firstChildByParent.get(id), added = [...ids].sort(compareStrings)[0];
+        return old === undefined || added < old ? added : old;
+      };
+      for (const [parentId, ids] of [...parents].sort((a, b) => compareStrings(firstOf(a), firstOf(b)))) {
+        firsts.set(parentId, this.firstChildByParent.get(parentId)); this.firstChildByParent.set(parentId, firstOf([parentId, ids]));
+        const root = this.scopeByRoot.has(parentId) ? parentId : edgeScopeRootOf(state.nodes, state.rootId, parentId);
+        const scopeId = this.scopeByRoot.get(root)?.id;
+        for (const id of [...ids].sort((a, b) => compareStrings((nodes[a] as Dict).edgeOrder as string, (nodes[b] as Dict).edgeOrder as string))) {
+          const raw = nodes[id] as Dict, memo = memos.get(id)!;
+          const edge: Dict = { kind: "connection", id: generatedId(this.hash, this.workspaceId, "c_", mapId, "edge", id), mapId, type: "edge", source: parentId, target: id };
+          if (memo.label !== undefined) edge.label = memo.label;
+          if (typeof raw.edgeRelationType === "string" && raw.edgeRelationType !== "") edge.relationType = raw.edgeRelationType;
+          const attrs = cleanAttributes(raw.edgeAttributes); if (attrs) edge.attributes = attrs;
+          const extensions = writtenExtensions(raw.edgeExtensions); if (extensions) edge.extensions = extensions;
+          edge.ord = raw.edgeOrder;
+          if (scopeId !== undefined) edge.scopeId = scopeId;
+          edge.rev = undefined;
+          const connection = put(edge as unknown as EdgeConnectionRecord);
+          const parts: SnapshotRecord[] = [records.get(`map|${mapId}`)!, memo.node, connection];
+          if (memo.details) parts.push(memo.details);
+          const restored = fromSnapshot(parts).rows[0].state.nodes[id];
+          inserted.push(id); state.nodes[id] = restored;
+          this.nodeMemo.set(restored, { ...memo, selfNormal: true });
+          this.setIncoming(id, connection); this.appendedNodeIds.add(id);
+        }
+        originals.set(parentId, state.nodes[parentId]);
+        state.nodes[parentId] = this.deferChildren(state.nodes[parentId]);
+      }
+      return { records, delta, replaced, state, revert };
+    } catch (error) { revert(); throw error; }
+  }
+
+  /** Only parent assignments within the same scope: no descendant scope rewrite is needed. */
+  canProjectParentEdges(state: AppState, changes: readonly import("../map_changes").RecordChange[]): boolean {
+    if (!changes.length) return false;
+    return changes.every(change => {
+      if (change.kind !== "edge" || change.op !== "update" || !isOrderKey(change.after?.ord)) return false;
+      if ([...Object.keys(change.before ?? {}), ...Object.keys(change.after ?? {})].some(k => !(PARENT_EDGE_FIELDS as readonly string[]).includes(k))) return false;
+      const old = this.edgeByTarget.get(change.key[0]);
+      const parentId = typeof change.after?.parentId === "string" ? change.after.parentId : old?.source;
+      if (!old || !parentId || !state.nodes[parentId] || state.nodes[parentId].nodeType === "alias") return false;
+      const root = this.scopeByRoot.has(parentId) ? parentId : edgeScopeRootOf(state.nodes, state.rootId, parentId);
+      return old.scopeId === this.scopeByRoot.get(root)?.id && state.nodes[change.key[0]].edgeOutsideScope !== true;
+    });
+  }
+
+  /** Update only the incoming edges. Ordered child arrays are materialized by an actual read. */
+  projectParentEdges(state: AppState, nodes: Dict, records: Map<string, SnapshotRecord>): ProjectionResult {
+    const delta = new Map<string, SnapshotRecord | null>();
+    const replaced = new Map<string, SnapshotRecord>();
+    const oldNodes = new Map<string, AppState["nodes"][string]>();
+    const parents = new Set<string>();
+    const revert = (): void => {
+      for (const [rk, record] of replaced) {
+        records.set(rk, record);
+        const edge = record as EdgeConnectionRecord;
+        this.setIncoming(edge.target, edge);
+      }
+      for (const [id, node] of oldNodes) state.nodes[id] = node;
+    };
+    try {
+      const ordered = Object.entries(nodes).sort((a, b) => {
+        const left = a[1] as Dict, right = b[1] as Dict;
+        const parent = compareStrings(this.firstChildByParent.get(left.parentId as string) ?? a[0], this.firstChildByParent.get(right.parentId as string) ?? b[0]);
+        return parent || compareStrings(left.edgeOrder as string, right.edgeOrder as string);
+      });
+      for (const [id, raw] of ordered) {
+        const node = raw as unknown as AppState["nodes"][string];
+        const old = this.edgeByTarget.get(id)!;
+        if (old.source === node.parentId && old.ord === node.edgeOrder) continue;
+        const edge = { ...old, source: node.parentId!, ord: node.edgeOrder!, rev: undefined } as unknown as EdgeConnectionRecord;
+        const rk = recordRk(old);
+        replaced.set(rk, old);
+        records.set(rk, edge);
+        delta.set(rk, edge);
+        this.setIncoming(id, edge);
+        parents.add(old.source); parents.add(edge.source);
+        oldNodes.set(id, state.nodes[id]);
+        state.nodes[id] = node;
+        this.nodeMemo.delete(node);
+      }
+      for (const id of parents) {
+        const old = state.nodes[id];
+        if (!oldNodes.has(id)) oldNodes.set(id, old);
+        const next = this.deferChildren(old);
+        state.nodes[id] = next;
+        this.parentMemo.delete(next);
       }
       return { records, delta, replaced, state, revert };
     } catch (error) { revert(); throw error; }
@@ -854,7 +925,7 @@ export class MapProjector {
       } else {
         ordered = members;
       }
-      const keys = assignOrderKeys(ordered.map((index) => this.edgeByTarget.get(nodeIds[index])?.ord));
+      const keys = assignOrderKeys(ordered.map((index) => (nodes[index].edgeOrder as string | undefined) ?? this.edgeByTarget.get(nodeIds[index])?.ord));
       const childIds: string[] = new Array(ordered.length);
       for (let i = 0; i < ordered.length; i += 1) {
         const childId = nodeIds[ordered[i]];
@@ -1185,7 +1256,7 @@ export class MapProjector {
       const record = memo.node;
       const children = orderedChildren.get(id) ?? NO_CHILDREN;
       const nodeType = record.nodeType ?? (node.nodeType === "folder" && id !== rootId ? "folder" : "text");
-      if (memo.selfNormal && node.nodeType === nodeType && sameStrings(node.children, children)) {
+      if (memo.selfNormal && node.edgeOrder === this.edgeByTarget.get(id)?.ord && node.nodeType === nodeType && sameStrings(node.children, children)) {
         restoredNodes[i] = node;
         continue;
       }
@@ -1217,6 +1288,7 @@ export class MapProjector {
       if (record.valid !== undefined) restored.valid = record.valid;
       if (record.copyOf !== undefined) restored.copyOf = record.copyOf;
       const incoming = this.edgeByTarget.get(id);
+      if (incoming) restored.edgeOrder = incoming.ord;
       if (incoming?.relationType !== undefined) restored.edgeRelationType = incoming.relationType;
       if (incoming?.attributes !== undefined) restored.edgeAttributes = incoming.attributes;
       if (incoming?.extensions !== undefined) restored.edgeExtensions = incoming.extensions;
@@ -1290,6 +1362,12 @@ export class MapProjector {
     }
     this.firstChildByParent.clear();
     for (const [parentId, members] of childrenByParent) this.firstChildByParent.set(parentId, nodeIds[members[0]]);
+    this.edgesByParent.clear();
+    for (const edge of this.edgeByTarget.values()) {
+      let group = this.edgesByParent.get(edge.source);
+      if (!group) this.edgesByParent.set(edge.source, group = new Map());
+      group.set(edge.target, edge);
+    }
     this.gen = gen;
     this.lastRecords = out;
     this.scopeByRoot = nextScopeByRoot;

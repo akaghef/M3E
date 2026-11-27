@@ -20,6 +20,8 @@ export interface TreeNode {
    * Absent: the edge lies on the parent's scope. See shared/scope_plane.ts.
    */
   edgeOutsideScope?: boolean;
+  /** Stable sibling order of the incoming parent edge; Command compare-and-set token. */
+  edgeOrder?: string;
   text: string;
   collapsed: boolean;
   details: string;

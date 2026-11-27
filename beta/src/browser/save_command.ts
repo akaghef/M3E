@@ -3,7 +3,7 @@
  * The state transition is `changes`. `intent` is only the audit classification:
  * a viewer save may touch several record kinds at once, so it uses `assert`.
  */
-import { diffState, sameValue, type MapCommand, type RecordChange } from "../shared/map_changes";
+import { diffState, nonEmptyChanges, acceptEdgeOrders, type MapCommand, type RecordChange } from "../shared/map_changes";
 
 const JSON_HEADERS = "application/json; charset=utf-8";
 
@@ -27,9 +27,7 @@ export function buildSaveCommand(before: object, after: object, tabId: string): 
 /** The Command for changes that are already computed (scope view). Same commandId rule as `buildSaveCommand`. */
 export function commandForChanges(changes: RecordChange[], tabId: string): MapCommand {
   // Undefined fields disappear on the wire; compare the actual JSON payload.
-  changes = JSON.parse(JSON.stringify(changes)) as RecordChange[];
-  changes = changes.filter(change => change.op !== "update"
-    || !sameValue(change.before ?? {}, change.after ?? {}));
+  changes = nonEmptyChanges(changes);
   const changesJson = JSON.stringify(changes);
   if (!unconfirmed || unconfirmed.changesJson !== changesJson) {
     unconfirmed = { commandId: newCommandId(), changesJson };
@@ -73,6 +71,7 @@ export async function postSaveCommand(
     return fetch(saveUrl, { method: "POST", headers, body: wholeBody() });
   }
   // Confirmed or rejected: either way the next save is a new Command.
+  if (response.ok) acceptEdgeOrders(state, command.changes);
   if (response.status < 500) unconfirmed = null;
   return response;
 }
@@ -159,6 +158,8 @@ export class SaveStateTracker<T extends object> {
           for (const key of Object.keys(base)) delete base[key];
           Object.assign(base, snapshot);
         } else apply(base, false);
+        acceptEdgeOrders(base, changes);
+        acceptEdgeOrders(live, changes);
       },
       retry: () => {
         if (full) this.full = true;

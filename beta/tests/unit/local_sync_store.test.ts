@@ -416,3 +416,24 @@ test("pull uses the store index without rereading the journal or snapshot", asyn
   const future = await serve(new URL(`/api/sync/pull?after=${source.seq() + 1}`, ORIGIN));
   expect(await future.json()).toMatchObject({ reclone: true, snapshotSeq: source.seq() });
 });
+
+test("empty viewer-shaped updates never enter the working journal or outbox", async () => {
+  const device = await client();
+  const store = device.store();
+  const seq = store.seq();
+  const result = store.commitMapCommand("map", {
+    commandId: "empty-rename", actor: { kind: "human", id: "viewer" }, intent: "rename",
+    changes: [{ kind: "node", key: ["root"], op: "update", before: {}, after: {} }],
+  }, "human");
+  expect(result).toMatchObject({ ok: true, noOp: true });
+  expect(store.seq()).toBe(seq);
+  expect(entries("local")).toEqual([]);
+});
+
+test("every viewer field also survives the local working store and outbox path", async () => {
+  const { exerciseViewerFields } = await import("./viewer_field_lifecycle");
+  const device = await client();
+  exerciseViewerFields(device.store(), "local");
+  await device.push(() => {});
+  expect((await device.status()).conflicts).toBe(0);
+});
