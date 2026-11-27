@@ -13,7 +13,7 @@ Usage:
 Worktrees:
   path:   $HOME/dev/M3E-worktrees/<task>
   branch: codex/<task>
-  base:   dev-beta
+  base:   origin/dev-beta (fetched; local dev-beta when offline)
 USAGE
 }
 
@@ -65,7 +65,11 @@ cmd_new() {
   if git show-ref --verify --quiet "refs/heads/$branch"; then
     git worktree add "$path" "$branch"
   else
-    git worktree add -b "$branch" "$path" dev-beta
+    # Branch from the remote tip: the local dev-beta of this checkout may lag behind
+    # what other worktrees already pushed. Fall back to it only when offline.
+    local base="dev-beta"
+    if git fetch -q origin dev-beta 2>/dev/null; then base="origin/dev-beta"; fi
+    git worktree add -b "$branch" "$path" "$base"
   fi
 }
 
