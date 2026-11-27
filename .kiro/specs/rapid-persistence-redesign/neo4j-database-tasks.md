@@ -36,3 +36,11 @@
 
 1. 確定の検査に要る周りの record（親への parent edge、scope、lock、grant、alias の参照先）を、Neo4j の問い合わせで読む形にする。
 2. MCP の検索と取得を、Neo4j の問い合わせにする。
+
+## 未対応（2026-11-27 時点）
+
+- 古い時点の状態: projection の書き戻しが古い `baseSeq` を使うときの状態（`stateAt`）と、namedSnapshot の時点の状態は、Neo4j に別に持っていない。いまは、古い base の書き戻しを拒否し、namedSnapshot の record だけを持つ。projection を作った時点と namedSnapshot の時点の record を、Neo4j に別の store として残す形を決めて実装する。
+- 起動時の読み込み: store を開くと、その store の全 record を Neo4j から読む（`dump`）。研究 map を含む workspace（約 10 万 record）で何秒かかるかを測る。
+- 確定ごとの往復: 1 回の確定は、Neo4j への 1 回の transaction で、その中で十数回の問い合わせを送る。連続した入力で応答が遅れないかを測る。
+- journal の行の保持: `JournalEntry` は消さずに増える。保持期間（90 日）と、全端末が pull した範囲より古い行の扱いを決める。
+- 一度きりの移行の道具は、製品のコードに入れない。ファイルで動いていた最後の版（commit b763168）を固定した作業ツリーに置き、移行が済んだら作業ツリーごと捨てる。
