@@ -5,12 +5,13 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { NEO4J_STORE_FILE } from "../../src/node/record_store/active";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import { deviceStoreNames, dropDevicesUnder, LocalSync } from "../../src/node/sync/local";
 import { DeviceOutbox } from "../../src/node/sync/outbox";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import type { AppState } from "../../src/shared/types";
-import { TEST_NEO4J } from "./neo4j_test_store";
+import { dropTestStores, testStoreName, TEST_NEO4J } from "./neo4j_test_store";
 
 const BETA = path.resolve(__dirname, "../..");
 const SERVER = path.join(BETA, "dist/node/start_viewer.js");
@@ -31,13 +32,13 @@ async function confirmedLines(dir: string, after: number) {
 }
 
 function neo4jEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { M3E_NEO4J_BOLT: TEST_NEO4J.uri };
-  if (TEST_NEO4J.user !== undefined) {
-    env.M3E_NEO4J_USER = TEST_NEO4J.user;
-    env.M3E_NEO4J_PASSWORD = TEST_NEO4J.password ?? "";
-  }
-  if (TEST_NEO4J.database) env.M3E_NEO4J_DATABASE = TEST_NEO4J.database;
-  return env;
+  return {
+    M3E_NEO4J_BOLT: TEST_NEO4J.uri,
+    M3E_NEO4J_USER: TEST_NEO4J.user ?? "",
+    M3E_NEO4J_PASSWORD: TEST_NEO4J.password ?? "",
+    M3E_NEO4J_PASSWORD_FILE: "",
+    M3E_NEO4J_DATABASE: TEST_NEO4J.database ?? "",
+  };
 }
 
 let temp: string;
@@ -54,6 +55,7 @@ afterEach(async () => {
   await Promise.all(children.map(stop));
   await Promise.all(proxies.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   await dropDevicesUnder(TEST_NEO4J, temp);
+  await dropTestStores();
   fs.rmSync(temp, { force: true, recursive: true });
   vi.unstubAllEnvs();
 });
@@ -71,13 +73,16 @@ function initialState(prefix: string): AppState {
   };
 }
 
-function seed(name: string, workspace = WORKSPACE): string {
+async function seed(name: string, workspace = WORKSPACE): Promise<string> {
   const dir = path.join(temp, name);
+  fs.mkdirSync(dir, { recursive: true });
+  const store = testStoreName();
   const now = new Date().toISOString();
-  RecordWorkspaceStore.create(path.join(dir, "store"), toSnapshot(workspace, [
+  await RecordWorkspaceStore.createInNeo4j(TEST_NEO4J, store, toSnapshot(workspace, [
     { id: MAIN, state: initialState("main"), savedAt: now },
     { id: ARCHIVED, state: initialState("archived"), savedAt: now, archived: 1 },
   ], { now }));
+  fs.writeFileSync(path.join(dir, NEO4J_STORE_FILE), JSON.stringify({ store }));
   return dir;
 }
 
@@ -87,18 +92,16 @@ async function viewer(dir: string, remote?: string, port = 0): Promise<{ origin:
     M3E_DATA_DIR: dir, M3E_WORKSPACE_ID: WORKSPACE, M3E_FORBID_LIVE_DATA: "1", M3E_PORT: String(port),
     M3E_HOST: "127.0.0.1", M3E_OPEN_BROWSER: "0", M3E_CLOUD_SYNC: "0", M3E_AUTO_SYNC: "0", M3E_SKIP_SAMPLE_GENERATION: "1",
   } as NodeJS.ProcessEnv;
-  delete env.M3E_STORE_DIR;
-  delete env.M3E_NEO4J_BOLT;
-  delete env.M3E_NEO4J_USER;
-  delete env.M3E_NEO4J_PASSWORD;
-  delete env.M3E_NEO4J_PASSWORD_FILE;
-  delete env.M3E_NEO4J_DATABASE;
+  env.M3E_RECORD_STORE = "";
+  env.M3E_SYNC_REMOTE = "";
+  env.M3E_NEO4J_BOLT = "";
+  env.M3E_NEO4J_USER = "";
+  env.M3E_NEO4J_PASSWORD = "";
+  env.M3E_NEO4J_PASSWORD_FILE = "";
+  env.M3E_NEO4J_DATABASE = "";
   delete env.M3E_TAILSCALE_USERS;
-  delete env.M3E_SYNC_REMOTE;
-  if (remote) {
-    env.M3E_SYNC_REMOTE = remote;
-    Object.assign(env, neo4jEnv());
-  }
+  if (remote) env.M3E_SYNC_REMOTE = remote;
+  if (remote || fs.existsSync(path.join(dir, NEO4J_STORE_FILE))) Object.assign(env, neo4jEnv());
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env, stdio: ["ignore", "pipe", "pipe"] });
   children.push(child);
   const actualPort = await new Promise<number>((resolve, reject) => {
@@ -188,7 +191,7 @@ async function relay(origin: string, transform: (url: URL, body: any, headers: h
 
 describe("local sync with isolated viewer processes", () => {
   test("clones, commits through MCP, and preserves conflicting edits while independent edits converge", async () => {
-    const remote = await viewer(seed("remote"));
+    const remote = await viewer(await seed("remote"));
     const dirA = path.join(temp, "a");
     const a = (await viewer(dirA, remote.origin)).origin;
     const b = (await viewer(path.join(temp, "b"), remote.origin)).origin;
@@ -227,7 +230,7 @@ describe("local sync with isolated viewer processes", () => {
   });
 
   test("pushes a run of Commands from one issuer in one request, in order, answered per Command", async () => {
-    const remote = await viewer(seed("batch-remote"));
+    const remote = await viewer(await seed("batch-remote"));
     const requests: number[] = [];
     const gateway = await relay(remote.origin, (url, body) => {
       if (url.pathname === "/api/sync/push") requests.push(body.results.length);
@@ -245,7 +248,7 @@ describe("local sync with isolated viewer processes", () => {
   });
 
   test("splits a push where the issuer changes, so each Command keeps its issuer", async () => {
-    const remote = await viewer(seed("issuer-remote"));
+    const remote = await viewer(await seed("issuer-remote"));
     const requests: Array<[string, number]> = [];
     const gateway = await relay(remote.origin, (url, body, headers) => {
       if (url.pathname === "/api/sync/push") requests.push([String(headers["x-m3e-connection"] ?? "viewer"), body.results.length]);
@@ -261,7 +264,7 @@ describe("local sync with isolated viewer processes", () => {
 
   test("a gateway answering 502 while the remote is down reads as unreachable, not refused", async () => {
     // tailscale serve (or any reverse proxy) in front of a stopped remote answers 502.
-    const remote = await viewer(seed("gateway-remote"));
+    const remote = await viewer(await seed("gateway-remote"));
     const gateway = await relay(remote.origin, (_url, body) => body);
     const local = await viewer(path.join(temp, "gateway-local"), gateway);
     await stop(remote.process);
@@ -271,7 +274,7 @@ describe("local sync with isolated viewer processes", () => {
   });
 
   test("commits with the remote stopped and replays a non-empty outbox after a cold restart", async () => {
-    const dir = seed("remote");
+    const dir = await seed("remote");
     let remote = await viewer(dir);
     const localDir = path.join(temp, "local");
     let local = await viewer(localDir, remote.origin);
@@ -291,7 +294,7 @@ describe("local sync with isolated viewer processes", () => {
   });
 
   test("captures map create, delete, columns and rename, then replicates map contents and row columns", async () => {
-    const remote = await viewer(seed("remote"));
+    const remote = await viewer(await seed("remote"));
     const dir = path.join(temp, "local");
     const a = await viewer(dir, remote.origin);
     const b = await viewer(path.join(temp, "b"), remote.origin);
@@ -321,7 +324,7 @@ describe("local sync with isolated viewer processes", () => {
   });
 
   test("fences mismatched requests and responses, preserving both confirmed state and outbox", async () => {
-    const remote = await viewer(seed("remote"));
+    const remote = await viewer(await seed("remote"));
     const clone = await ok(remote.origin, "/api/sync/clone");
     const { workspaceId, historyId, epoch, snapshotSeq } = clone;
     expect(clone.records[0]).toMatchObject({ workspaceId, historyId, epoch: 1 });
@@ -335,7 +338,7 @@ describe("local sync with isolated viewer processes", () => {
     await edit(local.origin, "main-root", "Pending");
     const waiting = outbox(dir);
     await stop(local.process);
-    const other = await viewer(seed("other"));
+    const other = await viewer(await seed("other"));
     const otherClone = await ok(other.origin, "/api/sync/clone");
     expect(otherClone.historyId).not.toBe(historyId);
     local = await viewer(dir, other.origin);
@@ -356,7 +359,7 @@ describe("local sync with isolated viewer processes", () => {
   });
 
   test("leaves an unacknowledged push pending, retries with its Command ID, and handles a durable no-op", async () => {
-    const remote = await viewer(seed("remote"));
+    const remote = await viewer(await seed("remote"));
     let hideResult = true;
     const proxied = await relay(remote.origin, (url, body) => {
       if (hideResult && url.pathname === "/api/sync/push") return { ...body, results: [] };
@@ -386,7 +389,7 @@ describe("local sync with isolated viewer processes", () => {
   });
 
   test("rejects a broken suffix before appending, then rebases the working store in place and preserves failed replay", async () => {
-    const remote = await viewer(seed("remote"));
+    const remote = await viewer(await seed("remote"));
     const a = (await viewer(path.join(temp, "a"), remote.origin)).origin;
     let corrupt = false;
     const proxied = await relay(remote.origin, (url, body) => {

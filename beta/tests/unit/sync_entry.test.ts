@@ -11,13 +11,10 @@ import os from "node:os";
 import path from "node:path";
 import { diffState, type MapCommand } from "../../src/shared/map_changes";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
-import type { AppState } from "../../src/shared/types";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
-import type { EngineApplier } from "../../src/node/record_store/engine";
 import { accountForConnection } from "../../src/node/sync/issuer";
-import { MIN_SEQ_TIMEOUT_CODE, waitForAppliedSeq } from "../../src/node/sync/min_seq";
 import { deleteSyncNodes, DeviceOutbox, pushOutboxFile } from "../../src/node/sync/outbox";
-import { TEST_NEO4J } from "./neo4j_test_store";
+import { dropTestStores, testStoreName, TEST_NEO4J } from "./neo4j_test_store";
 
 const BETA = path.resolve(__dirname, "..", "..");
 const SERVER = path.join(BETA, "dist", "node", "start_viewer.js");
@@ -74,7 +71,7 @@ interface Running {
   log: string[];
 }
 
-async function startServer(dataDir: string, storeDir: string): Promise<Running> {
+async function startServer(dataDir: string, storeName: string): Promise<Running> {
   const port = await freePort();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -82,14 +79,19 @@ async function startServer(dataDir: string, storeDir: string): Promise<Running> 
     M3E_PORT: String(port),
     M3E_DATA_DIR: dataDir,
     M3E_DB_FILE: "data.sqlite",
-    M3E_STORE_DIR: storeDir,
+    M3E_RECORD_STORE: storeName,
     M3E_WORKSPACE_ID: "ws_sync",
     M3E_OPEN_BROWSER: "0",
     M3E_CLOUD_SYNC: "0",
     M3E_AUTO_SYNC: "0",
     M3E_MIN_SEQ_TIMEOUT_MS: "250",
+    M3E_SYNC_REMOTE: "",
+    M3E_NEO4J_BOLT: TEST_NEO4J.uri,
+    M3E_NEO4J_USER: TEST_NEO4J.user ?? "",
+    M3E_NEO4J_PASSWORD: TEST_NEO4J.password ?? "",
+    M3E_NEO4J_PASSWORD_FILE: "",
+    M3E_NEO4J_DATABASE: TEST_NEO4J.database ?? "",
   };
-  delete env.M3E_NEO4J_BOLT;
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env, stdio: ["ignore", "pipe", "pipe"] });
   const log: string[] = [];
   child.stdout?.on("data", (chunk) => log.push(String(chunk)));
@@ -130,76 +132,22 @@ async function http(base: string, method: string, route: string, body?: unknown,
   return { status: response.status, body: parsed };
 }
 
-function holdingApplier(): EngineApplier & { startedAt: number | null; releaseNext: () => void; releaseAll: () => void } {
-  const pending: Array<() => void> = [];
-  return {
-    startedAt: null,
-    async start(source) {
-      const seq = source.seq();
-      this.startedAt = seq;
-      return seq;
-    },
-    apply() {
-      return new Promise<void>((resolve) => { pending.push(resolve); });
-    },
-    async close() { this.releaseAll(); },
-    releaseNext() { pending.shift()?.(); },
-    releaseAll() { while (pending.length > 0) pending.shift()?.(); },
-  };
-}
-
-describe("minSeq waits for the engine", () => {
-  test("a read waits until the engine applies the seq, then times out with ENGINE_BEHIND", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-sync-minseq-"));
-    RecordWorkspaceStore.create(dir, toSnapshot("ws_min", [], { now: "2026-11-22T00:00:00.000Z" }));
-    const gate = holdingApplier();
-    const store = RecordWorkspaceStore.open(dir, { applier: gate, engineRetry: { firstMs: 60_000, maxMs: 60_000 } });
-    try {
-      const deadline = Date.now() + 2_000;
-      while (gate.startedAt === null || store.engineStatus().appliedSeq !== gate.startedAt || store.seq() !== gate.startedAt) {
-        if (Date.now() > deadline) throw new Error("the engine did not start");
-        await delay(15);
-      }
-      const state = mapState() as unknown as AppState;
-      const saved = store.saveWholeMap(MAP, state, "acct_system", "create");
-      expect(saved.ok).toBe(true);
-      const seq = store.seq();
-      expect(store.engineStatus().appliedSeq).toBeLessThan(seq);
-
-      const timedAt = Date.now();
-      const timed = await waitForAppliedSeq(store, seq, 200);
-      expect(timed).toEqual({ ok: false, code: MIN_SEQ_TIMEOUT_CODE });
-      expect(Date.now() - timedAt).toBeGreaterThanOrEqual(150);
-
-      let settled = false;
-      const waiting = waitForAppliedSeq(store, seq, 2_000).then((result) => { settled = true; return result; });
-      await delay(60);
-      expect(settled).toBe(false);
-      gate.releaseNext();
-      expect(await waiting).toEqual({ ok: true });
-      expect(store.engineStatus().appliedSeq).toBeGreaterThanOrEqual(seq);
-    } finally {
-      gate.releaseAll();
-      await store.close();
-    }
-  });
-});
-
 describe("sync HTTP, issuer, and outbox", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-sync-entry-"));
-  const storeDir = path.join(root, "store");
   const dataDir = path.join(root, "data");
+  const storeName = testStoreName();
   let running: Running;
 
   beforeAll(async () => {
     fs.mkdirSync(dataDir, { recursive: true });
-    RecordWorkspaceStore.create(storeDir, toSnapshot("ws_sync", [], { now: "2026-11-22T00:00:00.000Z" }));
-    running = await startServer(dataDir, storeDir);
+    await RecordWorkspaceStore.createInNeo4j(TEST_NEO4J, storeName, toSnapshot("ws_sync", [], { now: "2026-11-22T00:00:00.000Z" }));
+    running = await startServer(dataDir, storeName);
   }, 30_000);
 
   afterAll(async () => {
     await stopServer(running);
-    delete process.env.M3E_STORE_DIR;
+    await dropTestStores();
+    fs.rmSync(root, { recursive: true, force: true });
   });
 
   function call(method: string, route: string, body?: unknown, headers?: Record<string, string>) {
@@ -374,8 +322,18 @@ describe("sync HTTP, issuer, and outbox", () => {
     const stale = clone(old);
     stale.nodes.bravo.text = "Bravo-nope";
     const file = `ws_sync:outbox:${randomUUID()}`;
-    const previousBolt = process.env.M3E_NEO4J_BOLT;
+    const previousNeo4j = {
+      bolt: process.env.M3E_NEO4J_BOLT,
+      user: process.env.M3E_NEO4J_USER,
+      password: process.env.M3E_NEO4J_PASSWORD,
+      passwordFile: process.env.M3E_NEO4J_PASSWORD_FILE,
+      database: process.env.M3E_NEO4J_DATABASE,
+    };
     process.env.M3E_NEO4J_BOLT = TEST_NEO4J.uri;
+    process.env.M3E_NEO4J_USER = TEST_NEO4J.user ?? "";
+    process.env.M3E_NEO4J_PASSWORD = TEST_NEO4J.password ?? "";
+    process.env.M3E_NEO4J_PASSWORD_FILE = "";
+    process.env.M3E_NEO4J_DATABASE = TEST_NEO4J.database ?? "";
     try {
     const first = DeviceOutbox.open(file, TEST_NEO4J);
     first.append({ commandId: "out-1", baseSeq: 0, mapId: MAP, command: commandOf(state, step, "out-1") });
@@ -398,7 +356,7 @@ describe("sync HTTP, issuer, and outbox", () => {
     renamed.nodes.bravo.text = "Bravo-2";
     DeviceOutbox.open(file, TEST_NEO4J).append({ commandId: "out-4", baseSeq: 0, mapId: MAP, command: commandOf(later, renamed, "out-4") });
     const child = spawn(process.execPath, [CLI, "push", "--outbox", file, "--server", running.base], {
-      cwd: BETA, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, M3E_NEO4J_BOLT: TEST_NEO4J.uri },
+      cwd: BETA, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env },
     });
     let stdout = "";
     child.stdout?.on("data", (chunk) => { stdout += String(chunk); });
@@ -408,42 +366,17 @@ describe("sync HTTP, issuer, and outbox", () => {
     expect(DeviceOutbox.open(file, TEST_NEO4J).list()).toEqual([]);
     expect((await call("GET", `/api/maps/${MAP}`)).body.state.nodes.bravo.text).toBe("Bravo-2");
     } finally {
-      if (previousBolt === undefined) delete process.env.M3E_NEO4J_BOLT;
-      else process.env.M3E_NEO4J_BOLT = previousBolt;
+      const restore = (key: string, value: string | undefined) => {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      };
+      restore("M3E_NEO4J_BOLT", previousNeo4j.bolt);
+      restore("M3E_NEO4J_USER", previousNeo4j.user);
+      restore("M3E_NEO4J_PASSWORD", previousNeo4j.password);
+      restore("M3E_NEO4J_PASSWORD_FILE", previousNeo4j.passwordFile);
+      restore("M3E_NEO4J_DATABASE", previousNeo4j.database);
       deleteSyncNodes(TEST_NEO4J, file);
     }
   });
 
-  test("pull returns the archived suffix, and a seq older than the archive horizon asks for a reclone", async () => {
-    const before = await call("GET", "/api/sync/pull?after=0");
-    expect(before.body.lines.some((line: { commandId?: string }) => line.commandId === "cmd-a")).toBe(true);
-    const cloneBody = await call("GET", "/api/sync/clone");
-    expect(cloneBody.status).toBe(200);
-    expect(cloneBody.body.snapshotSeq).toBe(before.body.throughSeq);
-    expect(Array.isArray(cloneBody.body.records)).toBe(true);
-
-    await stopServer(running);
-    const compacted = RecordWorkspaceStore.open(storeDir);
-    compacted.compact();
-    await compacted.close();
-    running = await startServer(dataDir, storeDir);
-    const archived = await call("GET", "/api/sync/pull?after=0");
-    expect(archived.body.reclone).toBeUndefined();
-    expect(archived.body.lines.some((line: { commandId?: string }) => line.commandId === "cmd-a")).toBe(true);
-    // out-1 and out-2 were squashed into one Command before push; out-4 was pushed alone.
-    expect(archived.body.lines.some((line: { commandId?: string }) => line.commandId === "out-4")).toBe(true);
-
-    await stopServer(running);
-    const pruning = RecordWorkspaceStore.open(storeDir);
-    const pruned = pruning.pruneArchive({ retentionMs: 0, now: "2099-01-01T00:00:00.000Z" });
-    expect(pruned.problems).toEqual([]);
-    expect(pruned.deleted.length).toBeGreaterThan(0);
-    await pruning.close();
-    running = await startServer(dataDir, storeDir);
-    const tooOld = await call("GET", "/api/sync/pull?after=0");
-    expect(tooOld.status).toBe(200);
-    expect(tooOld.body.reclone).toBe(true);
-    expect(typeof tooOld.body.snapshotSeq).toBe("number");
-    expect(tooOld.body.lines).toBeUndefined();
-  });
 });

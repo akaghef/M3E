@@ -6,7 +6,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { closeActiveRecordStore, activeRecordStore, startLocalMode } from "../../src/node/record_store/active";
+import { closeActiveRecordStore, activeRecordStore, openActiveRecordStore, startLocalMode } from "../../src/node/record_store/active";
 import { Neo4jDurability } from "../../src/node/record_store/neo4j_durability";
 import { RecordWorkspaceStore, type JournalLine } from "../../src/node/record_store/store";
 import { handleRecordSyncHttp } from "../../src/node/sync/http";
@@ -35,7 +35,7 @@ function appState(text = "Root"): AppState {
   };
 }
 
-function remote() { return activeRecordStore()!; }
+function remote() { return remoteStore; }
 
 function entries(name: string) {
   return DeviceOutbox.open(deviceStoreNames(WORKSPACE, path.join(temp, name)).outbox, TEST_NEO4J).list();
@@ -100,33 +100,42 @@ beforeEach(async () => {
   devices = [];
   online = true;
   transform = (_url, response) => response;
-  const store = path.join(temp, "remote");
-  vi.stubEnv("M3E_STORE_DIR", store);
   vi.stubEnv("M3E_FORBID_LIVE_DATA", "1");
-  vi.stubEnv("M3E_NEO4J_BOLT", "");
+  vi.stubEnv("M3E_SYNC_REMOTE", "");
+  vi.stubEnv("M3E_DATA_DIR", "");
+  vi.stubEnv("M3E_RECORD_STORE", "");
+  vi.stubEnv("M3E_NEO4J_BOLT", TEST_NEO4J.uri);
+  vi.stubEnv("M3E_NEO4J_USER", TEST_NEO4J.user ?? "");
+  vi.stubEnv("M3E_NEO4J_PASSWORD", TEST_NEO4J.password ?? "");
+  vi.stubEnv("M3E_NEO4J_PASSWORD_FILE", "");
+  vi.stubEnv("M3E_NEO4J_DATABASE", TEST_NEO4J.database ?? "");
   vi.stubGlobal("fetch", serve);
-  // The server still opens its store synchronously and reads the journal synchronously.
-  // The store lives in Neo4j; this process keeps the lines of the commits it writes.
+  // The store lives in Neo4j. This process keeps the lines of the commits it writes, because the
+  // tests read them back through the same object the HTTP handler uses.
   remoteName = `remote:${randomUUID()}`;
+  vi.stubEnv("M3E_RECORD_STORE", remoteName);
   await RecordWorkspaceStore.createInNeo4j(TEST_NEO4J, remoteName, toSnapshot("workspace", [{ id: "map", state: appState() }]));
-  remoteStore = await RecordWorkspaceStore.openNeo4j(TEST_NEO4J, remoteName);
+  await openActiveRecordStore();
+  remoteStore = activeRecordStore()!;
   const lines: JournalLine[] = [];
   remoteStore.setCommitListener((line) => { lines.push(line); });
   (remoteStore as unknown as { journalLinesAfter(after: number): JournalLine[] }).journalLinesAfter = (after: number) => lines.filter((line) => line.seq > after);
-  (RecordWorkspaceStore as unknown as { open(): RecordWorkspaceStore }).open = () => remoteStore;
 });
 
 afterEach(async () => {
+  const dir = temp;
+  const name = remoteName;
+  const open = devices.splice(0);
   vi.restoreAllMocks();
-  await Promise.all(devices.map((device) => device.close()));
+  await Promise.all(open.map((device) => device.close()));
   await closeActiveRecordStore();
-  await remoteStore.close();
-  await Neo4jDurability.drop(TEST_NEO4J, remoteName);
-  await dropDevicesUnder(TEST_NEO4J, temp);
+  await remoteStore?.close();
+  if (name) await Neo4jDurability.drop(TEST_NEO4J, name);
+  await dropDevicesUnder(TEST_NEO4J, dir);
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-  fs.rmSync(temp, { recursive: true, force: true });
-});
+  fs.rmSync(dir, { recursive: true, force: true });
+}, 300_000);
 
 test("transport A1: pushes and confirms a single Command above the batch and former request caps", async () => {
   const a = await client();
@@ -527,6 +536,65 @@ test("a pull rebases in proportion to the delta and the pending Commands, not to
   expect(small).toBeGreaterThan(0);
   expect(large).toBe(small);
 });
+
+test("a pull rebase op count is the same on every run for a 10-node workspace and a 5000-node workspace", async () => {
+  // The same delta (one remote edit, one pending edit) against workspaces of two sizes, repeated.
+  function grow(count: number): void {
+    const state = appState("Big");
+    for (let i = 0; i < count; i += 1) {
+      const id = `n${i}`;
+      state.nodes[id] = { id, parentId: "root", children: [], collapsed: false, nodeType: "text", text: `Node ${i}` };
+      state.nodes.root.children.push(id);
+    }
+    expect(remote().saveWholeMap("big", state, "remote")).toMatchObject({ ok: true });
+  }
+  async function rebaseOps(name: string): Promise<string[]> {
+    const device = await client(name);
+    try {
+      const directory = device.storeDir();
+      change(device.store(), `Pending ${name}`);
+      const floor = device.store().seq();
+      const pending = (await device.store().readJournalAfter(floor - 1)) ?? [];
+      const remoteBefore = remote().seq();
+      change(remote(), `Remote ${name}`);
+      const delta = remote().journalLinesAfter(remoteBefore) ?? [];
+      expect(await device.pull(() => {})).toMatchObject({ pulled: 1 });
+      expect(device.storeDir()).toBe(directory);
+      expect(device.conflictList()).toMatchObject([{ code: "CONFLICT" }]);
+      expect(mapText(device.store())).toBe(`Remote ${name}`);
+      const lines = await device.store().readJournalAfter(floor - 1);
+      const rebases = (lines ?? []).filter((line) => line.intent === "local-rebase");
+      expect(rebases).toHaveLength(1);
+      const allowed = new Set<string>();
+      for (const line of [...pending, ...delta]) {
+        for (const op of line.ops) {
+          if (op.rk.startsWith("commit|") || op.rk.startsWith("snapshot|")) continue;
+          allowed.add(op.rk);
+        }
+      }
+      const rks = rebases[0]!.ops.map((op) => op.rk).sort();
+      const extra = rks.filter((rk) => !allowed.has(rk));
+      expect(extra, `rebase ops outside the pending Command and the remote delta: ${extra.join(", ")}`).toEqual([]);
+      return rks;
+    } finally {
+      await device.close();
+      const index = devices.indexOf(device);
+      if (index >= 0) devices.splice(index, 1);
+      await dropDevicesUnder(TEST_NEO4J, path.join(temp, name));
+    }
+  }
+  grow(10);
+  const small: string[][] = [];
+  for (let i = 0; i < 20; i += 1) small.push(await rebaseOps(`det-small-${i}`));
+  grow(5000);
+  const large: string[][] = [];
+  for (let i = 0; i < 20; i += 1) large.push(await rebaseOps(`det-large-${i}`));
+  const counts = (runs: string[][]) => runs.map((rks) => rks.length);
+  const shown = (runs: string[][]) => runs.map((rks) => rks.join(",")).join(" | ");
+  expect(counts(small), shown(small)).toEqual(Array.from({ length: 20 }, () => small[0]!.length));
+  expect(counts(large), shown(large)).toEqual(counts(small));
+  expect(small[0]!.length).toBeGreaterThan(0);
+}, 600_000);
 
 test("a start resumes the working store without rebuilding it, and rebases what arrived while it was stopped", async () => {
   const device = await client("resume");

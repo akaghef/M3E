@@ -1,11 +1,11 @@
 import { withOrderKeys } from "./record_store_helpers";
-// The real server on the record store (M3E_STORE_DIR) against the same server on SQLite.
+// The real server on the record store against the same server on SQLite.
 //
-// Two server processes are started from dist/ on temporary data: one in the default mode, one in
-// store mode. The same sequence of HTTP calls runs against both, and every status and body must be
-// the same once the values that legitimately differ are taken out (times, commit sequence numbers,
-// generated ids). Then the store-mode server is stopped and started again on the same directory.
-// Synthetic data only.
+// Two server processes are started from dist/ on temporary data: one in the default mode, one on a
+// store in the disposable test Neo4j. The same sequence of HTTP calls runs against both, and every
+// status and body must be the same once the values that legitimately differ are taken out (times,
+// commit sequence numbers, generated ids). Then the store-mode server is stopped and started again
+// on the same store. Synthetic data only.
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -16,8 +16,7 @@ import path from "node:path";
 import { diffState } from "../../src/shared/map_changes";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
-import { activeRecordStore, closeActiveRecordStore } from "../../src/node/record_store/active";
-import { RapidMvpModel } from "../../src/node/rapid_mvp";
+import { dropTestStores, testStoreName, TEST_NEO4J } from "./neo4j_test_store";
 
 type Json = Record<string, any>;
 type Step = [label: string, status: number, body: unknown];
@@ -33,7 +32,7 @@ function freePort(): Promise<number> {
     // Bound the way the server binds (all interfaces), so the port is free there too.
     probe.listen(0, () => {
       const port = (probe.address() as net.AddressInfo).port;
-      probe.close(() => resolve(port));
+      probe.close(() => resolve(port === 4173 ? freePort() : port));
     });
   });
 }
@@ -44,7 +43,17 @@ interface Running {
   log: string[];
 }
 
-async function startServer(dataDir: string, storeDir: string | null, bolt?: string, more: NodeJS.ProcessEnv = {}): Promise<Running> {
+function neo4jChildEnv(): NodeJS.ProcessEnv {
+  return {
+    M3E_NEO4J_BOLT: TEST_NEO4J.uri,
+    M3E_NEO4J_USER: TEST_NEO4J.user ?? "",
+    M3E_NEO4J_PASSWORD: TEST_NEO4J.password ?? "",
+    M3E_NEO4J_PASSWORD_FILE: "",
+    M3E_NEO4J_DATABASE: TEST_NEO4J.database ?? "",
+  };
+}
+
+async function startServer(dataDir: string, storeName: string | null): Promise<Running> {
   const port = await freePort();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -56,13 +65,18 @@ async function startServer(dataDir: string, storeDir: string | null, bolt?: stri
     M3E_OPEN_BROWSER: "0",
     M3E_CLOUD_SYNC: "0",
     M3E_AUTO_SYNC: "0",
+    M3E_RECORD_STORE: "",
+    M3E_SYNC_REMOTE: "",
+    M3E_NEO4J_BOLT: "",
+    M3E_NEO4J_USER: "",
+    M3E_NEO4J_PASSWORD: "",
+    M3E_NEO4J_PASSWORD_FILE: "",
+    M3E_NEO4J_DATABASE: "",
   };
-  delete env.M3E_STORE_DIR;
-  delete env.M3E_NEO4J_BOLT;
-  delete env.M3E_ENGINE_BACKLOG_LIMIT;
-  Object.assign(env, more);
-  if (storeDir !== null) env.M3E_STORE_DIR = storeDir;
-  if (bolt !== undefined) env.M3E_NEO4J_BOLT = bolt;
+  if (storeName !== null) {
+    env.M3E_RECORD_STORE = storeName;
+    Object.assign(env, neo4jChildEnv());
+  }
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env, stdio: ["ignore", "pipe", "pipe"] });
   const log: string[] = [];
   child.stdout?.on("data", (chunk) => log.push(String(chunk)));
@@ -381,7 +395,7 @@ async function scenario(base: string): Promise<Outcome> {
 
 describe("the server on the record store answers like the server on SQLite", () => {
   let root: string;
-  let storeDir: string;
+  let storeName: string;
   let sqliteServer: Running | undefined;
   let storeServer: Running | undefined;
   let sqliteRun: Outcome;
@@ -390,10 +404,10 @@ describe("the server on the record store answers like the server on SQLite", () 
   beforeAll(async () => {
     expect(fs.existsSync(SERVER), "dist/node/start_viewer.js is built (npm run build:node)").toBe(true);
     root = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-record-store-server-"));
-    storeDir = path.join(root, "store");
-    RecordWorkspaceStore.create(storeDir, toSnapshot("ws_parity", [], { now: "2026-11-17T00:00:00.000Z" }));
+    storeName = testStoreName();
+    await RecordWorkspaceStore.createInNeo4j(TEST_NEO4J, storeName, toSnapshot("ws_parity", [], { now: "2026-11-17T00:00:00.000Z" }));
     sqliteServer = await startServer(path.join(root, "data-sqlite"), null);
-    storeServer = await startServer(path.join(root, "data-store"), storeDir);
+    storeServer = await startServer(path.join(root, "data-store"), storeName);
     sqliteRun = await scenario(sqliteServer.base);
     storeRun = await scenario(storeServer.base);
   }, 120_000);
@@ -401,13 +415,8 @@ describe("the server on the record store answers like the server on SQLite", () 
   afterAll(async () => {
     await stopServer(sqliteServer);
     await stopServer(storeServer);
+    await dropTestStores();
     fs.rmSync(root, { recursive: true, force: true });
-  });
-
-  test("the store-mode server keeps its maps in the store directory and not in SQLite", () => {
-    expect(fs.statSync(path.join(storeDir, "journal.jsonl")).size).toBeGreaterThan(0);
-    expect(fs.existsSync(path.join(root, "data-store", "data.sqlite"))).toBe(false);
-    expect(fs.existsSync(path.join(root, "data-sqlite", "data.sqlite"))).toBe(true);
   });
 
   test("every step has the same status and body in both modes", () => {
@@ -455,7 +464,7 @@ describe("the server on the record store answers like the server on SQLite", () 
 
   test("the state is still there after the store-mode server starts again", async () => {
     await stopServer(storeServer);
-    storeServer = await startServer(path.join(root, "data-store"), storeDir);
+    storeServer = await startServer(path.join(root, "data-store"), storeName);
     const loaded = await call(storeServer.base, "GET", `/api/maps/${MAP}`);
     expect(loaded.status).toBe(200);
     expect(loaded.body.state).toEqual(storeRun.finalState);
@@ -521,114 +530,5 @@ describe("the server on the record store answers like the server on SQLite", () 
     // The other two maps are as they were seeded.
     expect((await call(base, "GET", "/api/maps/feel-1")).body.state.nodes).toEqual(feel().nodes);
     expect((await call(base, "GET", "/api/maps/feel-3")).body.state.nodes).toEqual(feel().nodes);
-  });
-
-  test("with the storage engine down commands are still stored; past the backlog limit they are answered 503 and nothing is written", async () => {
-    const dir = path.join(root, "store-behind");
-    RecordWorkspaceStore.create(dir, toSnapshot("ws_parity", [], { now: "2026-11-17T00:00:00.000Z" }));
-    // Nothing listens on this port: the Neo4j applier fails and keeps retrying; the journal takes
-    // the commits until the engine is 6 commits behind.
-    const limit = 6;
-    const server = await startServer(path.join(root, "data-behind"), dir, `bolt://127.0.0.1:${await freePort()}`, { M3E_ENGINE_BACKLOG_LIMIT: String(limit) });
-    try {
-      const mapId = (await call(server.base, "GET", "/api/maps")).body.maps[0].id as string;
-      const before = (await call(server.base, "GET", `/api/maps/${mapId}`)).body.state as Json;
-      const after = clone(before);
-      after.nodes[after.rootId].text = "never stored";
-      const statuses: number[] = [];
-      let answer = { status: 0, body: null as any };
-      let lastStored = "";
-      for (let attempt = 0; attempt < limit + 2 && answer.status !== 503; attempt += 1) {
-        const current = (await call(server.base, "GET", `/api/maps/${mapId}`)).body.state as Json;
-        const next = clone(current);
-        next.nodes[next.rootId].text = `try ${attempt}`;
-        answer = await call(server.base, "POST", `/api/maps/${mapId}/commands`, { commandId: `behind-${attempt}`, actor: { kind: "human", id: "parity" }, intent: "edit-text", changes: diffState(current, next) });
-        statuses.push(answer.status);
-        if (answer.status === 200) lastStored = `try ${attempt}`;
-      }
-      // Some commits went through with no engine to take them, then the limit was reached.
-      expect(statuses.length).toBeGreaterThan(1);
-      expect(statuses.length).toBeLessThanOrEqual(limit + 1);
-      expect(statuses.slice(0, -1).every((status) => status === 200)).toBe(true);
-      expect(answer.status).toBe(503);
-      expect(answer.body).toEqual({ ok: false, code: "ENGINE_BEHIND", error: "The storage engine is behind. Retry later." });
-      const stored = (await call(server.base, "GET", `/api/maps/${mapId}`)).body.state as Json;
-      expect(stored.nodes[stored.rootId].text).toBe(lastStored);
-      const whole = await call(server.base, "POST", `/api/maps/${mapId}`, { state: after });
-      expect(whole.status).toBe(400);
-      expect(String(whole.body.error)).toMatch(/^ENGINE_BEHIND/);
-      expect((await call(server.base, "GET", `/api/maps/${mapId}`)).body.state).toEqual(stored);
-    } finally {
-      await stopServer(server);
-    }
-  }, 90_000);
-});
-
-describe("the switch", () => {
-  const saved = { dir: process.env.M3E_STORE_DIR, forbid: process.env.M3E_FORBID_LIVE_DATA };
-  afterAll(async () => {
-    await closeActiveRecordStore();
-    if (saved.dir === undefined) delete process.env.M3E_STORE_DIR; else process.env.M3E_STORE_DIR = saved.dir;
-    process.env.M3E_FORBID_LIVE_DATA = saved.forbid;
-  });
-
-  test("without M3E_STORE_DIR there is no store and maps go to SQLite", () => {
-    delete process.env.M3E_STORE_DIR;
-    expect(activeRecordStore()).toBeNull();
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-record-store-switch-"));
-    try {
-      const dbPath = path.join(dir, "data.sqlite");
-      new RapidMvpModel("Switch off").saveToSqlite(dbPath, "m");
-      expect(fs.existsSync(dbPath)).toBe(true);
-      expect(RapidMvpModel.mapExists(dbPath, "m")).toBe(true);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("with M3E_STORE_DIR the same calls go to one store, whatever database path they name", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-record-store-switch-"));
-    try {
-      const storeDir = path.join(dir, "store");
-      RecordWorkspaceStore.create(storeDir, toSnapshot("ws_switch", [], { now: "2026-11-17T00:00:00.000Z" }));
-      process.env.M3E_STORE_DIR = storeDir;
-      const store = activeRecordStore();
-      expect(store).not.toBeNull();
-      expect(activeRecordStore()).toBe(store);
-      const dbPath = path.join(dir, "data.sqlite");
-      const model = new RapidMvpModel("Switch on");
-      model.saveToSqlite(dbPath, "m");
-      expect(fs.existsSync(dbPath)).toBe(false);
-      expect(store!.hasMap("m")).toBe(true);
-      expect(RapidMvpModel.mapExists(path.join(dir, "other.sqlite"), "m")).toBe(true);
-      const loaded = RapidMvpModel.loadSavedMapFromSqlite(dbPath, "m");
-      expect(loaded.version).toBe(1);
-      expect(loaded.state.nodes[loaded.state.rootId].text).toBe("Switch on");
-      // The conditional save: the revision the caller read, then a revision that is no longer current.
-      const revision = RapidMvpModel.savedRevision(loaded);
-      model.editNode(model.state.rootId, "Switch on, edited");
-      expect(model.saveToSqliteIfUnchanged(dbPath, "m", revision).state.nodes[model.state.rootId].text).toBe("Switch on, edited");
-      expect(() => model.saveToSqliteIfUnchanged(dbPath, "m", revision)).toThrow("REVISION_CONFLICT");
-      expect(() => RapidMvpModel.loadSavedMapFromSqlite(dbPath, "none")).toThrow("Map not found.");
-      await closeActiveRecordStore();
-      delete process.env.M3E_STORE_DIR;
-      expect(activeRecordStore()).toBeNull();
-    } finally {
-      await closeActiveRecordStore();
-      delete process.env.M3E_STORE_DIR;
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("a store directory inside the live M3E data directory is refused while M3E_FORBID_LIVE_DATA=1", () => {
-    process.env.M3E_FORBID_LIVE_DATA = "1";
-    // Refused by name; nothing in that directory is touched.
-    process.env.M3E_STORE_DIR = path.join(os.homedir(), "Library", "Application Support", "M3E", "record-store-test-never-created");
-    try {
-      expect(() => activeRecordStore()).toThrow(/live M3E data directory/);
-      expect(() => RapidMvpModel.mapExists("unused.sqlite", "m")).toThrow(/live M3E data directory/);
-    } finally {
-      delete process.env.M3E_STORE_DIR;
-    }
   });
 });

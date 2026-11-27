@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { activeRecordStore, closeActiveRecordStore } from "../../src/node/record_store/active";
+import { activeRecordStore, closeActiveRecordStore, openActiveRecordStore } from "../../src/node/record_store/active";
 import { RecordWorkspaceStore } from "../../src/node/record_store/store";
 import { main as recordStoreCli } from "../../src/node/record_store_cli";
 import { handleRecordSyncHttp } from "../../src/node/sync/http";
@@ -24,10 +24,17 @@ let override: { body: unknown; status?: number } | undefined;
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-remote-backup-"));
   backupDir = path.join(root, "backups");
-  const storeDir = path.join(root, "store");
-  vi.stubEnv("M3E_STORE_DIR", storeDir);
-  vi.stubEnv("M3E_NEO4J_BOLT", undefined);
-  RecordWorkspaceStore.create(storeDir, snapshotOf([{ id: "map_a", state: richState() }]));
+  const name = testStoreName();
+  vi.stubEnv("M3E_RECORD_STORE", name);
+  vi.stubEnv("M3E_SYNC_REMOTE", "");
+  vi.stubEnv("M3E_DATA_DIR", root);
+  vi.stubEnv("M3E_NEO4J_BOLT", TEST_NEO4J.uri);
+  vi.stubEnv("M3E_NEO4J_USER", TEST_NEO4J.user ?? "");
+  vi.stubEnv("M3E_NEO4J_PASSWORD", TEST_NEO4J.password ?? "");
+  vi.stubEnv("M3E_NEO4J_PASSWORD_FILE", "");
+  vi.stubEnv("M3E_NEO4J_DATABASE", TEST_NEO4J.database ?? "");
+  await RecordWorkspaceStore.createInNeo4j(TEST_NEO4J, name, snapshotOf([{ id: "map_a", state: richState() }]));
+  await openActiveRecordStore();
   override = undefined;
   server = createServer(async (req, res) => {
     if (override && req.url === "/api/sync/clone") {
