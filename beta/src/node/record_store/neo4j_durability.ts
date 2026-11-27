@@ -14,6 +14,7 @@
 // again from Neo4j once Neo4j answers.
 
 import { readFileSync } from "fs";
+import { gunzipSync, gzipSync } from "zlib";
 import neo4j, { type Driver, type ManagedTransaction } from "neo4j-driver";
 import type { SnapshotRecord } from "../../shared/record_model/types";
 import { applyOps, ensureSchema, writeMarker, type RecordOp } from "../neo4j_store/apply";
@@ -78,6 +79,20 @@ export const BASE_SEPARATOR = "#base:";
 const RESULT = "CommandResult";
 const RETIRED = "RetiredId";
 const MAP_SEQ = "MapSeq";
+/**
+ * A journal line is kept as gzip-compressed JSON bytes: a large commit then does not hold its text
+ * twice as a string (once in the record, once in the line) in a Neo4j transaction.
+ */
+function packLine(line: unknown): Buffer {
+  return gzipSync(Buffer.from(JSON.stringify(line), "utf8"), { level: 1 });
+}
+
+function unpackLine(value: unknown): unknown {
+  if (typeof value === "string") return JSON.parse(value);
+  const bytes = value instanceof Uint8Array ? Buffer.from(value) : Buffer.from(value as number[]);
+  return JSON.parse(gunzipSync(bytes).toString("utf8"));
+}
+
 /** Units written in one transaction at most. */
 const BATCH = 64;
 
@@ -295,7 +310,7 @@ export class Neo4jDurability {
         for (const rows of chunk(input.mapSeq.map(([mapId, seq]) => ({ mapId, seq: neo4j.int(seq) })))) {
           await session.executeWrite((tx) => tx.run(`UNWIND $rows AS row CREATE (m:${MAP_SEQ} {store: $store, mapId: row.mapId, seq: row.seq})`, { rows, store }));
         }
-        for (const rows of chunk((input.lines ?? []).map(({ seq, line }) => ({ seq: neo4j.int(seq), line: JSON.stringify(line) })))) {
+        for (const rows of chunk((input.lines ?? []).map(({ seq, line }) => ({ seq: neo4j.int(seq), line: packLine(line) })))) {
           await session.executeWrite((tx) => tx.run(`UNWIND $rows AS row CREATE (j:${JOURNAL} {store: $store, seq: row.seq, line: row.line})`, { rows, store }));
         }
       } finally {
@@ -432,7 +447,7 @@ export class Neo4jDurability {
     }
     await applyOps(tx, unit.ops, this.store);
     await tx.run(`CREATE (j:${JOURNAL} {store: $store, seq: $seq, line: $line})`, {
-      store, seq: neo4j.int(unit.seq), line: JSON.stringify(unit.line),
+      store, seq: neo4j.int(unit.seq), line: packLine(unit.line),
     });
     for (const [commandId, entry] of unit.commands) {
       await tx.run(`MERGE (c:${RESULT} {store: $store, commandId: $commandId}) SET c += $props`, {
@@ -463,7 +478,7 @@ export class Neo4jDurability {
         `MATCH (j:${JOURNAL} {store: $store}) WHERE j.seq > $after AND j.seq <= $through RETURN j.seq AS seq, j.line AS line ORDER BY j.seq`,
         { store: this.store, after: neo4j.int(afterSeq), through: neo4j.int(throughSeq) },
       );
-      const lines = result.records.map((row) => ({ seq: toNumber(row.get("seq")), line: JSON.parse(String(row.get("line"))) }));
+      const lines = result.records.map((row) => ({ seq: toNumber(row.get("seq")), line: unpackLine(row.get("line")) }));
       for (let i = 0; i < lines.length; i += 1) {
         if (lines[i].seq !== afterSeq + 1 + i) throw Object.assign(new Error(`The journal in Neo4j lacks commit ${afterSeq + 1 + i}.`), { code: "JOURNAL_GAP" });
       }
