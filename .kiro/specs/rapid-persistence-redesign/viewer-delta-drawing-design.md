@@ -13,6 +13,9 @@
 | Layout / SVG | `viewer_delta_scene.ts:StableScenePatch`。全再描画時に子集合と描画依存を保持。既知の編集では対象 node の依存、子集合、寸法を検査し、全対象の検査成功後に SVG fragment を patch | Tree で寸法・子集合・描画依存が変わらない更新。scopen / unscopen もこの判定を通る。キー・node ID・node 数による分岐はない |
 | Grab の兄弟順序変更 | `viewer_delta_reorder.ts`。全描画時に親・子順・preorder と subtree span を保持し、交差した兄弟区間を rotation する | 右・左・下向き Tree の同一親の移動。対象部分木の座標・入射 edge・SVG順・paint順・WebGL hit geometry・bounds を更新。親 children 全体の splice / filter は行わない |
 | Grab の before image / 配信 | `ChildOrderHistory` に上書きする children の slot を初回だけ記録。逆操作も同じ区間だけ読む | Grab 中の往復で元の順序なら保存しない。取消・Undo・Redo は区間を復元。送信は parent record 全体ではなく children 区間。未知の移動へ遷移する場合は変更前の全 snapshot を復元して従来経路へ戻る |
+| viewport / SVG DOM | `svg_viewport.ts` が既存 RBush で fragment の世界座標を索引化し、viewport + 256 CSS px の範囲だけ live SVG に接続する | 画面外は切り離した SVG に保持。全 Layout・hit geometry・paint は保持する。pan / zoom は索引 query と mounted 集合の差分だけ。未知 geometry と defs / controls は接続を保つ。全 capture / full render は明示的に全 fragment を戻す |
+| SVG 要素の保持 | `incremental_scene.ts` は [morphdom](https://github.com/patrick-steele-idem/morphdom) で fragment の DOM を差分適用する | 同じ node-hit 要素を animation / drag / full render の間も保持する。追加・削除・異種 tag は通常の DOM 変更。検証用の全再計算は既存 canonical renderer を維持 |
+| Workbench の配置 | `viewer-filter-placement.ts`。パネルの追加・削除だけを監視し、ResizeObserver と既存 FrameInvalidation で配置の読取りをまとめる | board 内の map 変更はパネル再検索・同期 layout 読取りを起動しない。サイズをすべて読んでから style を書く |
 | bounds | `SceneBounds` が既存ライブラリ RBush を使い fragment bounds を保持 | 更新対象を remove / insert。最小・最大の fragment が縮小しても正しい範囲を返す。不明な bounds は full path |
 | SVG→WebGL | fragment 差し替え時に capture の所有者索引を更新し、対象 node の paint のみ取得 | 隠れた全 SVG は再表示せず、変更要素・祖先・既存 defs を一時的な sibling SVG へ複製し、同じ capture 関数で測定する。測定終了・例外時に同期的に除去する。CSS / geometry の実 browser 一致は Director 検証が必要 |
 | WebGL | `paint_slots.ts` と `webgl_scene_tiles.ts`。安定 slot と描画順を分離。primitive の追加・削除でも他 node の slot / 空間索引を再生成しない | 変更前後の bounds と交差する cached tile を無効化。tile cache は既存の64枚上限。長い edge も RBush の矩形索引で query し、全 query で走査する overflow bucket を廃止。drag は dense 配列の index でなく stable slot を使う |
@@ -20,7 +23,7 @@
 | 入力・Agent node | modal 所有権は DOM の変更分で更新し、既に board に focus があるときは native focus を呼ばない。Agent node は保持した集合の件数で存在判定 | Agent node 集合は既知の node 書込みだけを更新し、未知の変更または state 入替で再構築。modal は同一 task 内の変更も `takeRecords` で確認 |
 | BroadcastChannel | `viewer_delta_broadcast.ts`。write set の record と sender sequence を送る | 初回 request と sequence 欠落時だけ全 state を取得。重複を無視。保存後の savedAt 通知は空 patch |
 
-同じ Layout の patch では既存 SVG / hit geometry / 全 node の座標を保持する。pan / zoom / hit test / search の既存入口は変更しない。WebGL は patch を受けた task で `present()` し、測定の2 frameの後へ描画を逃がさない。
+同じ Layout の patch では既存 SVG / hit geometry / 全 node の座標を保持する。画面外の fragment は DOM から切り離すが、fit は全保持 fragment の bounds から計算する。選択した node が画面外でも、保持した fragment の存在と Layout で解決する。pan / zoom は camera 更新と同じ処理内で mounted 集合を更新する。WebGL は patch を受けた task で `present()` し、測定の2 frameの後へ描画を逃がさない。
 
 ## 全再構築へ戻る条件と未達
 
@@ -82,3 +85,19 @@ npx playwright test --retries=1
 ```
 
 `?deltaDebug=1` を使った兄弟間移動・取消・Undo / RedoのSVG / Layout一致確認も必要。ブラウザー: 未実行（Director 依頼）。全体の表示更新を viewport + O(変更量) に限定する目標は未達のままである。
+
+
+## R4 の外部測定と変更後の検証境界
+
+Director の `00e11a1` 実測は DV1 0.2 / 0.2 ms（PASS）、DV2 32.4 / 168.3 ms（比率5.2、FAIL）、DV3 0.2 / 62.6 ms（FAIL、STORE worker 担当）、DV4 32.4 / 181.6 ms（比率5.6、FAIL）。前述の scope_layout_diff の svg 回帰は再実行で通過し、Director が flaky と確認した。scatter は edge endpoint の boundingBox が null で失敗した。
+
+提供された scatter trace では失敗前の canvas は hidden ではなく、SVG アニメーションで node-hit が毎回差し替わる経路を確認した。変更後は morphdom で node-hit の identity を保持する。25フレームの位置更新・node追加・edge追加を通じて endpoint の同一性と接続を検証する unit は、旧 `00e11a1` の `RetainedSvgScene` に当てると失敗し、変更後は通過した。これは参照が切れる原因への回帰試験であり、元の Playwright が通過したという報告ではない。
+
+viewport の構造試験は50 / 20,000 fragmentの同じ画面範囲で接続数がともに5件。pan反復でboundsの再計算は0、画面外1件のpatchでbounds取得は1件。全capture中は一時的にvirtualisationを停止し、captureが終わる同じtask内でviewportへ戻す。切り離したfragmentの部分paint取得・描画順・再接続時の要素同一性も検証する。fitとWebGL fallbackは全保持データを維持する設計だが、実ブラウザーでの確認は必要。
+
+テスト実行中、一度アクセスしたlive HTMLCollectionをjsdomがDOM変更ごとに再列挙し、20,000件のmaterialize試験が30秒で失敗した。jsdom実装と段階計測で観察処理の二乗時間を確認し、同じ接続数を静的な一覧で数えるようにした。件数・同一性のassertionと30秒の制限は変更していない。変更後のviewport4試験は約1秒で通過した。
+
+全mapの初期構築・full capture・active filterの変更は全fragmentを一時的に接続する。保存された意味や画素を変えずに既存処理へ渡すためで、これらのload時間と50-node latencyもDirectorが再計測する。寸法変更・巨大部分木のlazy offset・対応外のUndo/受信描画は引き続き未達。browserは未実行（Director 依頼）。R3と同じコマンドでscatter、judge、全visualを再実行し、viewport境界を跨ぐpan/zoom、画面外nodeの検索・fit、scope入出、WebGL fallback、deltaDebugの一致を確認する。
+
+
+R4 checkpoint のローカル検証は build 成功、全unit 1,638通過・27 skipped・2失敗。失敗は既存vault-watchのEMFILE（2 unhandled error）で、viewport試験の途中失敗は最終runで解消。新しい依存 `morphdom` があるため、別checkoutでの再実行は `npm install` を先に行う。viewer.tsは17,592行（基準17,593行）。

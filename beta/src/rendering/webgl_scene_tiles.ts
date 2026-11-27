@@ -1,3 +1,4 @@
+import { logicalSvgRoot } from './svg_viewport';
 import RBush from "rbush";
 import { PaintSlots } from "./paint_slots";
 /**
@@ -209,7 +210,7 @@ export function capturedNodeElements(root: SVGSVGElement, id: string): readonly 
 export function refreshCapturedNodeFragment(root: SVGSVGElement, id: string, fragment: SVGGElement): void {
   const owners = captureNodeElements.get(root);
   if (!owners) return;
-  const retained = (owners.get(id) || []).filter(element => element.isConnected && !fragment.contains(element));
+  const retained = (owners.get(id) || []).filter(element => element.closest('svg') && logicalSvgRoot(element.closest('svg')!) === root && !fragment.contains(element));
   for (const element of fragment.querySelectorAll<SVGGraphicsElement>("path,rect,circle,ellipse,line,polygon,polyline,text")) {
     if (element.closest("defs,marker,clipPath,mask,.link-port-controls")) continue;
     captureOwners.set(element, id); retained.push(element);
@@ -236,6 +237,7 @@ export function captureHiddenNodePaint(root: SVGSVGElement, ids: Set<string>): P
   defs.innerHTML = definitions; stage.append(defs);
   const ancestors = new Map<Element, Element>([[root, stage]]);
   const parentClone = (element: Element): Element => {
+    if (logicalSvgRoot(element) === root) return stage;
     const previous = ancestors.get(element); if (previous) return previous;
     if (!element.parentElement) throw new Error('Detached capture element');
     const copy = element.cloneNode(false) as Element;

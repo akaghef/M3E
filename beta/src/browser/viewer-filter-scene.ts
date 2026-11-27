@@ -13,6 +13,7 @@ export function filterSceneInput(root: SVGSVGElement, nodes: Record<string, Filt
 }
 /** Retained elements keep their unfiltered inline opacity; replacements start fresh. */
 export class ViewerFilterScene {
+  get active(): boolean { return this.dimmedNodes.size > 0; }
   nodeOpacity(id: string): number { return this.dimmedNodes.has(id) ? 0.18 : 1; }
   private dimmedNodes = new Set<string>();
   private originals = new WeakMap<SVGElement, { value: string; priority: string }>();

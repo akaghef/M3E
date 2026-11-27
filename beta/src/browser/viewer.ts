@@ -1,3 +1,4 @@
+import { viewportBox } from "../rendering/svg_viewport";
 import { TreeReorder, rotateRange, type ReorderPlan } from "./viewer_delta_reorder";
 import { NodePresence } from "./viewer_delta_presence";
 import { focusBoard } from "./viewer_delta_selection";
@@ -662,10 +663,13 @@ const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
 const edgeSvgCache = new DerivedNodeCache<string>();
 let treeSpanCache = activeLayoutCache.spans;
 const retainedSvgScene = new RetainedSvgScene<MarkupBox>();
+const currentSvgViewport = () => viewportBox(viewState.cameraX, viewState.cameraY, viewState.zoom, _boardViewportRect.width, _boardViewportRect.height);
 const filterScene = new ViewerFilterScene();
 function applyViewFilter(): void {
   const { result, selection } = viewerFilter.getSnapshot();
+  if (result.active || filterScene.active) retainedSvgScene.materialize();
   filterScene.apply(canvas, result, selection, map?.state.nodes || {});
+  retainedSvgScene.refreshViewport(currentSvgViewport());
 }
 let paintedFilterSelection = viewerFilter.getSnapshot().selection;
 viewerFilter.subscribe(() => {
@@ -5059,6 +5063,7 @@ function updateWebGLNodeDragPreview(event: PointerEvent): void {
 function activateWebGLProjection(): void {
   if (!webglCanvas || !webglSurfaceSupported()) return;
   const metricStartedAt = performance.now();
+  const restoreViewport = retainedSvgScene.suspendViewport();
   try {
     // Measure/capture the appearance in the same task that presents WebGL.
     // Do not show an intermediate SVG frame between renderer updates.
@@ -5074,7 +5079,7 @@ function activateWebGLProjection(): void {
           webglFallbackReason = reason;
           webglRendererActive = false;
           webglCanvas.hidden = true;
-          canvas.removeAttribute("hidden");
+          canvas.removeAttribute("hidden");retainedSvgScene.refreshViewport(currentSvgViewport());
           canvas.style.transform = "";
           syncInlineEditorPosition();
           setStatus(`WebGL unavailable: ${reason} SVG fallback is active.`, true);
@@ -5138,6 +5143,7 @@ function activateWebGLProjection(): void {
       },
     };
   } finally {
+    restoreViewport();
     renderUpdateMetrics.record("projection", performance.now() - metricStartedAt);
   }
 }
@@ -5159,6 +5165,7 @@ function deactivateWebGLProjection(): void {
     cancelAnimationFrame(webglActivationFrame);
     webglActivationFrame = null;
   }
+  retainedSvgScene.refreshViewport(currentSvgViewport());
   webglRendererActive = false;
   webglGraphLinkDragState = null;
   removeWebGLGraphLinkControls();
@@ -5185,10 +5192,12 @@ function applyCanvasViewportTransform(): void {
     canvas.style.transform = transformValue;
     _appliedCanvasTransform = transformValue;
   }
+  retainedSvgScene.refreshViewport(currentSvgViewport());
 }
 
 function syncViewportDependents(): void {
   refreshBoardViewportRect();
+  retainedSvgScene.refreshViewport(currentSvgViewport());
   syncInlineEditorPosition();
   syncInlineEdgeLabelEditorPosition();
   syncLinearPanelPosition();
@@ -8751,11 +8760,13 @@ function renderScene(incremental: boolean): void {
       }
       renderRevision++;
       board.dataset.renderRevision = String(renderRevision);
-      board.dataset.editWork = JSON.stringify({ incremental: true, measured: changed.size, layouts: 0, branches: 0, nodes: changed.size, edges: 0, fragments: changed.size });
+      board.dataset.editWork = JSON.stringify({ incremental: true, measured: changed.size, layouts: 0, branches: 0, nodes: changed.size, edges: reorder ? changed.size : 0, fragments: changed.size * (reorder ? 2 : 1) });
+      retainedSvgScene.refreshViewport(currentSvgViewport());
       syncNodeSelectionPresentation(); updateScopeMeta(); updateScopeSummary([...changed]); updateMapTitle();
       return true;
     };
   }
+  retainedSvgScene.virtualize(canvas, currentSvgViewport(), fragmentBox);
 }
 
 interface LayoutDiagnosticBox {
@@ -14001,15 +14012,14 @@ function selectedFitNodeIds(includeDescendants: boolean): Set<string> {
   };
   visit(id);
   // Rootless surfaces have a layout root but no painted root node.
-  const painted = new Set(Array.from(canvas.children).map(el => (el as SVGElement).dataset.renderKey));
-  return new Set([...ids].filter(nodeId => painted.has(`node:${nodeId}`)));
+  return new Set([...ids].filter(nodeId => retainedSvgScene.element(`node:${nodeId}`)));
 }
 
 /** Box of the whole drawn scene: from the markup when every fragment allows it, otherwise measured. */
 function sceneBox(): MarkupBox {
   retainedSceneBounds.clear();
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, known = true;
-  for (const fragment of Array.from(canvas.children) as SVGGraphicsElement[]) {
+  for (const fragment of Array.from(retainedSvgScene.elements())) {
     if (!fragment.childElementCount || fragment.dataset.renderKey === "defs") continue;
     const box = fragmentBox(fragment.dataset.renderKey || "");
     retainedSceneBounds.set(fragment.dataset.renderKey || "", box);
@@ -14042,7 +14052,7 @@ function fitTarget(mode: FitMode, options: CameraMoveOptions = {}): boolean {
   // also contains the linear panel and minimum padding, which are not graph fit.
   let wasHidden: boolean | null = null;
   try {
-    for (const fragment of Array.from(canvas.children) as SVGGraphicsElement[]) {
+    for (const fragment of Array.from(retainedSvgScene.elements())) {
       const key = fragment.dataset.renderKey || "";
       let wanted = key.startsWith("node:") || key.startsWith("edge:") ||
         ["frames", "groups", "edges", "links"].includes(key);

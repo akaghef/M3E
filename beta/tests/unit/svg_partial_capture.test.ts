@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SvgViewport } from '../../src/rendering/svg_viewport';
 // DOM ownership/work-count contract; browser geometry/CSS parity is separate.
 import { afterEach, expect, it, vi } from 'vitest';
 import { captureSvgPaintScene, captureHiddenNodePaint, capturedNodeElements, refreshCapturedNodeFragment } from '../../src/rendering/webgl_scene_tiles';
@@ -43,6 +44,12 @@ it.each([50,20000])('captures only changed fragments without exposing or growing
     expect(document.querySelectorAll('[data-capture-stage]')).toHaveLength(0);
   }
   expect(style.mock.calls.length).toBe(50);
+  const viewport = new SvgViewport(root,new Map([...root.children].map((element,order)=>[String(order),{element:element as SVGGElement,order}])),()=>({x:10000,y:10000,width:20,height:10}));
+  viewport.refresh({x:0,y:0,width:100,height:100});
+  expect(fragment.isConnected).toBe(false);expect(root.children).toHaveLength(0);
+  const parked=captureHiddenNodePaint(root,new Set(['n0']));
+  expect(parked.commands).toHaveLength(1);expect(parked.commands[0]!.matrix).toEqual([1,0,0,1,5,6]);
+  expect(root.children).toHaveLength(0);
   expect(mutations.takeRecords()).toHaveLength(0);mutations.disconnect();
 },30000);
 

@@ -99,6 +99,7 @@
     "langchain": "^1.4.4",
     "langfuse": "^3.38.20",
     "lucide-react": "^1.16.0",
+    "morphdom": "^2.7.8",
     "rbush": "^4.0.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

@@ -1,3 +1,4 @@
+import { logicalSvgRoot } from "../rendering/svg_viewport";
 import { SelectionRecords, screenPresentation, focusBoard, modalInputOwner } from "./viewer_delta_selection";
 import { pathMidpoint } from "./markup_bounds";
 import type { AppState, GraphLink } from '../shared/types';
@@ -274,7 +275,7 @@ export class EdgeGraphLinkSelectionAdapter {
   }
   /** A retained node patch replaces only that fragment's highlight targets. */
   refreshNode(id:string,fragment:SVGGElement):void {
-    const key=`node:${id}`,elements=(this.paintTargets.get(key)??[]).filter(el=>el.isConnected&&!fragment.contains(el));
+    const key=`node:${id}`,elements=(this.paintTargets.get(key)??[]).filter(el=>el.closest('svg')&&logicalSvgRoot(el.closest('svg')!)===this.bridge.canvas&&!fragment.contains(el));
     for(const el of fragment.querySelectorAll('[data-node-id]')) if(el.getAttribute('data-node-id')===id) elements.push(el);
     this.paintTargets.set(key,elements);
   }

@@ -769,3 +769,13 @@
 - 中身: 親・兄弟index・preorder・subtree spanを保持し、交差した兄弟区間だけをrotationする。移動した部分木と入射edgeのSVG・paint・hit geometry・boundsを更新し、M解放時の重複full renderを除いた。Grab前の全map cloneと完了時のJSON比較はchildren slotの初回値と現在値の比較へ置き換え、配信も同じ区間にした。未対応の移動では変更前の全snapshotへ復元して従来経路に戻す。focusは編集前に行い、部分capture stageからcamera transformとwill-changeを外した。
 - 根拠: build成功。全unitは1,632通過・27 skipped・2失敗、失敗と2 unhandled errorは既存のvault-watchのEMFILE。追加の50 / 20,000構造試験で隣接移動の対象は2件、無関係なposition / children slotの読取りは0、SVG追加・除去は各2要素。異なる寸法の部分木を右・左・下向きに移動して全Layoutとの一致を確認。WebGL描画順の後続編集と移動後hit test、Grab取消・Undo・Redo・配信を検証。その後、in-place更新したLayoutが旧topology keyで再利用される問題を修正し、取消後のcache回帰を含む関連12試験が通過。browserは未実行（Director 依頼）。viewer.tsは基準c3f3138の17,593行に対し17,582行。
 - 扱い: 部分実装、goalは未完了。DirectorのR2測定はDV1 PASS、DV2 / DV4 FAIL、DV3はSTORE担当で本作業では変更しない。提供されたtoggle profileのfocus134msは1回のみで、medianの原因とはまだ断定できない。Playwrightの基準はR3訂正の72 unexpectedを使う。新規2回帰（scatterのdrag後boundingBoxがnull、svgのArrowRightでrootのまま）は実ブラウザーのpageerror / renderer状態が未提供で原因未確定、解消も未検証。大きい部分木のlazy offset / viewport展開、寸法変更、対応外の編集・Undo描画・受信描画は未達。実行コマンドと診断項目はviewer-delta-drawing-design.md。
+
+
+### 2026-11-27 SVG の接続を viewport に限定し、scatter の endpoint を保持した
+
+- 種類: 実装・未達
+- 書いた agent: Codex（delta-all-viewer、R4）
+- 対象: SVG fragment の接続・更新、Workbench のフィルタバー配置、WebGL capture、fit
+- 中身: 既存 RBush で fragment bounds を索引化し、viewport + 256 CSS px の範囲だけをlive SVGに接続する。画面外は切り離して保持し、全Layout・hit geometry・paintは維持する。pan/zoomはmounted集合の差分だけ更新。全capture中は仮想化を一時停止し同じtaskで戻す。fitは保持した全fragmentのboundsを使う。morphdomを追加し、animation/full renderでも同じnode-hit要素を保持する。フィルタバーはboard内の編集をpanel再検索の対象から除外し、ResizeObserverとFrameInvalidationでgeometryをまとめて読んでからstyleを書く。
+- 根拠: DirectorのR4実測（00e11a1）はDV1 PASS、DV2 32.4 / 168.3 msでFAIL、DV4 32.4 / 181.6 msでFAIL。scope_layout_diffのsvgは再試行で通過。scatter traceではSVGはhiddenではなく、animation中にnode-hitが差し替わる経路があった。25フレーム＋node/edge追加のendpoint同一性試験は旧実装で失敗し変更後は通過。50 / 20,000件のviewport接続数はいずれも5件、反復panのbounds取得0、画面外1件patchのbounds取得1。切り離したSVGの部分capture・paint順・capture中の全接続と復帰・panelの変更時だけの配置もunitで検証。最終build成功、全unitは1,638通過・27 skipped・2失敗（既存vault-watchのEMFILE、2 unhandled error）。viewer.tsは基準17,593行に対し17,592行。browserは未実行（Director 依頼）。
+- 扱い: 部分実装、goal未完了。元のscatter Playwrightの通過、DV2/DV4、画素・pan/zoom・検索・fit・scope入出・fallback・load時間はDirectorの独立再実行を要する。DV3と保存差分の内部はSTORE worker担当で未変更。全unitの途中に20,000件の試験が30秒で失敗したが、jsdomのlive HTMLCollectionが観察によって二乗時間になることを実装と段階計測で確認し、同じ件数を静的一覧で確認する形に直した。assertionとtimeoutは不変、最終全unitでは解消。寸法変更・巨大部分木のlazy offset・対応外Undo/受信描画・active filterの差分化は未達として継続する。
