@@ -50,6 +50,8 @@ Work on the write, sync and display-update paths costs in proportion to the chan
 
 When changing viewer/store field tables, persisted defaults or canonicalization, extend the field lifecycle samples in `beta/tests/unit/viewer_field_lifecycle.ts` and run `viewer_field_lifecycle.test.ts` plus the corresponding local-mode test in `local_sync_store.test.ts`. Coverage is derived from production field tables and viewer types; never silence an unhandled-field failure by removing a field from coverage. Keep each step's `before` in the viewer's own previous shape, not a store readback. A new field without lifecycle handling must fail the test.
 
+A test for a component the product requires (Neo4j, the remote, the outbox) fails when that component is missing or unreachable; it never skips, and never passes on a fallback path the product does not run. CI and the pre-push preflight provide the component (for Neo4j: a disposable test instance, never the one holding real data). A test that passes without the component is a test bug.
+
 Decided content is changed only by akaghef. For storage and database work the log is [the implementation log](.kiro/specs/rapid-persistence-redesign/implementation-log.md); read its open entries before starting there and update an entry's status when the work resolves it.
 
 ## Environment Structure
