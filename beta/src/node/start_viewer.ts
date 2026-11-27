@@ -561,7 +561,9 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
     return;
   }
   // Compression runs off the event loop and touches only this response's bytes.
-  gzip(body, (error, compressed) => {
+  // Level 1: about half the CPU of the default for nearly the same size on map JSON,
+  // so a loopback read through the local server barely slows down.
+  gzip(body, { level: 1 }, (error, compressed) => {
     if (res.destroyed || res.writableEnded) return;
     if (error) { res.end(body); return; }
     res.setHeader("Content-Encoding", "gzip");
