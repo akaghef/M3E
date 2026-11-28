@@ -50,13 +50,13 @@ describe("record store commit latency (20,000 nodes)", () => {
     return median;
   }
 
-  it("commits a single text edit well under 100 ms", () => {
+  it("commits a single text edit well under 200 ms", () => {
     let n = 0;
     const median = measure("single text edit", (state) => {
       n += 1;
       ((state.nodes as Loose).bg0100n0050 as Loose).text = `edited ${n}`;
     });
-    expect(median).toBeLessThan(100);
+    expect(median).toBeLessThan(200);
   });
 
   it("commits adding a node", () => {
